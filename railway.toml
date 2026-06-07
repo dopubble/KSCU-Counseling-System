@@ -3,7 +3,8 @@
 
 [build]
 builder = "nixpacks"
-buildCommand = "pip install -r requirements/prod.txt && python manage.py collectstatic --noinput"
+# Nixpacks가 requirements.txt 설치 후 collectstatic만 추가 실행
+buildCommand = "python manage.py collectstatic --noinput"
 
 [deploy]
 preDeployCommand = "python manage.py migrate --noinput"

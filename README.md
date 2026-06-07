@@ -39,6 +39,9 @@ venv\Scripts\activate        # Windows
 pip install -r requirements/dev.txt
 ```
 
+> **Railway 배포**는 루트 `requirements.txt`(운영용)를 자동 사용합니다.  
+> 상세: [`docs/RAILWAY_DEPLOY.md`](docs/RAILWAY_DEPLOY.md)
+
 ### 2-A. SQLite (로컬 간편 실행)
 
 `.env`에서 `DATABASE_URL`을 비워두면 SQLite를 사용합니다.

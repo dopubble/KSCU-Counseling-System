@@ -1,0 +1,13 @@
+# Railway Nixpacks — Django 자동 감지 시 install/build 단계 제어
+# https://nixpacks.com/docs/configuration/file
+
+[variables]
+DJANGO_SETTINGS_MODULE = "kscu_counseling.settings.production"
+# collectstatic 등 빌드 단계용 (런타임 SECRET_KEY는 Railway Variables로 덮어씀)
+SECRET_KEY = "nixpacks-build-placeholder-change-in-railway"
+
+[phases.build]
+cmds = ["python manage.py collectstatic --noinput"]
+
+[start]
+cmd = "gunicorn kscu_counseling.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120"

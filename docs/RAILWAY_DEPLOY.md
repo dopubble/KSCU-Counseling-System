@@ -56,11 +56,14 @@ GitHub 연결 시 자동 생성된 **Web 서vice**를 선택합니다.
 
 ### Build / Deploy
 
-저장소 루트의 [`railway.toml`](../railway.toml)이 적용됩니다.
+저장소 루트의 [`railway.toml`](../railway.toml), [`nixpacks.toml`](../nixpacks.toml)이 적용됩니다.
+
+Nixpacks가 **루트 `requirements.txt`**(운영 의존성)를 자동 설치합니다.  
+`requirements/dev.txt`는 로컬 개발 전용이며 Railway 빌드에 쓰이지 않습니다.
 
 | 항목 | 값 |
 |------|-----|
-| **Build Command** | `pip install -r requirements/prod.txt && python manage.py collectstatic --noinput` |
+| **Build Command** | `python manage.py collectstatic --noinput` |
 | **Pre-deploy Command** | `python manage.py migrate --noinput` |
 | **Start Command** | `gunicorn kscu_counseling.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120` |
 
