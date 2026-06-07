@@ -1,4 +1,5 @@
 from .base import *  # noqa: F401, F403
+from .base import _env_str  # star import는 _ 접두 private 이름 제외
 
 DEBUG = False
 
@@ -38,13 +39,13 @@ def _build_csrf_trusted_origins() -> list[str]:
     예: CSRF_TRUSTED_ORIGINS=https://app.up.railway.app,https://counseling.example.com
     """
     origins: list[str] = []
-    for part in _env_str("CSRF_TRUSTED_ORIGINS").split(","):  # noqa: F405
+    for part in _env_str("CSRF_TRUSTED_ORIGINS").split(","):
         origin = _normalize_origin(part)
         if origin:
             origins.append(origin)
 
     for env_name in ("RAILWAY_PUBLIC_DOMAIN",):
-        raw = _env_str(env_name)  # noqa: F405
+        raw = _env_str(env_name)
         if not raw:
             continue
         origin = _normalize_origin(raw)
@@ -58,8 +59,8 @@ CSRF_TRUSTED_ORIGINS = _build_csrf_trusted_origins()
 
 # Railway가 주입하는 도메인을 ALLOWED_HOSTS에 자동 추가 (환경 변수 누락 방지)
 for _railway_host in (
-    _env_str("RAILWAY_PUBLIC_DOMAIN"),  # noqa: F405
-    _env_str("RAILWAY_PRIVATE_DOMAIN"),  # noqa: F405
+    _env_str("RAILWAY_PUBLIC_DOMAIN"),
+    _env_str("RAILWAY_PRIVATE_DOMAIN"),
 ):
     if _railway_host and _railway_host not in ALLOWED_HOSTS:  # noqa: F405
         ALLOWED_HOSTS.append(_railway_host)  # noqa: F405
