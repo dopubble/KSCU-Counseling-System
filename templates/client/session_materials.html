@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% load ui_tags %}
+
+{% block title %}{% if session_number %}{{ session_number }}회기 {% endif %}자료함 — {{ case.case_number }}{% endblock %}
+
+{% block layout %}
+<section class="site-page client-portal-page py-4 py-lg-5">
+    <div class="container site-container">
+{% block content %}
+        <div class="client-portal-stack">
+        <header class="client-portal-header site-page-header mb-0">
+            {% page_breadcrumb c1_label="내 상담실" c1_url_name="client:dashboard" c1_icon="bi-house-door" c2_label="상담 상세" c2_url_name="client:case_detail" c2_url_arg=case.pk c3_label="자료함" %}
+            <div class="site-page-heading mt-4">
+                <h1 class="client-portal-title site-page-title mb-1">
+                    {% if session_number %}{{ session_number }}회기 {% endif %}자료함
+                </h1>
+                <p class="client-portal-case-meta site-page-subtitle mb-0">
+                    {{ appointment.scheduled_at|date:"Y-m-d H:i" }}
+                    <span class="client-portal-case-meta-sep" aria-hidden="true">·</span>
+                    사례번호 <span class="font-monospace fw-semibold">{{ case.case_number }}</span>
+                </p>
+            </div>
+        </header>
+
+        <div class="card client-dashboard-card border-0 section-spacing">
+            <div class="card-header client-portal-card-header border-0 d-flex align-items-center justify-content-between">
+                <span><i class="bi bi-folder2-open me-1"></i>공유 자료</span>
+                <span class="badge text-bg-light">{{ materials|length }}건</span>
+            </div>
+            <div class="card-body p-0">
+                {% if materials %}
+                <ul class="list-group list-group-flush client-session-materials-list">
+                    {% for material in materials %}
+                    <li class="list-group-item client-session-materials-item d-flex flex-wrap align-items-center justify-content-between gap-2">
+                        <div class="d-flex align-items-center gap-2 min-w-0">
+                            <i class="bi bi-file-earmark text-primary flex-shrink-0" aria-hidden="true"></i>
+                            <div class="min-w-0">
+                                <p class="mb-0 fw-semibold text-truncate">{{ material.display_name }}</p>
+                                <p class="small text-muted mb-0">{{ material.created_at|date:"Y-m-d H:i" }}</p>
+                            </div>
+                        </div>
+                        <a href="{% url 'client:session_material_download' case.pk appointment.pk material.pk %}"
+                           class="btn btn-sm btn-outline-primary flex-shrink-0">
+                            <i class="bi bi-download me-1" aria-hidden="true"></i>다운로드
+                        </a>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="text-center py-5 px-3">
+                    <i class="bi bi-inbox fs-2 text-muted d-block mb-2" aria-hidden="true"></i>
+                    <p class="text-muted mb-1">공유된 자료가 없습니다.</p>
+                    <p class="small text-muted mb-0">담당 상담사가 업로드한 자료가 이곳에 표시됩니다.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="d-flex flex-wrap justify-content-center gap-3 section-spacing">
+            <a href="{% url 'client:case_detail' case.pk %}" class="btn btn-outline-secondary px-4">
+                <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>상담 상세로
+            </a>
+        </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+{% endblock %}

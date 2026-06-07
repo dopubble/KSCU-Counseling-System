@@ -1,0 +1,13 @@
+{% if has_cancel_pending %}
+<span class="badge bg-warning text-dark">취소 대기 중</span>
+{% elif show_cancel_request %}
+<button type="button"
+        class="btn btn-sm btn-outline-danger cancel-request-trigger"
+        data-bs-toggle="modal"
+        data-bs-target="#cancelRequestModal"
+        data-cancel-url="{% url 'client:request_cancel' application.pk %}"
+        data-cancel-next="{{ cancel_next|default:request.path }}"
+        {% if cancel_penalty_warning %}data-cancel-penalty="1"{% endif %}>
+    상담 취소 요청
+</button>
+{% endif %}

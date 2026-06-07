@@ -1,0 +1,146 @@
+<article class="client-session-card mb-3"
+         id="session-{{ session.session_number }}"
+         data-session-number="{{ session.session_number }}"
+         data-session-status="{% if session.has_session_cancel_pending %}cancel_pending{% else %}{{ session.status_code|lower }}{% endif %}">
+    <header class="client-session-card-header">
+        <div class="client-session-card-meta">
+            <span class="client-session-pill">{{ session.session_number }}회기</span>
+            {% if session.scheduled_datetime %}
+            {% if session.is_confirmed or session.has_session_cancel_pending %}
+            <time class="client-session-card-date fw-bold" datetime="{{ session.scheduled_datetime|date:'c' }}">
+                {{ session.scheduled_datetime|date:"Y-m-d H:i" }}
+            </time>
+            {% endif %}
+            {% endif %}
+            <span class="badge client-dashboard-badge client-session-status-badge{% if session.has_session_cancel_pending %} client-session-status-badge--cancel-pending{% endif %}">
+                {% if session.has_session_cancel_pending %}취소 대기 중{% else %}{{ session.client_status_label }}{% endif %}
+            </span>
+        </div>
+    </header>
+    {% if session.show_counselor_cancel_review_actions %}
+    <div class="session-pending-summary session-cancel-pending-summary">
+        <p class="session-pending-summary-notice small text-muted mb-2 mb-md-3">
+            내담자가 예약 취소를 요청했습니다. 왼쪽 취소 요청 대기 위젯에서 취소 또는 반려처리 하시기 바랍니다.
+        </p>
+        <dl class="session-pending-summary-list mb-0">
+            {% if session.cancel_requested_at %}
+            <div class="session-pending-summary-row">
+                <dt>요청 일시</dt>
+                <dd class="fw-semibold">{{ session.cancel_requested_at|date:"Y-m-d H:i" }}</dd>
+            </div>
+            {% endif %}
+            <div class="session-pending-summary-row">
+                <dt>상담 일시</dt>
+                <dd class="fw-semibold">{{ session.scheduled_datetime|date:"Y-m-d H:i" }}</dd>
+            </div>
+            <div class="session-pending-summary-row">
+                <dt>취소 사유</dt>
+                <dd class="client-pre-wrap">{% if session.cancel_request_reason %}{{ session.cancel_request_reason }}{% else %}내용 없음{% endif %}</dd>
+            </div>
+        </dl>
+    </div>
+    {% elif session.show_counselor_schedule_change_review_actions %}
+    <div class="session-pending-summary session-schedule-change-pending-summary">
+        <p class="session-pending-summary-notice small text-muted mb-2 mb-md-3">
+            내담자가 일정변경 요청을 했습니다. 왼쪽 메뉴에서 확인해 주세요.
+        </p>
+        <dl class="session-pending-summary-list mb-0">
+            <div class="session-pending-summary-row">
+                <dt>기존 예약</dt>
+                <dd class="fw-semibold">{{ session.confirmed_appointment_datetime|date:"Y-m-d H:i" }}</dd>
+            </div>
+            <div class="session-pending-summary-row">
+                <dt>변경 희망</dt>
+                <dd class="fw-semibold">{{ session.schedule_change_preferred_datetime|date:"Y-m-d H:i" }}</dd>
+            </div>
+            <div class="session-pending-summary-row">
+                <dt>요청 내용</dt>
+                <dd class="client-pre-wrap">{% if session.requested_reason %}{{ session.requested_reason }}{% else %}내용 없음{% endif %}</dd>
+            </div>
+        </dl>
+    </div>
+    {% elif session.status_code == 'REQUESTED' or session.show_counselor_review_buttons %}
+    <div class="session-pending-summary">
+        {% if session.status_code == 'REQUESTED' %}
+        <p class="session-pending-summary-notice small text-muted mb-2 mb-md-3">
+            왼쪽 대기 중인 예약 신청에서 예약을 확정해 주세요.
+        </p>
+        {% endif %}
+        <dl class="session-pending-summary-list mb-0">
+            <div class="session-pending-summary-row">
+                <dt>요청 일자</dt>
+                <dd class="fw-semibold">{{ session.scheduled_datetime|date:"Y-m-d H:i" }}</dd>
+            </div>
+            <div class="session-pending-summary-row">
+                <dt>신청 사유</dt>
+                <dd class="client-pre-wrap">{% if session.requested_reason %}{{ session.requested_reason }}{% else %}내용 없음{% endif %}</dd>
+            </div>
+        </dl>
+    </div>
+    {% elif session.has_rejection_notice %}
+    <div class="session-rejection-notice alert alert-danger border-0 py-2 px-3 mb-0 mx-3 mt-2">
+        <p class="small fw-semibold mb-1"><i class="bi bi-x-circle me-1" aria-hidden="true"></i>예약이 반려되었습니다</p>
+        <p class="small mb-0 client-pre-wrap">{{ session.rejection_reason }}</p>
+    </div>
+    {% endif %}
+
+    {% if session.has_materials or session.appointment or not session.appointment %}
+    <div class="client-session-card-body">
+        {% if session.has_materials %}
+        {% include "includes/session_materials_list.html" with session=session case=case portal="counselor" show_materials_section=True %}
+        {% endif %}
+        {% if session.appointment %}
+            {% if session.counselor_can_update_status %}
+            <div class="client-session-card-actions d-flex flex-wrap align-items-center gap-2{% if session.has_materials %} mt-3{% endif %}">
+                <span class="small text-muted">진행 상태</span>
+                <form method="post"
+                      action="{% url 'counselor:session_status_update' case.pk session.appointment.pk %}"
+                      class="client-session-status-form mb-0">
+                    {% csrf_token %}
+                    <select name="status"
+                            class="form-select form-select-sm client-session-status-select"
+                            aria-label="{{ session.session_number }}회기 진행 상태"
+                            onchange="this.form.submit()">
+                        <option value="CONFIRMED" {% if session.counselor_status_form_value == 'CONFIRMED' %}selected{% endif %}>진행중</option>
+                        <option value="COMPLETED" {% if session.counselor_status_form_value == 'COMPLETED' %}selected{% endif %}>완료</option>
+                    </select>
+                </form>
+            </div>
+            {% endif %}
+        {% elif not session.has_rejection_notice and not session.has_materials %}
+            <p class="text-muted small mb-0 px-3 py-2">아직 예약되지 않은 회기입니다.</p>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% if session.show_zoom or session.show_counselor_journal %}
+    <div class="client-session-card-footer d-flex flex-wrap align-items-center gap-2">
+        {% if session.show_zoom %}
+        <a href="{{ session.zoom_url }}"
+           target="_blank"
+           rel="noopener noreferrer"
+           class="btn btn-sm client-dashboard-action-btn">
+            <i class="bi bi-camera-video me-1" aria-hidden="true"></i>Zoom 회의 바로가기
+        </a>
+        {% endif %}
+        {% if session.show_counselor_journal %}
+            {% if session.journal and not session.journal.is_draft %}
+            <a href="{% url 'counselor:journal_detail' case.pk session.session_number %}"
+               class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-journal-text me-1" aria-hidden="true"></i>{{ session.counselor_journal_label }}
+            </a>
+            {% elif session.journal %}
+            <a href="{% url 'counselor:journal_edit' case.pk session.session_number %}"
+               class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-journal-text me-1" aria-hidden="true"></i>{{ session.counselor_journal_label }}
+            </a>
+            {% else %}
+            <a href="{% url 'counselor:journal_create' case.pk %}?session={{ session.session_number }}"
+               class="btn btn-sm btn-counselor text-white">
+                <i class="bi bi-pencil-square me-1" aria-hidden="true"></i>{{ session.counselor_journal_label }}
+            </a>
+            {% endif %}
+        {% endif %}
+    </div>
+    {% endif %}
+</article>

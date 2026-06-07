@@ -1,0 +1,139 @@
+{# 게시판 위젯 — 내담자·상담사 사례 상세 공통 #}
+{# portal: "client" | "counselor" | can_manage_board: 작성·수정·삭제 UI #}
+<div class="card client-dashboard-card border-0 mb-4">
+    <div class="card-header client-portal-card-header border-0 d-flex align-items-center justify-content-between gap-2">
+        <div class="d-flex align-items-center gap-2 min-w-0">
+            <span class="fw-semibold text-nowrap"><i class="bi bi-clipboard2 me-1" aria-hidden="true"></i>게시판</span>
+            <span class="badge text-bg-light flex-shrink-0">{{ shared_materials|length }}건</span>
+        </div>
+        {% if can_manage_board %}
+        <button type="button"
+                class="btn btn-sm btn-primary flex-shrink-0"
+                data-bs-toggle="modal"
+                data-bs-target="#boardPostCreateModal">
+            <i class="bi bi-pencil-square me-1" aria-hidden="true"></i>게시글 작성
+        </button>
+        {% endif %}
+    </div>
+    <div class="card-body p-0">
+        {% if shared_materials %}
+        <div class="accordion accordion-flush board-post-accordion" id="boardPostAccordion">
+            {% for material in shared_materials %}
+            <div class="accordion-item board-post-item">
+                <h2 class="accordion-header" id="boardPostHeading{{ material.pk }}">
+                    <button class="accordion-button collapsed board-post-accordion-btn"
+                            type="button"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#boardPostCollapse{{ material.pk }}"
+                            aria-expanded="false"
+                            aria-controls="boardPostCollapse{{ material.pk }}">
+                        <span class="board-post-title-wrap min-w-0">
+                            <span class="board-post-title text-truncate">{{ material.post_title }}</span>
+                            {% if material.has_attachment %}
+                            <span class="badge text-bg-light board-post-file-badge ms-2 flex-shrink-0">
+                                <i class="bi bi-paperclip" aria-hidden="true"></i> 첨부
+                            </span>
+                            {% endif %}
+                        </span>
+                    </button>
+                </h2>
+                <div id="boardPostCollapse{{ material.pk }}"
+                     class="accordion-collapse collapse"
+                     aria-labelledby="boardPostHeading{{ material.pk }}"
+                     data-bs-parent="#boardPostAccordion">
+                    <div class="accordion-body board-post-body">
+                        <div class="d-flex flex-wrap align-items-center gap-2 small text-muted mb-3">
+                            <span>{{ material.created_at|date:"Y-m-d H:i" }}</span>
+                            {% if material.uploaded_by %}
+                            <span class="board-post-meta-sep" aria-hidden="true">·</span>
+                            <span><i class="bi {{ material.uploader_icon }} me-1" aria-hidden="true"></i>{{ material.uploader_role_label }}</span>
+                            {% endif %}
+                        </div>
+
+                        {% if material.has_content %}
+                        <div class="board-post-content client-pre-wrap">{{ material.content|linebreaksbr }}</div>
+                        {% endif %}
+
+                        {% if material.has_attachment %}
+                        <div class="board-post-attachment mt-3">
+                            <a href="{% if portal == 'counselor' %}{% url 'counselor:shared_material_file' case.pk material.pk %}{% else %}{% url 'client:shared_material_file' case.pk material.pk %}{% endif %}"
+                               class="btn btn-sm btn-outline-primary"
+                               download>
+                                <i class="bi bi-download me-1" aria-hidden="true"></i>{{ material.get_filename }}
+                            </a>
+                        </div>
+                        {% endif %}
+
+                        {% if can_manage_board %}
+                        <div class="board-post-manage d-flex flex-wrap align-items-center gap-2 mt-3 pt-3 border-top">
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-secondary"
+                                    data-bs-toggle="collapse"
+                                    data-bs-target="#boardPostEdit{{ material.pk }}"
+                                    aria-expanded="false"
+                                    aria-controls="boardPostEdit{{ material.pk }}">
+                                <i class="bi bi-pencil me-1" aria-hidden="true"></i>수정
+                            </button>
+                            <form method="post"
+                                  action="{% url 'counselor:shared_material_delete' case.pk material.pk %}"
+                                  class="mb-0"
+                                  onsubmit="return confirm('이 게시글을 삭제하시겠습니까?');">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-outline-danger">
+                                    <i class="bi bi-trash me-1" aria-hidden="true"></i>삭제
+                                </button>
+                            </form>
+                        </div>
+                        <div class="collapse board-post-edit-panel mt-3" id="boardPostEdit{{ material.pk }}">
+                            <form method="post"
+                                  action="{% url 'counselor:board_post_edit' case.pk material.pk %}"
+                                  enctype="multipart/form-data"
+                                  class="board-post-edit-form">
+                                {% csrf_token %}
+                                <div class="mb-3">
+                                    <label class="form-label fw-semibold" for="boardEditTitle{{ material.pk }}">제목</label>
+                                    <input type="text"
+                                           name="title"
+                                           id="boardEditTitle{{ material.pk }}"
+                                           class="form-control"
+                                           maxlength="200"
+                                           value="{{ material.title }}"
+                                           required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label fw-semibold" for="boardEditContent{{ material.pk }}">내용</label>
+                                    <textarea name="content"
+                                              id="boardEditContent{{ material.pk }}"
+                                              class="form-control"
+                                              rows="4">{{ material.content }}</textarea>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label fw-semibold" for="boardEditFile{{ material.pk }}">첨부 파일</label>
+                                    {% if material.has_attachment %}
+                                    <p class="small text-muted mb-1">현재: {{ material.get_filename }}</p>
+                                    {% endif %}
+                                    <input type="file"
+                                           name="file"
+                                           id="boardEditFile{{ material.pk }}"
+                                           class="form-control"
+                                           accept=".pdf,.hwp,.doc,.docx,.jpg,.jpeg">
+                                    <p class="form-text small text-muted mb-0 mt-1">
+                                        PDF, HWP, Word, JPG · 최대 10MB{% if material.has_attachment %} · 새 파일 선택 시 기존 파일을 대체합니다{% endif %}
+                                    </p>
+                                </div>
+                                <button type="submit" class="btn btn-sm btn-counselor">저장</button>
+                            </form>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-4 px-3">
+            <p class="text-muted mb-0">등록된 게시물이 없습니다.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>

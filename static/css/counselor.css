@@ -1,0 +1,271 @@
+/* 상담사 전용 — 차분·집중형 UI */
+:root {
+    --counselor-primary: #2c5282;
+    --counselor-primary-soft: #e8eef5;
+    --counselor-bg: #f7f8fa;
+    --counselor-border: #e2e8f0;
+}
+
+.counselor-page {
+    width: 100%;
+    background: var(--counselor-bg);
+}
+
+.counselor-header {
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--counselor-border);
+}
+
+.counselor-greeting {
+    font-size: 0.9rem;
+    color: #64748b;
+}
+
+.text-counselor {
+    color: var(--counselor-primary) !important;
+}
+
+.counselor-stat-card {
+    background: var(--counselor-primary-soft);
+    border-radius: 0.75rem;
+}
+
+.counselor-table-card {
+    border-radius: 0.75rem;
+    overflow: hidden;
+}
+
+.counselor-table thead th {
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #64748b;
+    background: #fafbfc;
+    border-bottom: 1px solid var(--counselor-border);
+}
+
+.counselor-row-link {
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.counselor-row-link:hover {
+    background-color: var(--counselor-primary-soft);
+}
+
+.badge-counselor-active {
+    background-color: #d1e7dd;
+    color: #0f5132;
+    font-weight: 500;
+}
+
+.bg-counselor-soft {
+    background-color: var(--counselor-primary-soft);
+}
+
+.counselor-info-table th {
+    width: 32%;
+    background: #fafbfc;
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: #475569;
+}
+
+.btn-counselor {
+    background-color: var(--counselor-primary);
+    border-color: var(--counselor-primary);
+}
+
+.btn-counselor:hover {
+    background-color: #1e3a5f;
+    border-color: #1e3a5f;
+    color: #fff;
+}
+
+.btn-outline-counselor {
+    color: var(--counselor-primary);
+    border-color: var(--counselor-primary);
+}
+
+.btn-outline-counselor:hover {
+    background-color: var(--counselor-primary);
+    color: #fff;
+}
+
+.counselor-page .form-control:focus,
+.counselor-page .form-select:focus {
+    border-color: var(--counselor-primary);
+    box-shadow: 0 0 0 0.2rem rgba(44, 82, 130, 0.15);
+}
+
+.counselor-page .counselor-session-review-footer,
+.counselor-page .counselor-session-review-footer .btn {
+    display: inline-flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+.counselor-pending-requests-body {
+    padding: 1rem 1.25rem 1.25rem;
+}
+
+.counselor-pending-requests-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.counselor-pending-request-card {
+    border: 1px solid #e0e0e0;
+    border-radius: 0.625rem;
+    padding: 1rem 1.125rem;
+    margin-bottom: 20px;
+    background-color: #fff;
+}
+
+.counselor-pending-request-card:last-child {
+    margin-bottom: 0;
+}
+
+.counselor-pending-request-title {
+    font-size: 0.9375rem;
+    line-height: 1.4;
+    color: var(--counselor-primary);
+    margin-bottom: 0.625rem;
+}
+
+.counselor-pending-request-datetime {
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: #334155;
+    margin-bottom: 0.875rem !important;
+}
+
+.counselor-pending-request-label {
+    color: #64748b;
+    margin-right: 0.25rem;
+}
+
+.counselor-pending-request-btn {
+    background-color: #ffc107;
+    border: 1px solid #ffca2c;
+    color: #212529;
+    font-weight: 600;
+    box-shadow: 0 2px 6px rgba(255, 193, 7, 0.35);
+    transition: box-shadow 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.counselor-pending-request-btn:hover,
+.counselor-pending-request-btn:focus {
+    background-color: #ffca2c;
+    border-color: #ffc720;
+    color: #212529;
+    box-shadow: 0 4px 12px rgba(255, 193, 7, 0.45);
+}
+
+.counselor-pending-request-status {
+    margin-top: 0.875rem;
+    padding: 0.5rem 0.75rem;
+    cursor: default;
+    pointer-events: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.875rem;
+}
+
+.counselor-pending-request-message {
+    line-height: 1.5;
+}
+
+.appointment-manage-form .appointment-manage-scheduled-field {
+    margin-bottom: 0.75rem;
+}
+
+.appointment-manage-form .appointment-manage-actions {
+    margin-top: 0;
+}
+
+/* 상담일지 작성 페이지 — 관리자 톤 통일 */
+.journal-form-page .text-kscu {
+    color: #003366 !important;
+}
+
+.client-info-card {
+    background: linear-gradient(180deg, #f8fafc 0%, #fff 100%);
+    border-left: 4px solid #003366 !important;
+}
+
+.journal-info-table th {
+    width: 6.5rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #64748b;
+    padding: 0.65rem 1rem;
+    vertical-align: middle;
+}
+
+.journal-info-table td {
+    padding: 0.65rem 1rem;
+    color: #1e293b;
+}
+
+@media (min-width: 768px) {
+    .border-end-md {
+        border-right: 1px solid #e2e8f0;
+    }
+}
+
+.journal-section {
+    padding-bottom: 0.5rem;
+}
+
+.journal-section-title {
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: #003366;
+    padding-bottom: 0.75rem;
+    margin-bottom: 1.25rem;
+    border-bottom: 2px solid #e8eef5;
+}
+
+.journal-textarea {
+    min-height: 8rem;
+    font-size: 0.9375rem;
+    line-height: 1.6;
+    resize: vertical;
+}
+
+#id_counseling_content.journal-textarea {
+    min-height: 12rem;
+}
+
+#id_counselor_observation.journal-textarea {
+    min-height: 10rem;
+}
+
+.counselor-availability-card .list-group-item {
+    border-color: var(--counselor-border);
+}
+
+.counselor-availability-item-main {
+    font-size: 0.9375rem;
+}
+
+.counselor-availability-add-btn {
+    flex-shrink: 0;
+}
+
+.counselor-availability-badge--available {
+    background-color: #cfe2ff;
+    color: #084298;
+}
+
+.counselor-availability-badge--blocked {
+    background-color: #ffe8cc;
+    color: #9a4e00;
+}
+
+.counselor-availability-item .form-check {
+    margin-bottom: 0;
+}

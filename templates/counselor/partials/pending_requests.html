@@ -1,0 +1,25 @@
+<div class="card client-dashboard-card border-0 mb-4 counselor-pending-requests-card">
+    <div class="card-header client-portal-card-header border-0">
+        <i class="bi bi-hourglass-split me-1 text-counselor" aria-hidden="true"></i>대기 중인 예약 신청
+    </div>
+    <div class="card-body counselor-pending-requests-body">
+        <div class="counselor-pending-requests-list">
+            {% for apt in pending_for_case %}
+            <article class="counselor-pending-request-card">
+                <h3 class="counselor-pending-request-title fw-bold mb-0">
+                    {% if apt.session_number %}{{ apt.session_number }}회기 {% endif %}예약 요청
+                </h3>
+                <p class="counselor-pending-request-datetime mb-0">
+                    <span class="counselor-pending-request-label">희망 일시:</span>
+                    <strong>{{ apt.scheduled_at|date:"Y-m-d H:i" }}</strong>
+                    <span class="text-muted">({{ apt.duration_minutes }}분)</span>
+                </p>
+                <a href="{% url 'counselor:appointment_manage' apt.pk %}"
+                   class="btn counselor-pending-request-btn w-100">
+                    <i class="bi bi-check2-circle me-1" aria-hidden="true"></i>예약 확인 및 확정
+                </a>
+            </article>
+            {% endfor %}
+        </div>
+    </div>
+</div>

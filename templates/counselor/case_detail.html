@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% load static ui_tags %}
+
+{% block title %}{{ case.client.name }} — 사례 상세{% endblock %}
+
+{% block nav_items %}
+<li class="nav-item">
+    <a class="nav-link" href="{% url 'counselor:dashboard' %}">내 사례</a>
+</li>
+<li class="nav-item">
+    <a class="nav-link active" href="{% url 'counselor:case_detail' case.pk %}">사례 상세</a>
+</li>
+{% endblock %}
+
+{% block extra_css %}
+<link href="{% static 'css/counselor.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block layout %}
+<div class="site-page counselor-page py-4 py-lg-5">
+    <div class="container site-container">
+{% block content %}
+        <div class="client-portal-stack">
+        <header class="client-portal-header site-page-header mb-0">
+            {% page_header show_heading=False c1_label="대시보드" c1_url_name="counselor:dashboard" c1_icon="bi-briefcase" c2_label=case.client.name %}
+            <div class="site-page-heading mt-4">
+                <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+                    <div>
+                        <h1 class="h3 fw-semibold mb-1">{{ case.client.name }}</h1>
+                        <p class="text-muted mb-0">
+                            사례번호 <span class="font-monospace fw-semibold">{{ case.case_number }}</span>
+                            <span class="client-portal-case-meta-sep" aria-hidden="true">·</span>
+                            <span class="fw-semibold">{{ case.application.counseling_type }}</span>
+                        </p>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                        <span class="badge badge-counselor-active fs-6">{{ case.get_status_display }}</span>
+                        <span class="client-session-inline">
+                            남은 회기 <strong>{{ case.remaining_sessions }}</strong> / {{ case.total_sessions }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        {% if upcoming_appointment %}
+        <div class="alert alert-info border-0 shadow-sm section-spacing mb-0">
+            <i class="bi bi-calendar-check me-2"></i>
+            다음 상담: <strong>{{ upcoming_appointment.scheduled_at|date:"Y-m-d H:i" }}</strong>
+            ({{ upcoming_appointment.duration_minutes }}분)
+        </div>
+        {% endif %}
+
+        {% if pending_session_requests %}
+        <div id="counselorPendingAlert" class="alert alert-warning border-0 shadow-sm d-flex flex-wrap align-items-start gap-2 mb-0 mt-3 counselor-pending-alert" role="alert">
+            <i class="bi bi-bell-fill fs-5 text-warning flex-shrink-0" aria-hidden="true"></i>
+            <div class="flex-grow-1">
+                <p class="fw-semibold mb-1">신규 예약 요청 {{ pending_session_requests|length }}건</p>
+                <ul class="small mb-0 ps-3">
+                    {% for apt in pending_session_requests %}
+                    <li>
+                        {% if apt.session_number %}{{ apt.session_number }}회기 · {% endif %}
+                        {{ apt.scheduled_at|date:"Y-m-d H:i" }}
+                        <a href="#session-{{ apt.session_number|default:1 }}" class="ms-1">바로가기</a>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if cancel_pending_for_case %}
+        <div id="counselorCancelPendingAlert" class="alert alert-warning border-0 shadow-sm d-flex flex-wrap align-items-start gap-2 mb-0 mt-3 counselor-cancel-pending-alert" role="alert">
+            <i class="bi bi-exclamation-triangle-fill fs-5 text-warning flex-shrink-0" aria-hidden="true"></i>
+            <div class="flex-grow-1">
+                <p class="fw-semibold mb-1">취소 요청 대기 {{ cancel_pending_for_case|length }}건</p>
+                <ul class="small mb-0 ps-3">
+                    {% for apt in cancel_pending_for_case %}
+                    <li>
+                        {% if apt.session_number %}{{ apt.session_number }}회기 · {% endif %}
+                        {{ apt.scheduled_at|date:"Y-m-d H:i" }}
+                        <a href="#session-{{ apt.session_number|default:1 }}" class="ms-1">바로가기</a>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if schedule_change_requests_for_case %}
+        <div id="counselorScheduleChangeAlert" class="alert alert-warning border-0 shadow-sm d-flex flex-wrap align-items-start gap-2 mb-0 mt-3 counselor-schedule-change-alert" role="alert">
+            <i class="bi bi-arrow-repeat fs-5 text-counselor flex-shrink-0" aria-hidden="true"></i>
+            <div class="flex-grow-1">
+                <p class="fw-semibold mb-1">일정 변경 요청 대기 {{ schedule_change_requests_for_case|length }}건</p>
+                <ul class="small mb-0 ps-3">
+                    {% for req in schedule_change_requests_for_case %}
+                    <li>
+                        {{ req.session_number }}회기 ·
+                        {% if req.preferred_datetime %}{{ req.preferred_datetime|date:"Y-m-d H:i" }}{% else %}—{% endif %}
+                        <a href="#session-{{ req.session_number }}" class="ms-1">바로가기</a>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="row g-4 section-spacing case-detail-row">
+            <div class="col-lg-5 case-detail-sidebar-col">
+                <div class="card client-dashboard-card border-0 mb-4">
+                    <div class="card-header client-portal-card-header border-0">
+                        <i class="bi bi-person-lines-fill me-1"></i>내담자 · 신청 정보
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-container">
+                        <table class="table table-bordered mb-0 counselor-info-table">
+                            <tbody>
+                                <tr>
+                                    <th>이름</th>
+                                    <td>{{ case.client.name }}</td>
+                                </tr>
+                                <tr>
+                                    <th>학번</th>
+                                    <td>{{ student_id|default:"—" }}</td>
+                                </tr>
+                                <tr>
+                                    <th>연락처</th>
+                                    <td>{{ case.client.phone|default:"—" }}</td>
+                                </tr>
+                                <tr>
+                                    <th>신청 분야</th>
+                                    <td>{{ application.counseling_type }}</td>
+                                </tr>
+                                <tr>
+                                    <th>희망 일시</th>
+                                    <td>
+                                        {% if schedule.preferred_date %}
+                                            {{ schedule.preferred_date }}
+                                            {% if schedule.preferred_time %}{{ schedule.preferred_time }}{% endif %}
+                                        {% else %}—{% endif %}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>신청 사유</th>
+                                    <td class="small client-pre-wrap">{{ application.reason }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        </div>
+                    </div>
+                </div>
+
+                {% include "includes/shared_materials_widget.html" with portal="counselor" can_manage_board=can_manage_board %}
+
+                {% if pending_for_case %}
+                {% include "counselor/partials/pending_requests.html" %}
+                {% endif %}
+                {% if cancel_pending_for_case %}
+                {% include "counselor/partials/cancel_pending_requests.html" %}
+                {% endif %}
+                {% if schedule_change_requests_for_case %}
+                {% include "counselor/partials/schedule_change_pending_requests.html" %}
+                {% endif %}
+                {% if not pending_for_case and not cancel_pending_for_case and not schedule_change_requests_for_case %}
+                <div class="card client-dashboard-card border-0">
+                    <div class="card-body text-center text-muted py-4 mb-0 small">
+                        내담자가 <strong>예약 신청</strong>하면 왼쪽 카드와 회기 목록에 표시됩니다.
+                        확정 시 Zoom 회의가 자동 생성됩니다.
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="col-lg-7">
+                <div class="card client-dashboard-card border-0">
+                    <div class="card-header client-portal-card-header border-0 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <span><i class="bi bi-calendar2-week me-1"></i>회기별 상담</span>
+                        <span class="small text-muted">상담일지 {{ journal_count }}건</span>
+                    </div>
+                    <div class="card-body p-0">
+                        {% if sessions %}
+                        <div class="client-session-list table-container">
+                            {% for session in sessions %}
+                            {% include "counselor/partials/session_card.html" with session=session case=case %}
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <div class="text-center py-4 table-container">
+                            <p class="text-muted mb-1">등록된 회기 정보가 없습니다.</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex flex-wrap justify-content-center gap-3 section-spacing">
+            <a href="{% url 'counselor:dashboard' %}" class="btn btn-outline-secondary px-4">
+                <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>대시보드
+            </a>
+        </div>
+
+        {% include "counselor/partials/board_post_create_modal.html" %}
+        {% include "counselor/partials/appointment_reject_modal.html" %}
+        {% include "counselor/partials/cancel_reject_modal.html" %}
+        {% include "counselor/partials/schedule_change_reject_modal.html" %}
+        </div>
+    </div>
+</div>
+<script src="{% static 'js/counselor_session_actions.js' %}?v=9"></script>
+<script>
+console.log("counselor case_detail: inline script loaded");
+</script>
+{% endblock %}
+{% endblock %}

@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% load static ui_tags %}
+
+{% block title %}예약 처리 — {{ appointment.client.name }}{% endblock %}
+
+{% block nav_items %}
+<li class="nav-item"><a class="nav-link" href="{% url 'counselor:dashboard' %}">내 사례</a></li>
+<li class="nav-item"><a class="nav-link active" href="#">예약 처리</a></li>
+{% endblock %}
+
+{% block extra_css %}
+<link href="{% static 'css/counselor.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block layout %}
+<div class="site-page counselor-page py-4 py-lg-5">
+    <div class="container site-container">
+{% block content %}
+    {% page_header show_heading=False c1_label="대시보드" c1_url_name="counselor:dashboard" c1_icon="bi-briefcase" c2_label=appointment.client.name c2_url_name="counselor:case_detail" c2_url_arg=case.pk c3_label="예약 처리" %}
+    <div class="site-page-heading mt-4">
+    <h1 class="h4 fw-semibold site-page-title mb-4">대기 중인 예약 신청</h1>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-5">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white fw-semibold">신청 정보</div>
+                <div class="card-body">
+                    <p class="mb-1"><span class="text-muted">내담자</span> <strong>{{ appointment.client.name }}</strong></p>
+                    <p class="mb-1"><span class="text-muted">사례번호</span> {{ case.case_number }}</p>
+                    <p class="mb-1"><span class="text-muted">상담 분야</span> {{ case.application.counseling_type }}</p>
+                    <p class="mb-0"><span class="text-muted">신청일</span> {{ appointment.created_at|date:"Y-m-d H:i" }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-7">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white fw-semibold">일정 확인 · 확정</div>
+                <div class="card-body">
+                    {% if not zoom_configured %}
+                    <div class="alert alert-warning small">
+                        Zoom API가 설정되지 않았습니다. 확정하려면 .env에 Zoom 자격 증명을 입력해 주세요.
+                    </div>
+                    {% endif %}
+                    <form method="post" id="appointmentManageForm" class="appointment-manage-form">
+                        {% csrf_token %}
+                        <div class="mb-3 appointment-manage-scheduled-field">
+                            <label for="id_scheduled_at" class="form-label fw-semibold">{{ form.scheduled_at.label }}</label>
+                            {{ form.scheduled_at }}
+                            {% if form.scheduled_at.errors %}
+                            <div class="text-danger small">{{ form.scheduled_at.errors.0 }}</div>
+                            {% endif %}
+                        </div>
+                        <input type="hidden"
+                               name="duration_minutes"
+                               value="{{ appointment.duration_minutes|default:50 }}">
+                        <div class="d-flex flex-wrap gap-2 appointment-manage-actions">
+                            <button type="submit" name="action" value="update" class="btn btn-outline-secondary">
+                                <i class="bi bi-pencil me-1"></i>시간 수정
+                            </button>
+                            <button type="submit"
+                                    name="action"
+                                    value="confirm"
+                                    class="btn btn-counselor text-white appointment-manage-confirm-btn"
+                                    {% if not zoom_configured %}disabled{% endif %}>
+                                <i class="bi bi-check2-circle me-1"></i>예약 확정
+                            </button>
+                        </div>
+                        <p class="small text-muted mt-3 mb-0">
+                            <strong>예약 확정</strong> 시 Zoom 회의가 자동 생성되며 내담자·사례에 링크가 저장됩니다.
+                        </p>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    </div>
+</div>
+{% endblock %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    const form = document.getElementById("appointmentManageForm");
+    if (!form) return;
+
+    let submitAction = "";
+
+    form.querySelectorAll('button[type="submit"][name="action"]').forEach(function (btn) {
+        btn.addEventListener("click", function () {
+            submitAction = btn.value;
+        });
+    });
+
+    function formatScheduledAt(value) {
+        if (!value) {
+            return "";
+        }
+        return value.trim().replace("T", " ");
+    }
+
+    form.addEventListener("submit", function (event) {
+        const action =
+            (event.submitter && event.submitter.value) || submitAction;
+
+        if (action !== "confirm") {
+            submitAction = "";
+            return;
+        }
+
+        const datetimeInput = form.querySelector('[name="scheduled_at"]');
+        const scheduledAt = formatScheduledAt(
+            datetimeInput ? datetimeInput.value : ""
+        );
+        const message = scheduledAt
+            ? "선택하신 " + scheduledAt + "로 예약을 확정하시겠습니까?"
+            : "예약을 확정하시겠습니까?";
+
+        if (!window.confirm(message)) {
+            event.preventDefault();
+            submitAction = "";
+            return false;
+        }
+
+        submitAction = "";
+    });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,40 @@
+{% extends "counselor/dashboard.html" %}
+{% load ui_tags %}
+
+{% block title %}사례 목록{% endblock %}
+
+{% block content %}
+{% page_header title="사례 목록" heading_tag="h2" header_class="site-page-header mb-4" c1_label="대시보드" c1_url_name="counselor:dashboard" c1_icon="bi-briefcase" c2_label="사례 목록" %}
+<div class="card shadow-sm section-spacing">
+    <div class="card-body p-0">
+        {% if cases %}
+        <div class="table-responsive table-container">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>사례번호</th>
+                        <th>내담자</th>
+                        <th>상태</th>
+                        <th>위험도</th>
+                        <th>개시일</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for case in cases %}
+                    <tr>
+                        <td>{{ case.case_number }}</td>
+                        <td>{{ case.client.name }}</td>
+                        <td>{{ case.get_status_display }}</td>
+                        <td>{{ case.get_risk_level_display }}</td>
+                        <td>{{ case.opened_at|date:"Y-m-d" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted table-container py-4 mb-0">사례가 없습니다.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% load ui_tags %}
+
+{% block title %}상담 신청 — KSCU 전문상담센터{% endblock %}
+
+{% block layout %}
+{% block content %}
+<section class="apply-header py-4">
+    <div class="container">
+        {% page_breadcrumb variant="hero" c1_label="홈" c1_url_name="home" c2_label="상담 신청" %}
+        <div class="site-page-heading mt-4">
+            <h1 class="h2 fw-bold text-white mb-1">상담 신청서</h1>
+            <p class="text-white-50 mb-0">아래 항목을 작성해 주시면 담당자가 확인 후 연락드립니다.</p>
+        </div>
+    </div>
+</section>
+
+<section class="py-5 bg-light">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                {% if user.is_superuser or user.role == "ADMIN" %}
+                <div class="alert alert-secondary border-0 shadow-sm mb-4" role="alert">
+                    <i class="bi bi-shield-check me-2"></i>
+                    <strong>관리자 테스트 모드:</strong> 제출한 신청은 현재 로그인한 관리자 계정으로 저장되며,
+                    대시보드 <strong>이번 달 신청</strong> 건수에 반영됩니다.
+                </div>
+                {% elif user.role != "CLIENT" %}
+                <div class="alert alert-warning border-0 shadow-sm mb-4" role="alert">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    상담 신청은 <strong>내담자(학생)</strong> 또는 <strong>관리자(테스트)</strong> 계정으로 이용할 수 있습니다.
+                </div>
+                {% endif %}
+
+                {% if is_edit %}
+                <div class="alert alert-info border-0 shadow-sm mb-4" role="alert">
+                    <i class="bi bi-pencil-square me-2"></i>
+                    신청 내용을 수정 중입니다. 변경 후 <strong>저장하기</strong>를 눌러 주세요.
+                </div>
+                {% endif %}
+
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body p-4 p-md-5">
+                        <form method="post"
+                              action="{% url 'counseling:apply' %}"
+                              novalidate
+                              onsubmit="return confirm('{% if is_edit %}저장을 완료하시겠습니까?{% else %}상담 신청을 완료하시겠습니까?{% endif %}');">
+                            {% csrf_token %}
+
+                            {% if form.errors %}
+                            <div class="alert alert-danger border-0 mb-4" role="alert">
+                                <p class="fw-semibold mb-2 text-danger">
+                                    <i class="bi bi-exclamation-circle me-1"></i>
+                                    입력 내용을 확인해 주세요
+                                </p>
+                                <ul class="mb-0 small text-danger">
+                                    {% for field in form %}
+                                        {% for error in field.errors %}
+                                        <li><strong>{{ field.label }}</strong>: {{ error }}</li>
+                                        {% endfor %}
+                                    {% endfor %}
+                                    {% for error in form.non_field_errors %}
+                                    <li>{{ error }}</li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                            {% endif %}
+
+                            <h2 class="h6 text-kscu fw-bold mb-3 pb-2 border-bottom">기본 정보</h2>
+                            <div class="row g-3 mb-4">
+                                <div class="col-md-6">
+                                    <label for="id_name" class="form-label fw-semibold">{{ form.name.label }} <span class="text-danger">*</span></label>
+                                    {{ form.name }}
+                                    {% if form.name.help_text %}<div class="form-text">{{ form.name.help_text }}</div>{% endif %}
+                                    {% if form.name.errors %}<div class="text-danger small mt-1">{{ form.name.errors.0 }}</div>{% endif %}
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="id_student_id" class="form-label fw-semibold">{{ form.student_id.label }} <span class="text-danger">*</span></label>
+                                    {{ form.student_id }}
+                                    {% if form.student_id.help_text %}<div class="form-text">{{ form.student_id.help_text }}</div>{% endif %}
+                                    {% if form.student_id.errors %}<div class="text-danger small mt-1">{{ form.student_id.errors.0 }}</div>{% endif %}
+                                </div>
+                                <div class="col-12">
+                                    <label for="id_phone" class="form-label fw-semibold">{{ form.phone.label }}</label>
+                                    {{ form.phone }}
+                                    <div class="form-text">연락 가능한 휴대폰 번호를 입력해 주세요.</div>
+                                    {% if form.phone.errors %}<div class="text-danger small mt-1">{{ form.phone.errors.0 }}</div>{% endif %}
+                                </div>
+                            </div>
+
+                            <h2 class="h6 text-kscu fw-bold mb-3 pb-2 border-bottom">상담 내용</h2>
+                            <div class="row g-3 mb-4">
+                                <div class="col-md-6">
+                                    <label for="id_counseling_type" class="form-label fw-semibold">{{ form.counseling_type.label }} <span class="text-danger">*</span></label>
+                                    {{ form.counseling_type }}
+                                    {% if form.counseling_type.errors %}<div class="text-danger small mt-1">{{ form.counseling_type.errors.0 }}</div>{% endif %}
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="id_preferred_date" class="form-label fw-semibold">{{ form.preferred_date.label }} <span class="text-danger">*</span></label>
+                                    {{ form.preferred_date }}
+                                    <div class="form-text">달력 아이콘을 눌러 날짜를 선택해 주세요.</div>
+                                    {% if form.preferred_date.errors %}<div class="text-danger small mt-1">{{ form.preferred_date.errors.0 }}</div>{% endif %}
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="id_preferred_time" class="form-label fw-semibold">{{ form.preferred_time.label }} <span class="text-danger">*</span></label>
+                                    {{ form.preferred_time }}
+                                    <div class="form-text">예: 오후 2시 → 14:00</div>
+                                    {% if form.preferred_time.errors %}<div class="text-danger small mt-1">{{ form.preferred_time.errors.0 }}</div>{% endif %}
+                                </div>
+                                <div class="col-12">
+                                    <label for="id_reason" class="form-label fw-semibold">{{ form.reason.label }} <span class="text-danger">*</span></label>
+                                    {{ form.reason }}
+                                    {% if form.reason.errors %}<div class="text-danger small mt-1">{{ form.reason.errors.0 }}</div>{% endif %}
+                                </div>
+                            </div>
+
+                            <div class="form-actions border-top pt-4 mt-2">
+                                <div class="row g-3 align-items-center">
+                                    <div class="col-12 col-sm-auto">
+                                        <a href="{% url 'home' %}" class="btn btn-outline-secondary btn-lg w-100 w-sm-auto">
+                                            <i class="bi bi-arrow-left me-1"></i> 홈으로
+                                        </a>
+                                    </div>
+                                    <div class="col-12 col-sm-auto ms-sm-auto">
+                                        <button type="submit" name="submit" value="1"
+                                                class="btn btn-primary btn-lg w-100 w-sm-auto px-5 shadow-sm">
+                                            <i class="bi bi-{% if is_edit %}save{% else %}send-fill{% endif %} me-2"></i>{% if is_edit %}저장하기{% else %}신청하기{% endif %}
+                                        </button>
+                                    </div>
+                                </div>
+                                {% if not user.is_authenticated %}
+                                <p class="text-muted small text-center text-sm-end mb-0 mt-2">
+                                    제출 시 로그인 페이지로 이동합니다.
+                                </p>
+                                {% endif %}
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <p class="text-center text-muted small mt-4 mb-0">
+                    <i class="bi bi-lock me-1"></i>
+                    작성하신 내용은 상담 목적으로만 사용되며, 관련 법령에 따라 보호됩니다.
+                </p>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+{% endblock %}

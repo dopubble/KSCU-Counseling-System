@@ -1,0 +1,13 @@
+{% extends "client/dashboard.html" %}
+{% load ui_tags %}
+
+{% block title %}동의서{% endblock %}
+
+{% block content %}
+{% page_header title="동의서 관리" heading_tag="h2" title_class="client-portal-title site-page-title" header_class="site-page-header mb-4" c1_label="내 상담실" c1_url_name="client:dashboard" c1_icon="bi-house-door" c2_label="동의서 관리" %}
+<div class="card shadow-sm section-spacing">
+    <div class="card-body">
+        <p class="text-muted mb-0">상담 신청 후 개인정보·상담·녹화 동의서를 업로드해 주세요.</p>
+    </div>
+</div>
+{% endblock %}

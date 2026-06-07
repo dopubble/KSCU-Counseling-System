@@ -1,0 +1,36 @@
+<div class="modal fade" id="appointmentRejectModal" tabindex="-1" aria-labelledby="appointmentRejectModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="post" id="appointmentRejectForm" action="">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title" id="appointmentRejectModalLabel">예약 반려</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">
+                        <span id="appointmentRejectTarget" class="fw-semibold"></span> 예약 요청을 반려합니다.
+                        입력한 사유는 내담자에게 이메일로 전달됩니다.
+                    </p>
+                    <div class="mb-0">
+                        <label for="appointmentRejectReason" class="form-label fw-semibold">반려 사유</label>
+                        <textarea name="reject_reason"
+                                  id="appointmentRejectReason"
+                                  class="form-control"
+                                  rows="4"
+                                  required
+                                  minlength="5"
+                                  maxlength="1000"
+                                  placeholder="내담자에게 전달할 반려 사유를 입력해 주세요."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-danger">
+                        <i class="bi bi-send me-1" aria-hidden="true"></i>보내기
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

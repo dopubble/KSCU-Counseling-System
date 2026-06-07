@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% load static ui_tags %}
+
+{% block title %}{{ journal.session_number }}회기 상담일지 — {{ client_summary.client_name }}{% endblock %}
+
+{% block nav_items %}
+<li class="nav-item"><a class="nav-link" href="{% url 'counselor:dashboard' %}">내 사례</a></li>
+<li class="nav-item"><a class="nav-link" href="{% url 'counselor:case_detail' case.pk %}">사례 상세</a></li>
+<li class="nav-item"><span class="nav-link active">일지 상세</span></li>
+{% endblock %}
+
+{% block extra_css %}
+<link href="{% static 'css/counselor.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block layout %}
+<div class="site-page counselor-page py-4 py-lg-5">
+    <div class="container site-container">
+{% block content %}
+    {% page_header show_heading=False c1_label="대시보드" c1_url_name="counselor:dashboard" c1_icon="bi-briefcase" c2_label=client_summary.client_name c2_url_name="counselor:case_detail" c2_url_arg=case.pk c3_label=journal_breadcrumb_label %}
+    <div class="site-page-heading mt-4">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+            <div>
+                <h1 class="h3 fw-semibold text-kscu mb-1">
+                    <i class="bi bi-journal-text me-2"></i>{{ journal.session_number }}회기 상담일지
+                </h1>
+                <p class="text-muted mb-0">
+                    사례번호 <span class="font-monospace">{{ client_summary.case_number }}</span>
+                    {% if journal.session_category %}· {{ journal.session_category }}{% endif %}
+                </p>
+            </div>
+            {% if can_download_pdf %}
+            <div class="text-md-end">
+                <a href="{% url 'counselor:journal_pdf' case.pk journal.session_number %}" class="btn btn-outline-danger">
+                    <i class="bi bi-file-earmark-pdf me-1"></i>PDF 다운로드
+                </a>
+                <p class="small text-muted mb-0 mt-2">{{ pdf_password_notice }}</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm section-spacing">
+        <div class="card-header bg-white fw-semibold py-3">기본 정보</div>
+        <div class="card-body p-0">
+            <div class="table-container">
+            <table class="table table-bordered mb-0 counselor-info-table">
+                <tbody>
+                    <tr>
+                        <th>내담자</th>
+                        <td>{{ client_summary.client_name }}</td>
+                        <th>학번</th>
+                        <td>{{ client_summary.student_id|default:"—" }}</td>
+                    </tr>
+                    <tr>
+                        <th>상담 일시</th>
+                        <td>
+                            {% if journal.session_datetime %}
+                                {{ journal.session_datetime|date:"Y-m-d H:i" }}
+                            {% else %}—{% endif %}
+                        </td>
+                        <th>작성 상담사</th>
+                        <td>{{ journal.counselor.name }}</td>
+                    </tr>
+                    <tr>
+                        <th>상담 구분</th>
+                        <td>{{ journal.session_category|default:"—" }}</td>
+                        <th>최종 수정</th>
+                        <td>{{ journal.updated_at|date:"Y-m-d H:i" }}</td>
+                    </tr>
+                </tbody>
+            </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white fw-semibold py-3">상담 기록</div>
+        <div class="card-body">
+            <section class="mb-4">
+                <h2 class="h6 text-muted fw-semibold">상담 내용</h2>
+                <p class="mb-0" style="white-space: pre-wrap;">{{ journal.subjective|default:"—" }}</p>
+            </section>
+            <section class="mb-4">
+                <h2 class="h6 text-muted fw-semibold">상담자 관찰</h2>
+                <p class="mb-0" style="white-space: pre-wrap;">{{ journal.objective|default:"—" }}</p>
+            </section>
+            <section class="mb-4">
+                <h2 class="h6 text-muted fw-semibold">임상적 평가</h2>
+                <p class="mb-0" style="white-space: pre-wrap;">{{ journal.assessment|default:"—" }}</p>
+            </section>
+            {% if journal.plan %}
+            <section>
+                <h2 class="h6 text-muted fw-semibold">향후 계획</h2>
+                <p class="mb-0" style="white-space: pre-wrap;">{{ journal.plan }}</p>
+            </section>
+            {% endif %}
+
+            {% url 'counselor:case_detail' case.pk as case_detail_url %}
+            {% if can_edit %}
+            {% url 'counselor:journal_edit' case.pk journal.session_number as journal_edit_url %}
+            {% include "includes/detail_page_actions.html" with back_url=case_detail_url back_label="사례로 돌아가기" primary_url=journal_edit_url primary_label="수정" %}
+            {% else %}
+            {% include "includes/detail_page_actions.html" with back_url=case_detail_url back_label="사례로 돌아가기" %}
+            {% endif %}
+        </div>
+    </div>
+    </div>
+</div>
+{% endblock %}
+{% endblock %}

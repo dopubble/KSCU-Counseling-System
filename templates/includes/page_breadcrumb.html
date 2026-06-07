@@ -1,0 +1,18 @@
+<nav aria-label="breadcrumb" class="site-breadcrumb-bar{% if variant %} site-breadcrumb-bar--{{ variant }}{% endif %}">
+    <ol class="breadcrumb breadcrumb-site mb-0">
+        {% for item in breadcrumb_trail %}
+        <li class="breadcrumb-item{% if forloop.last %} active{% endif %}"
+            {% if forloop.last %}aria-current="page"{% endif %}>
+            {% if item.url and not forloop.last %}
+            <a href="{{ item.url }}">
+                {% if item.icon %}<i class="bi {{ item.icon }} me-1" aria-hidden="true"></i>{% endif %}
+                {{ item.label }}
+            </a>
+            {% else %}
+            {% if item.icon and forloop.last %}<i class="bi {{ item.icon }} me-1" aria-hidden="true"></i>{% endif %}
+            {{ item.label }}
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ol>
+</nav>

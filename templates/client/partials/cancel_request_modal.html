@@ -1,0 +1,52 @@
+<div class="modal fade" id="cancelRequestModal" tabindex="-1" aria-labelledby="cancelRequestModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="post" id="cancelRequestForm" action="">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="cancelRequestModalLabel">상담 취소 요청</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-3" id="cancelRequestModalIntro">
+                        취소 사유를 입력해 주세요. 요청 접수 후 담당자가 확인합니다.
+                    </p>
+                    <div class="alert alert-warning small d-none mb-3" id="cancelRequestPenaltyNotice" role="alert">
+                        상담 예정 24시간 이내 취소 시 <strong>남은 상담 회기 1회가 차감</strong>됩니다.
+                        예약 당일 취소가 누적되면 상담이 조기 종결될 수 있습니다.
+                    </div>
+                    <label for="id_cancel_reason" class="form-label fw-semibold">취소 사유</label>
+                    <textarea name="cancel_reason"
+                              id="id_cancel_reason"
+                              class="form-control"
+                              rows="4"
+                              required
+                              minlength="5"
+                              placeholder="취소가 필요한 사유를 입력해 주세요."></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">닫기</button>
+                    <button type="submit" class="btn btn-danger">취소 요청 제출</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    const form = document.getElementById("cancelRequestForm");
+    if (!form || form.dataset.cancelConfirmBound === "1") {
+        return;
+    }
+    form.dataset.cancelConfirmBound = "1";
+    form.addEventListener("submit", function (event) {
+        if (!window.confirm(
+            "취소된 상담은 다시 재개할 수 없습니다. 정말로 취소 하시겠습니까?"
+        )) {
+            event.preventDefault();
+            return false;
+        }
+    });
+})();
+</script>

@@ -1,0 +1,14 @@
+{% with ns=request.resolver_match.namespace|default:"" url_name=request.resolver_match.url_name|default:"" %}
+<li class="nav-item">
+    <a class="nav-link {% if ns == 'client' and url_name == 'application_list' or ns == 'counseling' and url_name == 'apply' %}active{% endif %}"
+       href="{% url 'client:application_list' %}">상담 신청</a>
+</li>
+<li class="nav-item">
+    <a class="nav-link {% if ns == 'documents' and url_name == 'consent_list' %}active{% endif %}"
+       href="{% url 'documents:consent_list' %}">동의서</a>
+</li>
+<li class="nav-item">
+    <a class="nav-link {% if ns == 'client' and url_name == 'dashboard' or ns == 'client' and url_name == 'case_detail' %}active{% endif %}"
+       href="{% url 'client:dashboard' %}">내 상담실</a>
+</li>
+{% endwith %}

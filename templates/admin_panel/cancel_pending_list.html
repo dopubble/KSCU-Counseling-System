@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% load ui_tags %}
+
+{% block title %}취소 요청 대기{% endblock %}
+
+{% block content %}
+{% page_header show_heading=False c1_label="대시보드" c1_url_name="admin_panel:dashboard" c1_icon="bi-speedometer2" c2_label="취소 요청 대기" %}
+<div class="site-page-heading mt-4">
+    <h2 class="site-page-title mb-0">
+        취소 요청 대기
+        <span class="badge bg-warning text-dark align-middle">{{ appointments_count }}</span>
+    </h2>
+</div>
+
+{% if appointments %}
+<div class="card shadow-sm border-0 section-spacing">
+    <div class="card-body p-0">
+        <div class="table-responsive table-container">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>사례번호</th>
+                        <th>내담자</th>
+                        <th>담당 상담사</th>
+                        <th>상담 일시</th>
+                        <th>취소 요청일</th>
+                        <th>취소 사유</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for apt in appointments %}
+                    <tr>
+                        <td class="font-monospace">{{ apt.case.case_number }}</td>
+                        <td>{{ apt.client.name }}</td>
+                        <td>{{ apt.counselor.name|default:"—" }}</td>
+                        <td>{{ apt.scheduled_at|date:"Y-m-d H:i" }}</td>
+                        <td>{{ apt.cancel_requested_at|date:"Y-m-d H:i"|default:"—" }}</td>
+                        <td class="small">{{ apt.cancel_reason|linebreaksbr }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% else %}
+<p class="text-muted">현재 취소 대기 중인 상담이 없습니다.</p>
+{% endif %}
+{% endblock %}

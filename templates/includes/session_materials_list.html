@@ -1,0 +1,52 @@
+{% if session.has_materials or show_materials_section %}
+<div class="client-session-materials-block">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+        <h6 class="client-session-materials-title mb-0">
+            <i class="bi bi-folder2-open me-1" aria-hidden="true"></i>첨부 자료
+        </h6>
+        {% if session.has_materials %}
+        <span class="badge text-bg-light">{{ session.materials|length }}건</span>
+        {% endif %}
+    </div>
+    {% if session.has_materials %}
+    <ul class="client-session-materials-items list-unstyled mb-0">
+        {% for material in session.materials %}
+        <li class="client-session-materials-item">
+            <div class="client-session-materials-item-main">
+                <i class="bi bi-file-earmark-arrow-down text-primary flex-shrink-0" aria-hidden="true"></i>
+                <div class="min-w-0 flex-grow-1">
+                    <div class="d-flex align-items-center gap-1 min-w-0">
+                        <a href="{% if portal == 'counselor' %}{% url 'counselor:session_material_file' case.pk session.session_number material.pk %}{% else %}{% url 'client:session_material_file' case.pk session.session_number material.pk %}{% endif %}"
+                           class="client-session-materials-link fw-semibold text-truncate"
+                           download
+                           title="{{ material.get_filename }}">
+                            {{ material.get_filename }}
+                        </a>
+                        {% if user.is_authenticated and material.uploaded_by_id == user.id %}
+                        <form method="post"
+                              action="{% if portal == 'counselor' %}{% url 'counselor:session_material_delete' case.pk session.session_number material.pk %}{% else %}{% url 'client:session_material_delete' case.pk session.session_number material.pk %}{% endif %}"
+                              class="client-session-materials-delete-form mb-0 flex-shrink-0"
+                              onsubmit="return confirm('정말 삭제하시겠습니까?');">
+                            {% csrf_token %}
+                            <button type="submit"
+                                    class="btn btn-sm btn-link text-danger client-session-materials-delete-btn p-0"
+                                    aria-label="{{ material.original_filename }} 삭제">
+                                <i class="bi bi-trash" aria-hidden="true"></i>
+                            </button>
+                        </form>
+                        {% endif %}
+                    </div>
+                    <p class="small text-muted mb-0">{{ material.created_at|date:"Y-m-d H:i" }}</p>
+                </div>
+            </div>
+            <span class="client-session-materials-uploader badge rounded-pill {% if material.uploaded_by and material.uploaded_by.role == 'CLIENT' %}text-bg-info{% elif material.uploaded_by and material.uploaded_by.role == 'COUNSELOR' %}text-bg-secondary{% else %}text-bg-light{% endif %}">
+                <i class="bi {{ material.uploader_icon }} me-1" aria-hidden="true"></i>{{ material.uploader_role_label }}
+            </span>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="small text-muted mb-0">첨부된 자료가 없습니다.</p>
+    {% endif %}
+</div>
+{% endif %}

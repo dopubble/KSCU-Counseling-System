@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+{% load ui_tags %}
+
+{% block title %}상담 통합 관리 — 관리자{% endblock %}
+
+{% block content %}
+{% page_header title="상담 통합 관리" subtitle="신규 신청·진행 중인 상담·종결 사례를 한 화면에서 관리합니다." c1_label="대시보드" c1_url_name="admin_panel:dashboard" c1_icon="bi-speedometer2" c2_label="상담 통합 관리" %}
+
+<ul class="nav nav-tabs nav-tabs-admin-counseling flex-nowrap overflow-auto section-spacing" id="counselingManagementTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <a class="nav-link {% if active_tab == 'waiting' %}active{% endif %}"
+           id="tab-waiting-btn"
+           href="{% url 'admin_panel:counseling_management' %}?tab=waiting"
+           role="tab"
+           aria-controls="tab-waiting"
+           aria-selected="{% if active_tab == 'waiting' %}true{% else %}false{% endif %}">
+            신규 신청 (매칭 대기)
+            <span class="badge rounded-pill {% if waiting_count %}bg-danger{% else %}bg-secondary{% endif %} ms-1">{{ waiting_count }}</span>
+        </a>
+    </li>
+    <li class="nav-item" role="presentation">
+        <a class="nav-link {% if active_tab == 'active' %}active{% endif %}"
+           id="tab-active-btn"
+           href="{% url 'admin_panel:counseling_management' %}?tab=active"
+           role="tab"
+           aria-controls="tab-active"
+           aria-selected="{% if active_tab == 'active' %}true{% else %}false{% endif %}">
+            진행 중인 상담
+            <span class="badge rounded-pill {% if active_count %}bg-primary{% else %}bg-secondary{% endif %} ms-1">{{ active_count }}</span>
+        </a>
+    </li>
+    <li class="nav-item" role="presentation">
+        <a class="nav-link {% if active_tab == 'closed' %}active{% endif %}"
+           id="tab-closed-btn"
+           href="{% url 'admin_panel:counseling_management' %}?tab=closed"
+           role="tab"
+           aria-controls="tab-closed"
+           aria-selected="{% if active_tab == 'closed' %}true{% else %}false{% endif %}">
+            종결된 사례
+            <span class="badge rounded-pill {% if closed_count %}bg-secondary{% else %}bg-light text-muted border{% endif %} ms-1">{{ closed_count }}</span>
+        </a>
+    </li>
+</ul>
+
+<div class="tab-content border border-top-0 rounded-bottom bg-white shadow-sm" id="counselingManagementTabContent">
+    <div class="tab-pane fade {% if active_tab == 'waiting' %}show active{% endif %}"
+         id="tab-waiting"
+         role="tabpanel"
+         aria-labelledby="tab-waiting-btn">
+        <div class="card border-0">
+            <div class="card-body p-0">
+                {% if waiting_applications %}
+                <div class="table-responsive table-container">
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>이름</th>
+                                <th>학번</th>
+                                <th>상담 분야</th>
+                                <th>희망 일시</th>
+                                <th>상태</th>
+                                <th>담당 상담사</th>
+                                <th>신청일</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for app in waiting_applications %}
+                            <tr>
+                                <td class="fw-semibold text-primary">{{ app.client.name }}</td>
+                                <td>
+                                    {% if app.preferred_schedule.student_id %}
+                                        {{ app.preferred_schedule.student_id }}
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% url 'counseling:application_detail' app.pk as app_detail_url %}
+                                    {% include "includes/counseling_type_link.html" with href=app_detail_url text=app.counseling_type %}
+                                </td>
+                                <td class="small text-muted">
+                                    {% if app.preferred_schedule.preferred_date %}
+                                        {{ app.preferred_schedule.preferred_date }}
+                                        {{ app.preferred_schedule.preferred_time }}
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <span class="badge bg-warning text-dark">{{ app.get_status_display }}</span>
+                                </td>
+                                <td>
+                                    {% if app.case and app.case.counselor %}
+                                        {{ app.case.counselor.name }}
+                                    {% else %}
+                                        <span class="text-muted">—</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-muted small">{{ app.created_at|date:"Y-m-d H:i" }}</td>
+                                <td class="text-end">
+                                    <a href="{% url 'counseling:application_detail' app.pk %}" class="btn btn-sm btn-outline-primary">
+                                        {% if app.case and app.case.counselor %}변경{% else %}배정{% endif %}
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted text-center py-5 mb-0 table-container">매칭 대기 중인 신규 신청이 없습니다.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="tab-pane fade {% if active_tab == 'active' %}show active{% endif %}"
+         id="tab-active"
+         role="tabpanel"
+         aria-labelledby="tab-active-btn">
+        <div class="card border-0">
+            <div class="card-body p-0">
+                {% if active_cases %}
+                <div class="table-responsive table-container">
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>사례번호</th>
+                                <th>내담자</th>
+                                <th>상담 분야</th>
+                                <th>담당 상담사</th>
+                                <th>남은 회기</th>
+                                <th>사례 상태</th>
+                                <th>매칭 여부</th>
+                                <th>개시일</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for case in active_cases %}
+                            <tr>
+                                <td class="fw-semibold font-monospace">{{ case.case_number }}</td>
+                                <td>{{ case.client.name }}</td>
+                                <td>
+                                    {% url 'counseling:application_detail' case.application_id as app_detail_url %}
+                                    {% include "includes/counseling_type_link.html" with href=app_detail_url text=case.application.counseling_type %}
+                                </td>
+                                <td>{{ case.counselor.name }}</td>
+                                <td>
+                                    <span class="badge bg-light text-dark border">{{ case.remaining_sessions }} / {{ case.total_sessions }}</span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-success">{{ case.get_status_display }}</span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary">{{ case.application.get_status_display }}</span>
+                                </td>
+                                <td class="text-muted small">{{ case.opened_at|date:"Y-m-d" }}</td>
+                                <td class="text-end">
+                                    <a href="{% url 'counseling:application_detail' case.application_id %}"
+                                       class="btn btn-sm btn-outline-primary">상세</a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted text-center py-5 mb-0 table-container">진행 중인 상담이 없습니다.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="tab-pane fade {% if active_tab == 'closed' %}show active{% endif %}"
+         id="tab-closed"
+         role="tabpanel"
+         aria-labelledby="tab-closed-btn">
+        <div class="card border-0">
+            <div class="card-body p-0">
+                {% if closed_cases %}
+                <div class="table-responsive table-container">
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>사례번호</th>
+                                <th>내담자</th>
+                                <th>상담 분야</th>
+                                <th>담당 상담사</th>
+                                <th>사례 상태</th>
+                                <th>신청 상태</th>
+                                <th>당일 취소</th>
+                                <th>종결일</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for case in closed_cases %}
+                            <tr>
+                                <td class="fw-semibold font-monospace">{{ case.case_number }}</td>
+                                <td>{{ case.client.name }}</td>
+                                <td>
+                                    {% url 'counseling:application_detail' case.application_id as app_detail_url %}
+                                    {% include "includes/counseling_type_link.html" with href=app_detail_url text=case.application.counseling_type %}
+                                </td>
+                                <td>
+                                    {% if case.counselor %}{{ case.counselor.name }}{% else %}<span class="text-muted">—</span>{% endif %}
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary">{{ case.get_status_display }}</span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-{% if case.application.status == 'CANCELLED' %}warning text-dark{% else %}secondary{% endif %}">
+                                        {{ case.application.get_status_display }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if case.day_of_cancel_count %}
+                                        <span class="badge bg-warning text-dark">{{ case.day_of_cancel_count }}회</span>
+                                    {% else %}
+                                        <span class="text-muted">—</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-muted small">
+                                    {% if case.closed_at %}{{ case.closed_at|date:"Y-m-d H:i" }}{% else %}—{% endif %}
+                                </td>
+                                <td class="text-end">
+                                    <a href="{% url 'counseling:application_detail' case.application_id %}"
+                                       class="btn btn-sm btn-outline-secondary">보기</a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted text-center py-5 mb-0 table-container">종결된 사례가 없습니다.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<p class="mt-3">
+    <a href="{% url 'admin_panel:matching_list' %}?filter=waiting" class="btn btn-outline-primary btn-sm me-2">
+        <i class="bi bi-people me-1"></i>상담사 매칭 화면
+    </a>
+    <a href="{% url 'admin_panel:dashboard' %}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left me-1"></i>대시보드로
+    </a>
+</p>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.nav-tabs-admin-counseling .nav-link {
+    white-space: nowrap;
+    font-weight: 500;
+    color: #495057;
+}
+.nav-tabs-admin-counseling .nav-link.active {
+    color: var(--kscu-primary, #003366);
+    font-weight: 600;
+}
+</style>
+{% endblock %}

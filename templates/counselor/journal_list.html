@@ -1,0 +1,38 @@
+{% extends "counselor/dashboard.html" %}
+{% load ui_tags %}
+
+{% block title %}상담일지{% endblock %}
+
+{% block content %}
+{% page_header title="상담일지" heading_tag="h2" header_class="site-page-header mb-4" c1_label="대시보드" c1_url_name="counselor:dashboard" c1_icon="bi-briefcase" c2_label="상담일지" %}
+<div class="card shadow-sm section-spacing">
+    <div class="card-body p-0">
+        {% if journals %}
+        <div class="table-responsive table-container">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>사례</th>
+                        <th>회차</th>
+                        <th>상태</th>
+                        <th>작성일</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for journal in journals %}
+                    <tr>
+                        <td>{{ journal.case.case_number }}</td>
+                        <td>{{ journal.session_number }}회차</td>
+                        <td>{% if journal.is_draft %}<span class="badge bg-warning">임시저장</span>{% else %}<span class="badge bg-success">완료</span>{% endif %}</td>
+                        <td>{{ journal.created_at|date:"Y-m-d" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted table-container py-4 mb-0">작성된 상담일지가 없습니다.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

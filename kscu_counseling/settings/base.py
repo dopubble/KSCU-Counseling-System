@@ -1,0 +1,244 @@
+import os
+from pathlib import Path
+
+try:
+    from dotenv import dotenv_values, load_dotenv
+except ImportError:
+    def load_dotenv(*args, **kwargs):  # type: ignore[misc]
+        return False
+
+    def dotenv_values(*args, **kwargs):  # type: ignore[misc]
+        return {}
+
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+_ENV_FILE = BASE_DIR / ".env"
+# override=True: OS/셸에 빈 값이 있어도 .env 내용을 우선
+_DOTENV_LOADED = load_dotenv(_ENV_FILE, override=True, encoding="utf-8")
+DOTENV_FILE = str(_ENV_FILE)
+DOTENV_LOADED = bool(_DOTENV_LOADED)
+# load_dotenv 이후에도 파일에서 직접 읽기 (이중 안전)
+_ENV_FROM_FILE: dict[str, str | None] = (
+    dotenv_values(_ENV_FILE, encoding="utf-8") if _ENV_FILE.is_file() else {}
+)
+
+
+def _strip_env_value(value: str | None) -> str:
+    """공백·따옴표 제거."""
+    if value is None:
+        return ""
+    s = str(value).strip()
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in ('"', "'"):
+        s = s[1:-1].strip()
+    return s
+
+
+def _env_str(name: str, default: str = "") -> str:
+    """
+    환경 변수 문자열.
+    1) os.environ (load_dotenv로 .env 반영)
+    2) 비어 있으면 dotenv_values로 .env 파일에서 직접 읽기
+    """
+    from_env = _strip_env_value(os.environ.get(name))
+    if from_env:
+        return from_env
+    from_file = _strip_env_value(_ENV_FROM_FILE.get(name))
+    if from_file:
+        return from_file
+    return _strip_env_value(default)
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = _env_str(name, str(default))
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return default
+
+SECRET_KEY = _env_str("SECRET_KEY", "django-insecure-dev-key-change-in-production")
+
+DEBUG = _env_str("DEBUG", "False").lower() in ("true", "1", "yes")
+
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in _env_str("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+    if host.strip()
+]
+
+INSTALLED_APPS = [
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    "crispy_forms",
+    "crispy_bootstrap5",
+    "apps.accounts",
+    "apps.counseling",
+    "apps.scheduling",
+    "apps.documents",
+    "apps.sessions_app",
+    "apps.reports",
+    "apps.notifications",
+]
+
+MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+]
+
+ROOT_URLCONF = "kscu_counseling.urls"
+
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [BASE_DIR / "templates"],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.debug",
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+                "apps.reports.context_processors.admin_pending_alerts",
+            ],
+        },
+    },
+]
+
+WSGI_APPLICATION = "kscu_counseling.wsgi.application"
+ASGI_APPLICATION = "kscu_counseling.asgi.application"
+
+AUTH_USER_MODEL = "accounts.User"
+
+LOGIN_URL = "accounts:login"
+LOGIN_REDIRECT_URL = "home"
+LOGOUT_REDIRECT_URL = "/"  # 메인 홈 (공개 페이지)
+
+AUTH_PASSWORD_VALIDATORS = [
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+]
+
+LANGUAGE_CODE = "ko-kr"
+TIME_ZONE = "Asia/Seoul"
+USE_I18N = True
+USE_TZ = True
+
+STATIC_URL = "/static/"
+STATICFILES_DIRS = [BASE_DIR / "static"]
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+from django.contrib.messages import constants as message_constants  # noqa: E402
+
+MESSAGE_TAGS = {
+    message_constants.DEBUG: "secondary",
+    message_constants.INFO: "info",
+    message_constants.SUCCESS: "success",
+    message_constants.WARNING: "warning",
+    message_constants.ERROR: "danger",
+}
+
+CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
+CRISPY_TEMPLATE_PACK = "bootstrap5"
+
+# Session
+SESSION_COOKIE_AGE = 1800  # 30 minutes
+SESSION_SAVE_EVERY_REQUEST = True
+
+# File upload
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
+
+# Celery
+CELERY_BROKER_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+CELERY_RESULT_BACKEND = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = TIME_ZONE
+
+# Zoom (Server-to-Server OAuth — .env 변수명과 동일해야 함)
+ZOOM_ACCOUNT_ID = _env_str("ZOOM_ACCOUNT_ID")
+ZOOM_CLIENT_ID = _env_str("ZOOM_CLIENT_ID")
+ZOOM_CLIENT_SECRET = _env_str("ZOOM_CLIENT_SECRET")
+
+# ---------------------------------------------------------------------------
+# Gmail SMTP (상담 신청·취소 요청 알림, 비밀번호 찾기 등)
+#
+# 프로젝트 루트 .env 파일에 아래 값을 넣으세요. (Git에 커밋하지 마세요.)
+#
+#   EMAIL_HOST=smtp.gmail.com
+#   EMAIL_PORT=587
+#   EMAIL_USE_TLS=True
+#   EMAIL_HOST_USER=your.account@gmail.com
+#   EMAIL_HOST_PASSWORD=abcdefghijklmnop
+#       ↑ Google '앱 비밀번호' 16자 (공백 없이 붙여 넣기. 일반 로그인 비밀번호 X)
+#   DEFAULT_FROM_EMAIL=your.account@gmail.com
+#   STAFF_NOTIFY_EMAILS=admin@example.com,another@example.com
+#
+# 앱 비밀번호 발급: Google 계정 → 보안 → 2단계 인증 → 앱 비밀번호
+# 상세 가이드: docs/GMAIL_SMTP_SETUP.md
+# ---------------------------------------------------------------------------
+EMAIL_HOST = _env_str("EMAIL_HOST") or "smtp.gmail.com"
+EMAIL_PORT = _env_int("EMAIL_PORT", 587)
+EMAIL_HOST_USER = _env_str("EMAIL_HOST_USER")
+EMAIL_HOST_PASSWORD = _env_str("EMAIL_HOST_PASSWORD")
+EMAIL_USE_TLS = _env_str("EMAIL_USE_TLS", "True").lower() in ("true", "1", "yes")
+EMAIL_USE_SSL = _env_str("EMAIL_USE_SSL", "False").lower() in ("true", "1", "yes")
+DEFAULT_FROM_EMAIL = _env_str("DEFAULT_FROM_EMAIL") or EMAIL_HOST_USER or "noreply@kscu.ac.kr"
+STAFF_NOTIFY_EMAILS = [
+    e.strip()
+    for e in _env_str("STAFF_NOTIFY_EMAILS").split(",")
+    if e.strip()
+]
+
+
+def _configure_email_backend() -> None:
+    global EMAIL_BACKEND
+    if EMAIL_HOST_USER and EMAIL_HOST_PASSWORD:
+        EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+    else:
+        EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+
+_configure_email_backend()
+
+
+def _parse_database_url(url: str) -> dict:
+    """Parse postgres://user:pass@host:port/dbname URL."""
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    return {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": parsed.path.lstrip("/"),
+        "USER": parsed.username,
+        "PASSWORD": parsed.password,
+        "HOST": parsed.hostname,
+        "PORT": parsed.port or 5432,
+    }
+
+
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+if DATABASE_URL:
+    DATABASES = {"default": _parse_database_url(DATABASE_URL)}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
+    }

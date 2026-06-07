@@ -1,0 +1,55 @@
+<div class="modal fade" id="boardPostCreateModal" tabindex="-1" aria-labelledby="boardPostCreateModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <form method="post"
+                  action="{% url 'counselor:board_post_create' case.pk %}"
+                  enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title" id="boardPostCreateModalLabel">게시글 작성</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">
+                        작성한 글은 이 사례의 <strong>게시판</strong>에 등록되며, 내담자 상담 상세 페이지에도 표시됩니다.
+                    </p>
+                    <div class="mb-3">
+                        <label for="boardCreateTitle" class="form-label fw-semibold">제목</label>
+                        <input type="text"
+                               name="title"
+                               id="boardCreateTitle"
+                               class="form-control"
+                               maxlength="200"
+                               placeholder="게시글 제목"
+                               required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="boardCreateContent" class="form-label fw-semibold">내용</label>
+                        <textarea name="content"
+                                  id="boardCreateContent"
+                                  class="form-control"
+                                  rows="6"
+                                  placeholder="내담자에게 전달할 내용을 입력해 주세요."></textarea>
+                    </div>
+                    <div class="mb-0">
+                        <label for="boardCreateFile" class="form-label fw-semibold">첨부 파일 <span class="text-muted fw-normal">(선택)</span></label>
+                        <input type="file"
+                               name="file"
+                               id="boardCreateFile"
+                               class="form-control"
+                               accept=".pdf,.hwp,.doc,.docx,.jpg,.jpeg">
+                        <p class="form-text small text-muted mb-0 mt-2">
+                            PDF, HWP, Word(doc/docx), JPG만 가능 · 파일당 최대 10MB · 내용 또는 파일 중 하나는 필수입니다.
+                        </p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-counselor">
+                        <i class="bi bi-check-lg me-1" aria-hidden="true"></i>등록
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

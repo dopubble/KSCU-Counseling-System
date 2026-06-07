@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+
+{% block title %}로그인 - KSCU 전문상담센터{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-5">
+        <div class="card shadow-sm">
+            <div class="card-body p-4">
+                <h2 class="card-title text-center mb-4">로그인</h2>
+                <form method="post" novalidate>
+                    {% csrf_token %}
+                    {% if redirect_field_value %}
+                    <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}">
+                    {% endif %}
+                    {{ form|crispy }}
+                    <button type="submit" class="btn btn-primary w-100 mt-2">로그인</button>
+                </form>
+                <div class="d-flex justify-content-center gap-3 mt-3 small">
+                    <a href="{% url 'accounts:find_id' %}">아이디 찾기</a>
+                    <span class="text-muted">|</span>
+                    <a href="{% url 'accounts:password_reset' %}">비밀번호 찾기</a>
+                </div>
+                <p class="text-center mt-3 mb-0">
+                    계정이 없으신가요?
+                    <a href="{% url 'accounts:signup' %}{% if redirect_field_value %}?next={{ redirect_field_value|urlencode }}{% endif %}">회원가입</a>
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

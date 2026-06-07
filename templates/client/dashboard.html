@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% load ui_tags %}
+
+{% block title %}내 상담실{% endblock %}
+
+{% block layout %}
+<section class="site-page client-portal-page py-4 py-lg-5">
+    <div class="container site-container">
+{% block content %}
+        <div class="client-portal-stack">
+        <header class="client-portal-header site-page-header mb-0">
+            {% page_breadcrumb c1_label="내 상담실" c1_icon="bi-house-door" %}
+            <div class="site-page-heading mt-4">
+                <h1 class="client-portal-title site-page-title mb-1">나의 상담현황</h1>
+                <p class="client-portal-subtitle site-page-subtitle mb-4 mb-lg-5">진행 중인 상담과 신청 내역을 한곳에서 확인할 수 있습니다.</p>
+            </div>
+        </header>
+
+        <div class="row g-3 section-spacing client-portal-stat-row">
+            <div class="col-12 col-md-6">
+                <div class="card client-dashboard-card client-portal-stat-card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center gap-3 text-start">
+                            <div class="client-portal-stat-icon client-portal-stat-icon--apply" aria-hidden="true">
+                                <i class="bi bi-file-earmark-text"></i>
+                            </div>
+                            <div class="flex-grow-1 min-w-0">
+                                <div class="client-portal-stat-label mb-1">내 상담 신청</div>
+                                <a href="{% url 'client:application_list' %}"
+                                   class="client-portal-stat-value client-portal-stat-link">{{ application_count }}<span class="client-portal-stat-unit">건</span></a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-md-6">
+                <div class="card client-dashboard-card client-portal-stat-card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center gap-3 text-start">
+                            <div class="client-portal-stat-icon client-portal-stat-icon--active" aria-hidden="true">
+                                <i class="bi bi-chat-heart"></i>
+                            </div>
+                            <div class="flex-grow-1 min-w-0">
+                                <div class="client-portal-stat-label mb-1">진행 중 상담</div>
+                                <a href="{% url 'client:dashboard' %}#active-cases"
+                                   class="client-portal-stat-value client-portal-stat-link">{{ active_cases|length }}<span class="client-portal-stat-unit">건</span></a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% if active_cases %}
+        <section class="section-spacing" id="active-cases">
+            <div class="d-flex align-items-center gap-2 mb-3">
+                <i class="bi bi-chat-heart text-primary" aria-hidden="true"></i>
+                <h2 class="h6 mb-0 fw-semibold">진행 중인 상담</h2>
+            </div>
+            <div class="client-active-cases-stack">
+                {% for case in active_cases %}
+                <article class="card client-dashboard-card client-active-case-card border-0 shadow-sm">
+                    <div class="card-body client-active-case-card-body">
+                        <div class="row align-items-center g-3 gy-3">
+                            <div class="col-12 col-md-6 col-lg-3">
+                                <div class="client-active-case-field">
+                                    <span class="client-active-case-label">상담 유형</span>
+                                    <span class="client-active-case-value text-truncate d-block"
+                                          title="{{ case.application.counseling_type }}">{{ case.application.counseling_type }}</span>
+                                    <span class="client-active-case-meta font-monospace text-truncate d-block"
+                                          title="{{ case.case_number }}">{{ case.case_number }}</span>
+                                </div>
+                            </div>
+                            <div class="col-6 col-md-3 col-lg-2">
+                                <div class="client-active-case-field">
+                                    <span class="client-active-case-label">담당 상담사</span>
+                                    <span class="client-active-case-value text-truncate d-block"
+                                          title="{% if case.counselor %}{{ case.counselor.name }}{% else %}배정 대기{% endif %}">
+                                        {% if case.counselor %}
+                                            {{ case.counselor.name }}
+                                        {% else %}
+                                            <span class="text-muted fw-normal">배정 대기</span>
+                                        {% endif %}
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="col-6 col-md-3 col-lg-2">
+                                <div class="client-active-case-field">
+                                    <span class="client-active-case-label">진행 상태</span>
+                                    <span class="badge client-active-case-status">{{ case.get_status_display }}</span>
+                                </div>
+                            </div>
+                            <div class="col-12 col-md-6 col-lg-3">
+                                <div class="client-active-case-field">
+                                    <span class="client-active-case-label">남은 상담 회기</span>
+                                    <div class="client-session-panel client-session-panel--inline">
+                                        <div class="d-flex align-items-center justify-content-between gap-2 mb-1">
+                                            <span class="client-active-case-meta mb-0">잔여 / 전체</span>
+                                            <span class="badge client-session-count-badge">
+                                                {{ case.remaining_sessions }} / {{ case.total_sessions }}
+                                            </span>
+                                        </div>
+                                        <div class="progress client-session-progress" role="progressbar"
+                                             aria-valuenow="{{ case.remaining_sessions }}"
+                                             aria-valuemin="0"
+                                             aria-valuemax="{{ case.total_sessions }}"
+                                             aria-label="남은 상담 회기 {{ case.remaining_sessions }}회">
+                                            <div class="progress-bar bg-primary"
+                                                 style="width: {% if case.total_sessions %}{% widthratio case.remaining_sessions case.total_sessions 100 %}{% else %}0{% endif %}%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-12 col-lg-2 text-lg-end">
+                                <a href="{% url 'client:case_detail' case.pk %}"
+                                   class="btn btn-sm client-dashboard-action-btn w-100 w-lg-auto">
+                                    상담 상세보기
+                                    <i class="bi bi-arrow-right ms-1" aria-hidden="true"></i>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        <div class="card client-dashboard-card border-0 shadow-sm section-spacing">
+            <div class="card-header client-portal-card-header border-0 bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <span class="d-flex align-items-center gap-2">
+                    <i class="bi bi-journal-text text-primary"></i>
+                    <span>최근 상담 신청</span>
+                </span>
+                <a href="{% url 'client:application_list' %}" class="btn btn-sm btn-outline-primary">전체 보기</a>
+            </div>
+            <div class="card-body p-0 overflow-hidden">
+                {% if applications %}
+                <div class="table-responsive table-container">
+                    <table class="table client-appointment-table align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th scope="col" class="client-appointment-no-col">연번</th>
+                                <th scope="col">상담 유형</th>
+                                <th scope="col">신청 상태</th>
+                                <th scope="col">신청일</th>
+                                <th scope="col" class="client-appointment-action-col">관리</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for app in applications %}
+                            <tr>
+                                <td data-label="연번" class="client-appointment-no-col">{{ app.application_no }}</td>
+                                <td data-label="상담 유형">
+                                    {% url 'client:application_detail' app.pk as app_detail_url %}
+                                    {% include "includes/counseling_type_link.html" with href=app_detail_url text=app.counseling_type %}
+                                </td>
+                                <td data-label="신청 상태">
+                                    <span class="badge bg-secondary">{{ app.get_status_display }}</span>
+                                </td>
+                                <td data-label="신청일">{{ app.created_at|date:"Y-m-d" }}</td>
+                                <td data-label="관리" class="client-appointment-action-cell">
+                                    {% include "client/partials/delete_application_button.html" with application=app delete_next=request.path %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted text-center py-4 mb-0 table-container">아직 상담 신청 내역이 없습니다.</p>
+                {% endif %}
+            </div>
+        </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+{% endblock %}

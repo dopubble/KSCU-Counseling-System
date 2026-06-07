@@ -1,0 +1,12 @@
+{% if application.can_delete_application %}
+<form method="post"
+      action="{% url 'client:delete_application' application.pk %}"
+      class="d-inline"
+      onsubmit="return confirm('신청서를 취소하시겠습니까?');">
+    {% csrf_token %}
+    {% if delete_next %}
+    <input type="hidden" name="next" value="{{ delete_next }}">
+    {% endif %}
+    <button type="submit" class="btn btn-sm btn-danger">삭제</button>
+</form>
+{% endif %}

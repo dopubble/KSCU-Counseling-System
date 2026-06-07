@@ -1,0 +1,52 @@
+<div class="card client-dashboard-card border-0 mb-4 counselor-schedule-change-pending-card">
+    <div class="card-header client-portal-card-header border-0">
+        <i class="bi bi-arrow-repeat me-1 text-counselor" aria-hidden="true"></i>일정 변경 요청 대기
+    </div>
+    <div class="card-body counselor-pending-requests-body">
+        <div class="counselor-pending-requests-list">
+            {% for req in schedule_change_requests_for_case %}
+            <article class="counselor-pending-request-card" data-schedule-change-session="{{ req.session_number }}">
+                <h3 class="counselor-pending-request-title fw-bold mb-0">
+                    {{ req.session_number }}회기 일정 변경 요청
+                </h3>
+                {% if req.appointment %}
+                <p class="counselor-pending-request-datetime mb-1">
+                    <span class="counselor-pending-request-label">기존 예약:</span>
+                    <strong>{{ req.appointment.scheduled_at|date:"Y-m-d H:i" }}</strong>
+                </p>
+                {% endif %}
+                {% if req.preferred_datetime %}
+                <p class="counselor-pending-request-datetime mb-1">
+                    <span class="counselor-pending-request-label">변경 희망:</span>
+                    <strong>{{ req.preferred_datetime|date:"Y-m-d H:i" }}</strong>
+                </p>
+                {% endif %}
+                {% if req.message %}
+                <p class="small text-muted mb-3 client-pre-wrap">{{ req.message }}</p>
+                {% endif %}
+                <div class="d-flex flex-row gap-2">
+                    <form method="post"
+                          class="counselor-session-schedule-change-approve-form flex-fill mb-0"
+                          action="{% url 'counselor:session_schedule_change_approve' case.pk req.pk %}">
+                        {% csrf_token %}
+                        <button type="button"
+                                class="btn btn-counselor text-white counselor-pending-request-btn w-100 counselor-schedule-change-approve-btn"
+                                data-session-number="{{ req.session_number }}"
+                                data-request-id="{{ req.pk }}"
+                                data-approve-url="{% url 'counselor:session_schedule_change_approve' case.pk req.pk %}">
+                            <i class="bi bi-check2-circle me-1" aria-hidden="true"></i>변경 승인
+                        </button>
+                    </form>
+                    <button type="button"
+                            class="btn btn-outline-danger counselor-pending-request-btn flex-fill counselor-schedule-change-reject-btn"
+                            data-session-number="{{ req.session_number }}"
+                            data-session-label="{{ req.session_number }}회기"
+                            data-reject-url="{% url 'counselor:session_schedule_change_reject' case.pk req.pk %}">
+                        <i class="bi bi-x-circle me-1" aria-hidden="true"></i>변경 반려
+                    </button>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+    </div>
+</div>

@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% load ui_tags %}
+
+{% block title %}{{ page_title }} — 관리자{% endblock %}
+
+{% block content %}
+<header class="site-page-header mb-4">
+{% page_breadcrumb c1_label="대시보드" c1_url_name="admin_panel:dashboard" c1_icon="bi-speedometer2" c2_label=page_title %}
+<div class="site-page-heading mt-4">
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <div>
+        <h2 class="site-page-title mb-0">{{ page_title }}</h2>
+        <p class="site-page-subtitle mb-0">내담자별 담당 상담사를 배정하거나 변경합니다. ({{ filter_label }} · {{ applications_count }}건)</p>
+    </div>
+    <div class="btn-group flex-wrap" role="group">
+        <a href="{% url 'admin_panel:matching_list' %}?filter=waiting"
+           class="btn btn-sm {% if filter == 'waiting' %}btn-warning{% else %}btn-outline-warning{% endif %}">매칭 대기</a>
+        <a href="{% url 'admin_panel:matching_list' %}?filter=unassigned"
+           class="btn btn-sm {% if filter == 'unassigned' %}btn-danger{% else %}btn-outline-danger{% endif %}">미배정</a>
+        <a href="{% url 'admin_panel:matching_list' %}?filter=assigned"
+           class="btn btn-sm {% if filter == 'assigned' %}btn-success{% else %}btn-outline-success{% endif %}">배정 완료</a>
+        <a href="{% url 'admin_panel:matching_list' %}?filter=all"
+           class="btn btn-sm {% if filter == 'all' %}btn-secondary{% else %}btn-outline-secondary{% endif %}">전체</a>
+    </div>
+</div>
+</div>
+</header>
+
+{% if counselor_workload %}
+<div class="card border-0 shadow-sm section-spacing">
+    <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-person-badge me-1 text-kscu"></i> 상담사별 진행 중인 상담
+    </div>
+    <div class="card-body">
+        <div class="row g-2">
+            {% for item in counselor_workload %}
+            <div class="col-md-4 col-lg-3">
+                <div class="border rounded px-3 py-2 h-100 bg-light">
+                    <div class="fw-semibold">{{ item.profile.user.name }}</div>
+                    <div class="small text-muted">진행 중 <strong class="text-primary">{{ item.active_cases }}</strong>건</div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        {% if applications %}
+        <div class="table-responsive table-container">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>내담자</th>
+                        <th>상담 분야</th>
+                        <th>신청 상태</th>
+                        <th>담당 상담사</th>
+                        <th>사례번호</th>
+                        <th>신청일</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for app in applications %}
+                    <tr>
+                        <td class="fw-semibold">{{ app.client.name }}</td>
+                        <td>{{ app.counseling_type }}</td>
+                        <td>
+                            <span class="badge bg-{% if app.status == 'WAITING_MATCH' or app.status == 'RECEIVED' %}warning text-dark{% elif app.status == 'MATCHED' %}success{% else %}secondary{% endif %}">
+                                {{ app.get_status_display }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if app.case %}
+                                {% if app.case.counselor %}
+                                    {{ app.case.counselor.name }}
+                                {% else %}
+                                    <span class="text-muted">미배정</span>
+                                {% endif %}
+                            {% else %}
+                                <span class="text-muted">미배정</span>
+                            {% endif %}
+                        </td>
+                        <td class="font-monospace small">
+                            {% if app.case %}{{ app.case.case_number }}{% else %}—{% endif %}
+                        </td>
+                        <td class="text-muted small">{{ app.created_at|date:"Y-m-d" }}</td>
+                        <td class="text-end">
+                            <a href="{% url 'counseling:application_detail' app.pk %}"
+                               class="btn btn-sm {% if app.case and app.case.counselor %}btn-outline-primary{% else %}btn-primary{% endif %}">
+                                {% if app.case and app.case.counselor %}
+                                    <i class="bi bi-arrow-repeat me-1"></i>상담사 변경
+                                {% else %}
+                                    <i class="bi bi-person-plus me-1"></i>상담사 배정
+                                {% endif %}
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted text-center py-5 mb-0 table-container">표시할 내담자가 없습니다.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>.text-kscu { color: #003366; }</style>
+{% endblock %}

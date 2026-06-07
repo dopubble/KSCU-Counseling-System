@@ -1,0 +1,10 @@
+{% if application.status == 'CANCELLED' %}
+<span class="text-muted small">취소됨</span>
+{% elif has_confirmed_appointment %}
+<span class="text-muted small">상담사에게 문의하세요</span>
+{% else %}
+<form method="post" action="{% url 'client:edit_application' application.pk %}" class="d-inline">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-sm btn-outline-primary">수정하기</button>
+</form>
+{% endif %}

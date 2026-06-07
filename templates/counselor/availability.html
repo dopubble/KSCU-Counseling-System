@@ -1,0 +1,245 @@
+{% extends "counselor/dashboard.html" %}
+{% load ui_tags %}
+
+{% block title %}가용 시간{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    {% page_header title="상담 가능 시간" heading_tag="h2" header_class="site-page-header mb-0" c1_label="대시보드" c1_url_name="counselor:dashboard" c1_icon="bi-briefcase" c2_label="가용 시간" %}
+    <button type="button"
+            class="btn btn-sm client-dashboard-action-btn counselor-availability-add-btn"
+            data-bs-toggle="modal"
+            data-bs-target="#availabilityModal">
+        <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>가용시간 등록
+    </button>
+</div>
+
+<div class="card shadow-sm section-spacing counselor-availability-card">
+    <div class="card-header border-0 bg-white py-3 px-3 px-md-4">
+        <span class="fw-semibold"><i class="bi bi-clock-history me-1" aria-hidden="true"></i>등록된 가용·차단 시간</span>
+    </div>
+    <div class="card-body p-0">
+        {% if availabilities %}
+        <ul class="list-group list-group-flush counselor-availability-list">
+            {% for av in availabilities %}
+            <li class="list-group-item counselor-availability-item d-flex flex-wrap align-items-center justify-content-between gap-2 py-3 px-3 px-md-4">
+                <div class="counselor-availability-item-main">
+                    <span class="fw-semibold">{{ av.schedule_label }}</span>
+                    <span class="text-muted mx-2" aria-hidden="true">·</span>
+                    <span>{{ av.start_time|time:"H:i" }} ~ {{ av.end_time|time:"H:i" }}</span>
+                    {% if av.is_available %}
+                    <span class="badge counselor-availability-badge counselor-availability-badge--available ms-2">가능</span>
+                    {% else %}
+                    <span class="badge counselor-availability-badge counselor-availability-badge--blocked ms-2">차단</span>
+                    {% endif %}
+                    {% if not av.is_active %}
+                    <span class="badge bg-secondary ms-1">비활성</span>
+                    {% endif %}
+                </div>
+                <form method="post"
+                      action="{% url 'scheduling:availability_delete' av.pk %}"
+                      class="counselor-availability-delete-form mb-0"
+                      onsubmit="return confirm('이 일정을 삭제하시겠습니까?');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                        <i class="bi bi-trash me-1" aria-hidden="true"></i>삭제
+                    </button>
+                </form>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <div class="text-center py-5 px-3 table-container">
+            <p class="text-muted mb-2">등록된 가용 시간이 없습니다.</p>
+            <p class="small text-muted mb-3">매주 반복 일정 또는 특정 날짜 예외·차단을 등록할 수 있습니다.</p>
+            <button type="button"
+                    class="btn btn-sm btn-outline-primary"
+                    data-bs-toggle="modal"
+                    data-bs-target="#availabilityModal">
+                <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>가용시간 등록
+            </button>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="modal fade notranslate" id="availabilityModal" tabindex="-1" aria-labelledby="availabilityModalLabel" aria-hidden="true" translate="no">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="post" action="{% url 'scheduling:availability_create' %}" id="availabilityForm" translate="no">
+                {% csrf_token %}
+                {% firstof form.setting_type.value "recurring" as setting_type_value %}
+                {% firstof form.day_of_week.value "" as day_of_week_value %}
+                {% firstof form.is_available.value "1" as is_available_value %}
+                <div class="modal-header">
+                    <h5 class="modal-title" id="availabilityModalLabel">상담 가능 시간 등록</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                </div>
+                <div class="modal-body">
+                    {% if form.non_field_errors %}
+                    <div class="alert alert-danger py-2 small">
+                        {% for error in form.non_field_errors %}
+                        <p class="mb-0">{{ error }}</p>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    <fieldset class="mb-3">
+                        <legend class="form-label fw-semibold mb-2">설정 구분</legend>
+                        <div class="d-flex flex-wrap gap-3">
+                            <div class="form-check">
+                                <input type="radio"
+                                       name="setting_type"
+                                       id="id_setting_type_recurring"
+                                       value="recurring"
+                                       class="form-check-input counselor-availability-setting-radio"
+                                       {% if setting_type_value == "recurring" %}checked{% endif %}>
+                                <label class="form-check-label" for="id_setting_type_recurring">매주 반복</label>
+                            </div>
+                            <div class="form-check">
+                                <input type="radio"
+                                       name="setting_type"
+                                       id="id_setting_type_specific"
+                                       value="specific"
+                                       class="form-check-input counselor-availability-setting-radio"
+                                       {% if setting_type_value == "specific" %}checked{% endif %}>
+                                <label class="form-check-label" for="id_setting_type_specific">특정 날짜</label>
+                            </div>
+                        </div>
+                        {% if form.setting_type.errors %}
+                        <div class="invalid-feedback d-block">{{ form.setting_type.errors.0 }}</div>
+                        {% endif %}
+                    </fieldset>
+
+                    <div class="mb-3" id="availabilityRecurringFields">
+                        <label for="id_day_of_week" class="form-label fw-semibold">요일</label>
+                        <select name="day_of_week"
+                                id="id_day_of_week"
+                                class="form-select{% if form.day_of_week.errors %} is-invalid{% endif %}"
+                                translate="no">
+                            <option value="" {% if day_of_week_value == "" %}selected{% endif %} disabled>요일 선택</option>
+                            <option value="0" {% if day_of_week_value|stringformat:"s" == "0" %}selected{% endif %}>월요일</option>
+                            <option value="1" {% if day_of_week_value|stringformat:"s" == "1" %}selected{% endif %}>화요일</option>
+                            <option value="2" {% if day_of_week_value|stringformat:"s" == "2" %}selected{% endif %}>수요일</option>
+                            <option value="3" {% if day_of_week_value|stringformat:"s" == "3" %}selected{% endif %}>목요일</option>
+                            <option value="4" {% if day_of_week_value|stringformat:"s" == "4" %}selected{% endif %}>금요일</option>
+                            <option value="5" {% if day_of_week_value|stringformat:"s" == "5" %}selected{% endif %}>토요일</option>
+                            <option value="6" {% if day_of_week_value|stringformat:"s" == "6" %}selected{% endif %}>일요일</option>
+                        </select>
+                        {% if form.day_of_week.errors %}
+                        <div class="invalid-feedback d-block">{{ form.day_of_week.errors.0 }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3 d-none" id="availabilitySpecificFields">
+                        <label for="id_specific_date" class="form-label fw-semibold">특정 날짜</label>
+                        <input type="date"
+                               name="specific_date"
+                               id="id_specific_date"
+                               class="form-control{% if form.specific_date.errors %} is-invalid{% endif %}"
+                               value="{{ form.specific_date.value|default:'' }}">
+                        {% if form.specific_date.errors %}
+                        <div class="invalid-feedback d-block">{{ form.specific_date.errors.0 }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-sm-6">
+                            <label for="id_start_time" class="form-label fw-semibold">시작 시간</label>
+                            <input type="time"
+                                   name="start_time"
+                                   id="id_start_time"
+                                   class="form-control{% if form.start_time.errors %} is-invalid{% endif %}"
+                                   step="60"
+                                   value="{{ form.start_time.value|default:'' }}">
+                            {% if form.start_time.errors %}
+                            <div class="invalid-feedback d-block">{{ form.start_time.errors.0 }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-sm-6">
+                            <label for="id_end_time" class="form-label fw-semibold">종료 시간</label>
+                            <input type="time"
+                                   name="end_time"
+                                   id="id_end_time"
+                                   class="form-control{% if form.end_time.errors %} is-invalid{% endif %}"
+                                   step="60"
+                                   value="{{ form.end_time.value|default:'' }}">
+                            {% if form.end_time.errors %}
+                            <div class="invalid-feedback d-block">{{ form.end_time.errors.0 }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <fieldset class="mb-0 mt-3">
+                        <legend class="form-label fw-semibold mb-2">해당 시간대 상담 가능 여부</legend>
+                        <div class="d-flex flex-wrap gap-3">
+                            <div class="form-check">
+                                <input type="radio"
+                                       name="is_available"
+                                       id="id_is_available_yes"
+                                       value="1"
+                                       class="form-check-input counselor-availability-status-radio"
+                                       {% if is_available_value|stringformat:"s" == "1" %}checked{% endif %}>
+                                <label class="form-check-label" for="id_is_available_yes">가능</label>
+                            </div>
+                            <div class="form-check">
+                                <input type="radio"
+                                       name="is_available"
+                                       id="id_is_available_no"
+                                       value="0"
+                                       class="form-check-input counselor-availability-status-radio"
+                                       {% if is_available_value|stringformat:"s" == "0" %}checked{% endif %}>
+                                <label class="form-check-label" for="id_is_available_no">불가(차단)</label>
+                            </div>
+                        </div>
+                        {% if form.is_available.errors %}
+                        <div class="invalid-feedback d-block">{{ form.is_available.errors.0 }}</div>
+                        {% endif %}
+                    </fieldset>
+
+                    <p class="form-text small text-muted mb-0 mt-3">
+                        특정 날짜 <strong>차단</strong>은 해당 일의 정기 가용시간보다 우선 적용됩니다.
+                    </p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">닫기</button>
+                    <button type="submit" class="btn client-dashboard-action-btn">저장</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    const recurringFields = document.getElementById("availabilityRecurringFields");
+    const specificFields = document.getElementById("availabilitySpecificFields");
+    const settingRadios = document.querySelectorAll('input[name="setting_type"]');
+
+    function syncAvailabilityFields() {
+        const selected = document.querySelector('input[name="setting_type"]:checked');
+        const isSpecific = selected && selected.value === "specific";
+        if (recurringFields) {
+            recurringFields.classList.toggle("d-none", isSpecific);
+        }
+        if (specificFields) {
+            specificFields.classList.toggle("d-none", !isSpecific);
+        }
+    }
+
+    settingRadios.forEach(function (radio) {
+        radio.addEventListener("change", syncAvailabilityFields);
+    });
+    syncAvailabilityFields();
+
+    {% if open_availability_modal %}
+    const modalEl = document.getElementById("availabilityModal");
+    if (modalEl && window.bootstrap) {
+        window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    }
+    {% endif %}
+})();
+</script>
+{% endblock %}

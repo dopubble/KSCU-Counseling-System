@@ -1,0 +1,103 @@
+from django.urls import path
+
+from apps.scheduling.views import appointment_manage
+
+from . import views
+
+app_name = "counselor"
+
+urlpatterns = [
+    path("", views.counselor_dashboard, name="dashboard"),
+    path("case/<uuid:pk>/", views.counselor_case_detail, name="case_detail"),
+    path(
+        "case/<uuid:case_pk>/session/<uuid:appointment_pk>/confirm/",
+        views.counselor_session_appointment_confirm,
+        name="session_appointment_confirm",
+    ),
+    path(
+        "case/<uuid:case_pk>/session/<uuid:appointment_pk>/reject/",
+        views.counselor_session_appointment_reject,
+        name="session_appointment_reject",
+    ),
+    path(
+        "case/<uuid:case_pk>/session/<uuid:appointment_pk>/cancel/approve/",
+        views.counselor_session_cancel_approve,
+        name="session_cancel_approve",
+    ),
+    path(
+        "case/<uuid:case_pk>/session/<uuid:appointment_pk>/cancel/reject/",
+        views.counselor_session_cancel_reject,
+        name="session_cancel_reject",
+    ),
+    path(
+        "case/<uuid:case_pk>/schedule-change/<uuid:request_pk>/approve/",
+        views.counselor_session_schedule_change_approve,
+        name="session_schedule_change_approve",
+    ),
+    path(
+        "case/<uuid:case_pk>/schedule-change/<uuid:request_pk>/reject/",
+        views.counselor_session_schedule_change_reject,
+        name="session_schedule_change_reject",
+    ),
+    path(
+        "case/<uuid:case_pk>/board/create/",
+        views.counselor_board_post_create,
+        name="board_post_create",
+    ),
+    path(
+        "case/<uuid:case_pk>/board/<uuid:material_pk>/edit/",
+        views.counselor_board_post_edit,
+        name="board_post_edit",
+    ),
+    path(
+        "case/<uuid:case_pk>/shared-materials/<uuid:material_pk>/file/",
+        views.counselor_shared_material_file,
+        name="shared_material_file",
+    ),
+    path(
+        "case/<uuid:case_pk>/shared-materials/<uuid:material_pk>/delete/",
+        views.counselor_shared_material_delete,
+        name="shared_material_delete",
+    ),
+    path(
+        "case/<uuid:case_pk>/session/<uuid:appointment_pk>/status/",
+        views.counselor_update_session_status,
+        name="session_status_update",
+    ),
+    path(
+        "case/<uuid:case_pk>/session/<int:session_number>/materials/<uuid:material_pk>/file/",
+        views.counselor_session_material_file,
+        name="session_material_file",
+    ),
+    path(
+        "case/<uuid:case_pk>/session/<int:session_number>/materials/<uuid:material_pk>/delete/",
+        views.counselor_session_material_delete,
+        name="session_material_delete",
+    ),
+    path(
+        "appointments/<uuid:pk>/manage/",
+        appointment_manage,
+        name="appointment_manage",
+    ),
+    path(
+        "case/<uuid:pk>/appointment/book/",
+        views.case_book_appointment,
+        name="case_book_appointment",
+    ),
+    path("case/<uuid:pk>/journal/new/", views.journal_create, name="journal_create"),
+    path(
+        "case/<uuid:pk>/journal/<int:session_number>/",
+        views.journal_detail,
+        name="journal_detail",
+    ),
+    path(
+        "case/<uuid:pk>/journal/<int:session_number>/pdf/",
+        views.journal_pdf,
+        name="journal_pdf",
+    ),
+    path(
+        "case/<uuid:pk>/journal/<int:session_number>/edit/",
+        views.journal_edit,
+        name="journal_edit",
+    ),
+]

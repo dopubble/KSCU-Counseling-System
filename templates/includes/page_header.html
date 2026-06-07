@@ -1,0 +1,15 @@
+<header class="{{ header_class }}">
+    {% include "includes/page_breadcrumb.html" with breadcrumb_trail=breadcrumb_trail variant=variant %}
+    {% if show_heading and page_title %}
+    <div class="site-page-heading mt-4">
+        {% if heading_tag == "h1" %}
+        <h1 class="{{ title_class }} mb-1">{{ page_title }}</h1>
+        {% else %}
+        <h2 class="{{ title_class }} mb-1">{{ page_title }}</h2>
+        {% endif %}
+        {% if page_subtitle %}
+        <p class="site-page-subtitle mb-0">{{ page_subtitle }}</p>
+        {% endif %}
+    </div>
+    {% endif %}
+</header>

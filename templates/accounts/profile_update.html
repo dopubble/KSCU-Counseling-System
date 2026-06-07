@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags ui_tags %}
+
+{% block title %}회원정보 수정{% endblock %}
+
+{% block layout %}
+<section class="site-page client-portal-page py-4 py-lg-5">
+    <div class="container site-container">
+{% block content %}
+        <div class="client-portal-stack">
+            {% page_header title="회원정보 수정" subtitle="이메일과 연락처만 수정할 수 있습니다. 이름·학번은 변경할 수 없습니다." heading_tag="h1" title_class="client-portal-title site-page-title" header_class="site-page-header mb-0" c1_label="내 상담실" c1_url_name="client:dashboard" c1_icon="bi-house-door" c2_label="회원정보 수정" %}
+
+            <div class="card client-dashboard-card border-0">
+                <div class="card-header client-portal-card-header border-0">
+                    <i class="bi bi-person-gear me-1"></i>기본 정보
+                </div>
+                <div class="card-body p-4 p-md-5">
+                    <form method="post" class="profile-update-form" novalidate>
+                        {% csrf_token %}
+                        {{ form|crispy }}
+                        <div class="d-flex flex-wrap gap-2 mt-4">
+                            <button type="submit" class="btn client-dashboard-action-btn">저장하기</button>
+                            <a href="{% url 'client:dashboard' %}" class="btn btn-outline-secondary">취소</a>
+                        </div>
+                    </form>
+                    <p class="small text-muted mt-3 mb-0">
+                        이메일을 변경하면 다음 로그인부터 변경된 이메일을 사용합니다.
+                        비밀번호 변경은 <a href="{% url 'accounts:password_reset' %}">비밀번호 찾기</a>를 이용해 주세요.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+{% endblock %}

@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% load ui_tags %}
+
+{% block title %}관리자 대시보드{% endblock %}
+
+{% block content %}
+{% page_header title="관리자 대시보드" heading_tag="h2" header_class="site-page-header mb-4" c1_label="대시보드" c1_icon="bi-speedometer2" %}
+
+{% if cancel_pending_count %}
+<div class="alert alert-warning border-0 shadow-sm mb-4 d-flex flex-wrap align-items-center gap-2" role="alert">
+    <i class="bi bi-exclamation-triangle me-2"></i>
+    <span>
+        <strong>상담 취소 요청 대기 {{ cancel_pending_count }}건</strong> —
+        내담자가 확정 예약에 대해 취소를 요청했습니다. 확인 후 처리해 주세요.
+    </span>
+    <a href="{% url 'admin_panel:cancel_pending_list' %}" class="btn btn-sm btn-warning ms-auto">목록 보기</a>
+</div>
+{% endif %}
+
+{% include "includes/admin_dashboard_stats_cards.html" with stats=stats %}
+
+<div class="row g-3 section-spacing">
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>매칭 대기 목록</span>
+                <a href="{% url 'admin_panel:matching_list' %}?filter=waiting" class="btn btn-sm btn-outline-primary">
+                    매칭 관리
+                </a>
+            </div>
+            <div class="card-body p-0">
+                {% if waiting_applications %}
+                <div class="table-responsive table-container">
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>이름</th>
+                                <th>상담 분야</th>
+                                <th>신청일</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for app in waiting_applications %}
+                            <tr class="table-row-link" role="button"
+                                onclick="window.location='{% url 'counseling:application_detail' app.pk %}'">
+                                <td class="fw-semibold text-primary">{{ app.client.name }}</td>
+                                <td>{{ app.counseling_type }}</td>
+                                <td class="text-muted small">{{ app.created_at|date:"Y-m-d H:i" }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted mb-0 p-3">매칭 대기 건이 없습니다.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header">오늘 예약</div>
+            <div class="card-body">
+                {% if today_appointments %}
+                <ul class="list-group list-group-flush">
+                    {% for apt in today_appointments %}
+                    <li class="list-group-item">
+                        <strong>{{ apt.scheduled_at|time:"H:i" }}</strong>
+                        {{ apt.client.name }} / {{ apt.counselor.name }}
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-muted mb-0">오늘 예약이 없습니다.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.stat-card-link .stat-card {
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.stat-card-link:hover .stat-card {
+    transform: translateY(-3px);
+    box-shadow: 0 0.5rem 1rem rgba(0, 51, 102, 0.12) !important;
+}
+.table-row-link {
+    cursor: pointer;
+}
+.table-row-link:hover {
+    background-color: #f0f4f8;
+}
+</style>
+{% endblock %}

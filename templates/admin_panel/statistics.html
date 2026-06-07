@@ -1,0 +1,54 @@
+{% extends "admin_panel/dashboard.html" %}
+{% load ui_tags %}
+
+{% block title %}통계{% endblock %}
+
+{% block content %}
+{% page_header title="통계" heading_tag="h2" header_class="site-page-header mb-4" c1_label="대시보드" c1_url_name="admin_panel:dashboard" c1_icon="bi-speedometer2" c2_label="통계" %}
+<div class="row g-3 section-spacing">
+    <div class="col-lg-6">
+        <div class="card shadow-sm">
+            <div class="card-header">상담 유형별 분포</div>
+            <div class="card-body">
+                {% if type_distribution %}
+                <table class="table table-sm">
+                    <thead><tr><th>유형</th><th>건수</th></tr></thead>
+                    <tbody>
+                        {% for item in type_distribution %}
+                        <tr>
+                            <td>{{ item.counseling_type }}</td>
+                            <td>{{ item.count }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="text-muted mb-0">데이터가 없습니다.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card shadow-sm">
+            <div class="card-header">사례 상태별 분포</div>
+            <div class="card-body">
+                {% if status_distribution %}
+                <table class="table table-sm">
+                    <thead><tr><th>상태</th><th>건수</th></tr></thead>
+                    <tbody>
+                        {% for item in status_distribution %}
+                        <tr>
+                            <td>{{ item.status }}</td>
+                            <td>{{ item.count }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="text-muted mb-0">데이터가 없습니다.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

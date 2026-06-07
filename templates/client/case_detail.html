@@ -1,0 +1,721 @@
+{% extends "base.html" %}
+{% load static ui_tags %}
+
+{% block title %}내 상담실 — {{ case.case_number }}{% endblock %}
+
+{% block extra_css %}
+<link href="{% static 'css/counselor.css' %}" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" rel="stylesheet">
+{% endblock %}
+
+{% block layout %}
+<section class="site-page client-portal-page client-case-detail-page py-4 py-lg-5">
+    <div class="container site-container">
+{% block content %}
+        <div class="client-portal-stack">
+        <header class="client-portal-header site-page-header mb-0">
+            {% page_breadcrumb c1_label="내 상담실" c1_url_name="client:dashboard" c1_icon="bi-house-door" c2_label="상담 상세" %}
+            <div class="site-page-heading mt-4">
+                <h1 class="client-portal-title client-portal-title--case site-page-title mb-1">내 상담 상세</h1>
+                <p class="client-portal-case-meta site-page-subtitle mb-0">
+                    사례번호 <span class="font-monospace fw-semibold">{{ case.case_number }}</span>
+                    <span class="client-portal-case-meta-sep" aria-hidden="true">·</span>
+                    <span class="fw-semibold">{{ case.application.counseling_type }}</span>
+                </p>
+            </div>
+            {% if show_header_cancel %}
+            <div class="mt-3 d-flex flex-wrap gap-2 align-items-center">
+                {% include "client/partials/cancel_request_button.html" with application=application show_cancel_request=True has_cancel_pending=False cancel_next=request.path cancel_penalty_warning=cancel_within_penalty %}
+            </div>
+            {% endif %}
+        </header>
+
+        <div class="row g-4 section-spacing case-detail-row">
+            <div class="col-lg-5 case-detail-sidebar-col">
+                <div class="card client-dashboard-card border-0 mb-4">
+                    <div class="card-header client-portal-card-header border-0">
+                        <i class="bi bi-person-badge me-1"></i>담당 상담사
+                    </div>
+                    <div class="card-body">
+                        {% if counselor %}
+                        <div class="counselor-profile">
+                            <div class="counselor-profile-photo">
+                                <div class="counselor-profile-placeholder" aria-hidden="true">
+                                    <i class="bi bi-person-fill"></i>
+                                </div>
+                            </div>
+                            <div class="counselor-profile-info">
+                                <p class="counselor-profile-name mb-1">{{ counselor.name }}</p>
+                                <p class="counselor-profile-email mb-0">{{ counselor.email }}</p>
+                            </div>
+                        </div>
+                        <hr class="my-3 client-counselor-availability-divider">
+                        <div class="client-counselor-availability">
+                            <h3 class="client-counselor-availability-title h6 fw-semibold mb-2">
+                                📁 상담 일정 (가용·차단)
+                            </h3>
+                            {% if counselor_availabilities %}
+                            <ul class="client-counselor-availability-list list-unstyled mb-2">
+                                {% for avail in counselor_availabilities %}
+                                <li class="client-counselor-availability-item">
+                                    {% if avail.is_recurring %}
+                                    <span class="badge client-counselor-availability-badge{% if avail.is_available %} client-counselor-availability-badge--recurring-available{% else %} client-counselor-availability-badge--recurring-blocked{% endif %}">
+                                        <span class="client-counselor-availability-label">매주 {{ avail.day_label }}</span>
+                                        <span class="client-counselor-availability-time">{{ avail.start_time|time:"H:i" }} ~ {{ avail.end_time|time:"H:i" }}</span>
+                                        <span class="client-counselor-availability-status">{% if avail.is_available %}(가능){% else %}(상담불가){% endif %}</span>
+                                    </span>
+                                    {% elif avail.specific_date %}
+                                    <span class="badge client-counselor-availability-badge{% if avail.is_available %} client-counselor-availability-badge--specific-available{% else %} client-counselor-availability-badge--specific-blocked{% endif %}">
+                                        <span class="client-counselor-availability-label">{{ avail.specific_date|date:"Y-m-d" }}</span>
+                                        <span class="client-counselor-availability-time">{{ avail.start_time|time:"H:i" }} ~ {{ avail.end_time|time:"H:i" }}</span>
+                                        <span class="client-counselor-availability-status">{% if avail.is_available %}(가능){% else %}(상담불가){% endif %}</span>
+                                    </span>
+                                    {% else %}
+                                    <span class="badge client-counselor-availability-badge client-counselor-availability-badge--recurring-available">
+                                        <span class="client-counselor-availability-label">{{ avail.schedule_label }}</span>
+                                        <span class="client-counselor-availability-time">{{ avail.start_time|time:"H:i" }} ~ {{ avail.end_time|time:"H:i" }}</span>
+                                        <span class="client-counselor-availability-status">{% if avail.is_available %}(가능){% else %}(상담불가){% endif %}</span>
+                                    </span>
+                                    {% endif %}
+                                </li>
+                                {% endfor %}
+                            </ul>
+                            {% else %}
+                            <p class="small text-muted mb-2">등록된 상담 일정이 없습니다.</p>
+                            {% endif %}
+                            <p class="client-counselor-availability-notice small text-muted mb-0">
+                                * <strong>상담불가</strong>로 표시된 요일·시간, 또는 특정 휴무일에는 예약 신청이 거절되거나 제한될 수 있습니다.
+                            </p>
+                        </div>
+                        {% else %}
+                        <p class="text-muted text-center mb-0 py-2">상담사 배정 대기 중입니다.</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                {% include "client/partials/shared_materials_widget.html" with case=case shared_materials=shared_materials %}
+
+                {% if pending_appointments %}
+                {% include "client/partials/pending_requests.html" %}
+                {% elif counselor %}
+                <div class="card client-dashboard-card border-0 client-portal-request-card" id="appointment-request">
+                    <div class="card-header client-portal-card-header border-0">
+                        <i class="bi bi-calendar-plus me-1"></i>요청중인 상담 목록
+                    </div>
+                    <div class="card-body">
+                        {% if show_legacy_appointment_form %}
+                        <form method="post" action="{% url 'client:request_appointment' case.pk %}">
+                            {% csrf_token %}
+                            <div class="mb-3">
+                                <label for="id_scheduled_at" class="form-label fw-semibold">{{ request_form.scheduled_at.label }}</label>
+                                {{ request_form.scheduled_at }}
+                            </div>
+                            <button type="submit" class="btn client-dashboard-action-btn w-100">
+                                <i class="bi bi-send me-1"></i>예약 신청
+                            </button>
+                            <p class="small text-muted mt-2 mb-0 text-center">
+                                신청 후 담당 상담사가 일정을 확인하고 확정합니다.
+                            </p>
+                        </form>
+                        {% else %}
+                        <p class="text-muted text-center small mb-0 py-3">
+                            요청중인 상담 일정이 없습니다.
+                        </p>
+                        {% endif %}
+                    </div>
+                </div>
+                {% elif not counselor %}
+                <div class="card client-dashboard-card border-0">
+                    <div class="card-body text-center text-muted py-4 mb-0">
+                        담당 상담사가 배정되면 예약 신청이 가능합니다.
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="col-lg-7">
+                <div class="card client-dashboard-card border-0">
+                    <div class="card-header client-portal-card-header border-0">
+                        <i class="bi bi-calendar2-week me-1"></i>회기별 상담
+                    </div>
+                    <div class="card-body p-0">
+                        {% if sessions %}
+                        <div class="client-session-list">
+                            {% for session in sessions %}
+                            {% include "client/partials/session_card.html" with session=session case=case %}
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <div class="text-center py-4 table-container">
+                            <p class="text-muted mb-1">등록된 회기 정보가 없습니다.</p>
+                            {% if can_request %}
+                            <p class="small text-muted mb-0">왼쪽 <strong>상담 예약 신청</strong>에서 희망 시간을 선택해 예약을 신청해 주세요.</p>
+                            {% elif not counselor %}
+                            <p class="small text-muted mb-0">담당 상담사가 배정되면 예약을 신청할 수 있습니다.</p>
+                            {% else %}
+                            <p class="small text-muted mb-0">새로운 회기가 확정되면 이곳에 표시됩니다.</p>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex flex-wrap justify-content-center align-items-center gap-3 section-spacing client-case-detail-actions">
+            {% if can_edit_application %}
+                <form method="post" action="{% url 'client:edit_application' application.pk %}" class="mb-0">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-primary px-4">
+                        <i class="bi bi-pencil-square me-1" aria-hidden="true"></i>신청서 수정
+                    </button>
+                </form>
+            {% elif change_blocked %}
+                <span class="small text-muted">24시간 이내 변경 불가</span>
+            {% endif %}
+            <a href="{% url 'client:application_list' %}" class="btn btn-outline-secondary px-4">
+                <i class="bi bi-list-ul me-1" aria-hidden="true"></i>목록
+            </a>
+        </div>
+        </div>
+    </div>
+</section>
+{% include "client/partials/cancel_request_modal.html" %}
+{% include "client/partials/session_action_modals.html" %}
+{{ counselor_blocked_dates|json_script:"counselor-blocked-dates" }}
+{{ counselor_availability_rules|json_script:"counselor-availability-rules" }}
+{% endblock %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ko.js"></script>
+<script src="{% static 'js/client_schedule_calendar.js' %}?v=4"></script>
+<script>
+(function () {
+    const modal = document.getElementById("cancelRequestModal");
+    if (!modal) return;
+    modal.addEventListener("show.bs.modal", function (event) {
+        const trigger = event.relatedTarget;
+        const form = document.getElementById("cancelRequestForm");
+        if (!trigger || !form) return;
+        form.action = trigger.getAttribute("data-cancel-url") || "";
+        const nextInput = form.querySelector('[name="next"]');
+        if (nextInput) {
+            nextInput.value = trigger.getAttribute("data-cancel-next") || "";
+        }
+        const reason = form.querySelector('[name="cancel_reason"]');
+        if (reason) reason.value = "";
+        const penaltyNotice = document.getElementById("cancelRequestPenaltyNotice");
+        if (penaltyNotice) {
+            const showPenalty = trigger.getAttribute("data-cancel-penalty") === "1";
+            penaltyNotice.classList.toggle("d-none", !showPenalty);
+        }
+    });
+})();
+
+(function () {
+    const scheduleTemplate = "{% url 'client:session_schedule_change' case.pk 999 %}";
+    const uploadTemplate = "{% url 'client:session_material_upload' case.pk 999 %}";
+    const SCHEDULE_CHANGE_LOCK_MS = 24 * 60 * 60 * 1000;
+    const SCHEDULE_CHANGE_ALERT =
+        "상담 24시간 이내에는 변경/취소가 불가합니다.";
+    const blockedDatesEl = document.getElementById("counselor-blocked-dates");
+    const counselorBlockedDates = blockedDatesEl
+        ? JSON.parse(blockedDatesEl.textContent)
+        : [];
+    const rulesEl = document.getElementById("counselor-availability-rules");
+    const counselorAvailabilityRules = rulesEl
+        ? JSON.parse(rulesEl.textContent)
+        : [];
+    const BLOCKED_DATE_ALERT =
+        "상담가능 시간이 아닙니다. 파란색 날짜를 선택해주세요.";
+
+    function slotUnavailableAlert(value) {
+        let hint = "";
+        if (window.ClientScheduleCalendar && value) {
+            const parsed = value.trim().replace("T", " ");
+            const match = parsed.match(/^(\d{4}-\d{2}-\d{2})/);
+            if (match) {
+                const parts = match[1].split("-");
+                const date = new Date(
+                    Number(parts[0]),
+                    Number(parts[1]) - 1,
+                    Number(parts[2])
+                );
+                hint = ClientScheduleCalendar.formatAvailabilityHint(
+                    date,
+                    counselorAvailabilityRules,
+                    counselorBlockedDates
+                );
+            }
+        }
+        alert(
+            hint
+                ? "선택하신 시간은 상담 가능 시간대가 아닙니다.\n" + hint
+                : "선택하신 시간은 상담 가능 시간대가 아닙니다. 달력에서 가능 시간을 확인해 주세요."
+        );
+    }
+
+    function isInvalidCounselorSlot(value) {
+        if (!value || !window.ClientScheduleCalendar) {
+            return false;
+        }
+        return !ClientScheduleCalendar.isCounselorSlotStartAvailable(
+            value,
+            counselorAvailabilityRules,
+            counselorBlockedDates
+        );
+    }
+
+    function guardInvalidCounselorSlot(value) {
+        if (isInvalidCounselorSlot(value)) {
+            slotUnavailableAlert(value);
+            return true;
+        }
+        return false;
+    }
+
+    function isBlockedCounselorDate(value) {
+        if (!value) {
+            return false;
+        }
+        if (window.ClientScheduleCalendar) {
+            return !ClientScheduleCalendar.isAvailableDateValue(
+                value,
+                counselorAvailabilityRules,
+                counselorBlockedDates
+            );
+        }
+        if (!value || !counselorBlockedDates.length) {
+            return false;
+        }
+        return counselorBlockedDates.includes(value.slice(0, 10));
+    }
+
+    function guardBlockedCounselorDate(value) {
+        if (isBlockedCounselorDate(value)) {
+            alert(BLOCKED_DATE_ALERT);
+            return true;
+        }
+        return false;
+    }
+
+    function bindBlockedDateGuard(input) {
+        if (!input || input.dataset.blockedDateGuardBound === "1") {
+            return;
+        }
+        if (window.ClientScheduleCalendar) {
+            ClientScheduleCalendar.bindBlockedDateGuard(
+                input,
+                counselorAvailabilityRules,
+                counselorBlockedDates,
+                function () {
+                    alert(BLOCKED_DATE_ALERT);
+                }
+            );
+            return;
+        }
+        input.dataset.blockedDateGuardBound = "1";
+        input.addEventListener("change", function () {
+            if (isBlockedCounselorDate(input.value)) {
+                guardBlockedCounselorDate(input.value);
+                input.value = "";
+            }
+        });
+    }
+
+    function initScheduleDatePickers() {
+        if (!window.ClientScheduleCalendar || !window.flatpickr) {
+            document.querySelectorAll('[name="preferred_datetime"], [name="scheduled_at"]').forEach(bindBlockedDateGuard);
+            return;
+        }
+        const onBlockedSelect = function () {
+            alert(BLOCKED_DATE_ALERT);
+        };
+        const onInvalidSlot = function (dateStr) {
+            slotUnavailableAlert(dateStr);
+        };
+        document.querySelectorAll(".client-schedule-datetime-input, #appointment-request [name='scheduled_at']").forEach(function (input) {
+            ClientScheduleCalendar.initPicker(
+                input,
+                counselorAvailabilityRules,
+                counselorBlockedDates,
+                { onBlockedSelect: onBlockedSelect, onInvalidSlot: onInvalidSlot }
+            );
+            bindBlockedDateGuard(input);
+        });
+    }
+
+    initScheduleDatePickers();
+
+    function bindFormEnterSubmitGuard(form) {
+        if (!form || form.dataset.enterSubmitGuardBound === "1") {
+            return;
+        }
+        form.dataset.enterSubmitGuardBound = "1";
+        form.addEventListener("keydown", function (event) {
+            if (event.key !== "Enter" && event.keyCode !== 13) {
+                return;
+            }
+            if (event.target.tagName === "TEXTAREA") {
+                return;
+            }
+            if (window.ClientScheduleCalendar && ClientScheduleCalendar.handleEnterForSchedulePicker(event)) {
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+        });
+    }
+
+    const legacyAppointmentForm = document.querySelector('#appointment-request form, form[action*="request_appointment"]');
+    if (legacyAppointmentForm) {
+        bindFormEnterSubmitGuard(legacyAppointmentForm);
+        legacyAppointmentForm.addEventListener("submit", function (event) {
+            const input = legacyAppointmentForm.querySelector('[name="scheduled_at"]');
+            const value = input ? input.value.trim() : "";
+            if (guardBlockedCounselorDate(value)) {
+                event.preventDefault();
+                return;
+            }
+            if (guardInvalidCounselorSlot(value)) {
+                event.preventDefault();
+            }
+        });
+    }
+
+    function bindUploadModal(modalId, formId, targetId, urlTemplate) {
+        const modal = document.getElementById(modalId);
+        const form = document.getElementById(formId);
+        const target = document.getElementById(targetId);
+        if (!modal || !form) return;
+        modal.addEventListener("show.bs.modal", function (event) {
+            const trigger = event.relatedTarget;
+            if (!trigger) return;
+            const sessionNumber = trigger.getAttribute("data-session-number");
+            const sessionLabel = trigger.getAttribute("data-session-label") || (sessionNumber + "회기");
+            if (target) target.textContent = sessionLabel;
+            form.action = urlTemplate.replace("999", sessionNumber);
+            form.reset();
+        });
+    }
+
+    function isScheduleChangeBlocked(trigger) {
+        if (trigger.getAttribute("data-is-pending") === "1") {
+            return false;
+        }
+        if (trigger.getAttribute("data-change-blocked") === "1") {
+            return true;
+        }
+        const scheduledAt = trigger.getAttribute("data-scheduled-at");
+        if (!scheduledAt) {
+            return false;
+        }
+        const remainingMs = new Date(scheduledAt).getTime() - Date.now();
+        return remainingMs <= 0 || remainingMs < SCHEDULE_CHANGE_LOCK_MS;
+    }
+
+    function closeScheduleModalPickers() {
+        const modalEl = document.getElementById("sessionScheduleChangeModal");
+        if (window.ClientScheduleCalendar) {
+            if (modalEl) {
+                ClientScheduleCalendar.closePickersIn(modalEl);
+            }
+            ClientScheduleCalendar.closeAllOpenCalendars();
+            return;
+        }
+        const preferredInput = document.getElementById("sessionSchedulePreferredDatetime");
+        if (preferredInput && preferredInput._flatpickr && preferredInput._flatpickr.isOpen) {
+            preferredInput._flatpickr.close();
+        }
+    }
+
+    bindUploadModal(
+        "sessionMaterialUploadModal",
+        "sessionMaterialUploadForm",
+        "sessionMaterialUploadTarget",
+        uploadTemplate
+    );
+
+    const scheduleModalEl = document.getElementById("sessionScheduleChangeModal");
+    const scheduleForm = document.getElementById("sessionScheduleChangeForm");
+    const scheduleTarget = document.getElementById("sessionScheduleChangeTarget");
+    const scheduleModalTitle = document.getElementById("sessionScheduleChangeModalLabel");
+    const scheduleIntro = document.getElementById("sessionScheduleChangeIntro");
+    const scheduleCurrentWrap = document.getElementById("sessionScheduleCurrentDatetimeWrap");
+    const scheduleCurrentValue = document.getElementById("sessionScheduleCurrentDatetime");
+    const schedulePreferredLabel = document.getElementById("sessionSchedulePreferredDatetimeLabel");
+    const scheduleMessageLabel = document.getElementById("sessionScheduleMessageLabel");
+    const scheduleSubmitBtn = document.getElementById("sessionScheduleChangeSubmitBtn");
+    const scheduleMessageField = document.getElementById("sessionScheduleMessage");
+    let scheduleTrigger = null;
+
+    document.querySelectorAll(".client-session-schedule-change-btn").forEach(function (btn) {
+        btn.addEventListener("click", function (event) {
+            if (btn.disabled || isScheduleChangeBlocked(btn)) {
+                event.preventDefault();
+                if (!btn.disabled) {
+                    alert(SCHEDULE_CHANGE_ALERT);
+                }
+                return;
+            }
+            if (!scheduleModalEl || !window.bootstrap) return;
+            scheduleTrigger = btn;
+            window.bootstrap.Modal.getOrCreateInstance(scheduleModalEl).show();
+        });
+    });
+
+    if (scheduleModalEl && scheduleForm) {
+        bindFormEnterSubmitGuard(scheduleForm);
+
+        function handleScheduleModalDocumentEnter(event) {
+            if (!scheduleModalEl.classList.contains("show")) {
+                return;
+            }
+            if (event.key !== "Enter" && event.keyCode !== 13) {
+                return;
+            }
+            const target = event.target;
+            if (target && target.tagName === "TEXTAREA" && scheduleModalEl.contains(target)) {
+                return;
+            }
+            if (window.ClientScheduleCalendar && ClientScheduleCalendar.handleEnterForSchedulePicker(event)) {
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+        }
+
+        scheduleModalEl.addEventListener("show.bs.modal", function () {
+            document.addEventListener("keydown", handleScheduleModalDocumentEnter, true);
+        });
+
+        scheduleModalEl.addEventListener("show.bs.modal", function (event) {
+            const trigger = scheduleTrigger || event.relatedTarget;
+            if (!trigger) return;
+            if (isScheduleChangeBlocked(trigger)) {
+                event.preventDefault();
+                alert(SCHEDULE_CHANGE_ALERT);
+                return;
+            }
+            const sessionNumber = trigger.getAttribute("data-session-number");
+            const sessionLabel = trigger.getAttribute("data-session-label") || (sessionNumber + "회기");
+            const actionLabel = trigger.getAttribute("data-schedule-action-label") || "상담일정 예약";
+            const isConfirmed = trigger.getAttribute("data-is-confirmed") === "1";
+            const isPending = trigger.getAttribute("data-is-pending") === "1";
+            if (scheduleTarget) scheduleTarget.textContent = sessionLabel;
+            if (scheduleModalTitle) scheduleModalTitle.textContent = actionLabel;
+            if (scheduleIntro) {
+                if (isConfirmed) {
+                    scheduleIntro.textContent = " 상담 일정 변경을 요청합니다.";
+                } else if (isPending) {
+                    scheduleIntro.textContent = " 신청하신 희망 일시를 변경합니다.";
+                } else {
+                    scheduleIntro.textContent = " 상담 일정 예약을 요청합니다.";
+                }
+            }
+            if (scheduleCurrentWrap && scheduleCurrentValue) {
+                const currentDatetime = trigger.getAttribute("data-current-datetime") || "";
+                if ((isConfirmed || isPending) && currentDatetime) {
+                    scheduleCurrentValue.textContent = currentDatetime;
+                    scheduleCurrentWrap.classList.remove("d-none");
+                } else {
+                    scheduleCurrentValue.textContent = "";
+                    scheduleCurrentWrap.classList.add("d-none");
+                }
+            }
+            if (schedulePreferredLabel) {
+                schedulePreferredLabel.textContent =
+                    isConfirmed || isPending ? "변경 희망 일시" : "희망 일시";
+            }
+            if (scheduleMessageLabel) {
+                scheduleMessageLabel.innerHTML = isConfirmed
+                    ? '변경 사유 <span class="text-muted fw-normal">(선택 사항)</span>'
+                    : isPending
+                        ? '변경 사유 <span class="text-muted fw-normal">(선택 사항)</span>'
+                        : '요청 내용 <span class="text-muted fw-normal">(선택 사항)</span>';
+            }
+            if (scheduleMessageField) {
+                scheduleMessageField.placeholder = isConfirmed || isPending
+                    ? "일정 변경이 필요한 사유를 입력해 주세요. (선택 사항)"
+                    : "변경이 필요한 사유와 희망 일정을 알려 주세요. (선택 사항)";
+            }
+            if (scheduleSubmitBtn) {
+                if (isConfirmed) {
+                    scheduleSubmitBtn.textContent = "변경 요청 제출";
+                } else if (isPending) {
+                    scheduleSubmitBtn.textContent = "일정 수정 요청";
+                } else {
+                    scheduleSubmitBtn.textContent = "요청 보내기";
+                }
+            }
+            scheduleForm.action = scheduleTemplate.replace("999", sessionNumber);
+            scheduleForm.reset();
+            const preferredInput = document.getElementById("sessionSchedulePreferredDatetime");
+            if (preferredInput && preferredInput._flatpickr) {
+                preferredInput._flatpickr.clear();
+            }
+            const currentDatetime = trigger.getAttribute("data-current-datetime") || "";
+            if (isPending && currentDatetime && preferredInput) {
+                if (preferredInput._flatpickr) {
+                    preferredInput._flatpickr.setDate(currentDatetime, true, "Y-m-d H:i");
+                } else {
+                    preferredInput.value = currentDatetime.replace(" ", "T");
+                }
+            }
+        });
+        scheduleModalEl.addEventListener("hide.bs.modal", function () {
+            closeScheduleModalPickers();
+        });
+        scheduleModalEl.addEventListener("hidden.bs.modal", function () {
+            document.removeEventListener("keydown", handleScheduleModalDocumentEnter, true);
+            scheduleTrigger = null;
+            closeScheduleModalPickers();
+        });
+
+        scheduleForm.addEventListener("submit", function (event) {
+            submitAppointmentRequest(event);
+        });
+    }
+
+    const sessionCancelModalEl = document.getElementById("sessionCancelRequestModal");
+    const sessionCancelForm = document.getElementById("sessionCancelRequestForm");
+    const sessionCancelTarget = document.getElementById("sessionCancelRequestTarget");
+    let sessionCancelTrigger = null;
+
+    document.querySelectorAll(".client-session-cancel-request-btn").forEach(function (btn) {
+        btn.addEventListener("click", function (event) {
+            if (btn.disabled || btn.getAttribute("data-change-blocked") === "1") {
+                event.preventDefault();
+                return;
+            }
+            if (!sessionCancelModalEl || !window.bootstrap) return;
+            sessionCancelTrigger = btn;
+            window.bootstrap.Modal.getOrCreateInstance(sessionCancelModalEl).show();
+        });
+    });
+
+    if (sessionCancelModalEl && sessionCancelForm) {
+        sessionCancelModalEl.addEventListener("show.bs.modal", function () {
+            const trigger = sessionCancelTrigger;
+            if (!trigger) return;
+            sessionCancelForm.action = trigger.getAttribute("data-cancel-url") || "";
+            const nextInput = sessionCancelForm.querySelector('[name="next"]');
+            if (nextInput) {
+                nextInput.value = trigger.getAttribute("data-cancel-next") || "";
+            }
+            const reason = sessionCancelForm.querySelector('[name="cancel_reason"]');
+            if (reason) reason.value = "";
+            if (sessionCancelTarget) {
+                sessionCancelTarget.textContent = trigger.getAttribute("data-session-label") || "";
+            }
+        });
+        sessionCancelModalEl.addEventListener("hidden.bs.modal", function () {
+            sessionCancelTrigger = null;
+        });
+        if (sessionCancelForm.dataset.cancelConfirmBound !== "1") {
+            sessionCancelForm.dataset.cancelConfirmBound = "1";
+            sessionCancelForm.addEventListener("submit", function (event) {
+                if (!window.confirm(
+                    "취소된 상담은 다시 재개할 수 없습니다. 정말로 취소 하시겠습니까?"
+                )) {
+                    event.preventDefault();
+                }
+            });
+        }
+    }
+
+    document.querySelectorAll(".client-session-cancel-withdraw-form").forEach(function (form) {
+        if (form.dataset.withdrawConfirmBound === "1") {
+            return;
+        }
+        form.dataset.withdrawConfirmBound = "1";
+        form.addEventListener("submit", function (event) {
+            if (!window.confirm(
+                "상담 취소 요청을 철회하고 기존 예약을 유지하시겠습니까?"
+            )) {
+                event.preventDefault();
+            }
+        });
+    });
+
+    document.querySelectorAll(".client-session-pending-withdraw-form").forEach(function (form) {
+        if (form.dataset.pendingWithdrawConfirmBound === "1") {
+            return;
+        }
+        form.dataset.pendingWithdrawConfirmBound = "1";
+        form.addEventListener("submit", function (event) {
+            if (!window.confirm(
+                "예약 요청을 철회하면 해당 회기는 다시 예약 전 상태로 돌아갑니다. 계속하시겠습니까?"
+            )) {
+                event.preventDefault();
+            }
+        });
+    });
+
+    function formatPreferredDatetime(value, input) {
+        if (window.ClientScheduleCalendar && input) {
+            return ClientScheduleCalendar.resolveInputDatetimeForServer(input);
+        }
+        if (window.ClientScheduleCalendar && ClientScheduleCalendar.formatDatetimeForServer) {
+            return ClientScheduleCalendar.formatDatetimeForServer(value);
+        }
+        if (!value) {
+            return "";
+        }
+        return value.trim().replace("T", " ");
+    }
+
+    function submitAppointmentRequest(event) {
+        const form = event.target;
+        const datetimeInput = form.querySelector('[name="preferred_datetime"]');
+        const normalized = formatPreferredDatetime(
+            datetimeInput ? datetimeInput.value.trim() : "",
+            datetimeInput
+        );
+
+        if (!normalized) {
+            event.preventDefault();
+            alert("희망 일시를 선택해 주세요.");
+            return;
+        }
+
+        if (datetimeInput) {
+            datetimeInput.value = normalized;
+        }
+
+        if (guardBlockedCounselorDate(normalized)) {
+            event.preventDefault();
+            return;
+        }
+
+        if (guardInvalidCounselorSlot(normalized)) {
+            event.preventDefault();
+            return;
+        }
+
+        const submitBtn = document.getElementById("sessionScheduleChangeSubmitBtn");
+        const submitLabel = submitBtn ? submitBtn.textContent.trim() : "";
+        const isChangeRequest = submitLabel === "변경 요청 제출";
+        const isPendingEdit = submitLabel === "일정 수정 요청";
+        let confirmMessage;
+        if (isChangeRequest) {
+            confirmMessage = "선택하신 변경 희망 일시 " + normalized + "로 일정 변경을 요청하시겠습니까?";
+        } else if (isPendingEdit) {
+            confirmMessage = "선택하신 일시 " + normalized + "로 예약 요청을 수정하시겠습니까?";
+        } else {
+            confirmMessage = "선택하신 희망 일시 " + normalized + "에 예약을 요청하시겠습니까?";
+        }
+        const confirmed = confirm(confirmMessage);
+
+        if (!confirmed) {
+            event.preventDefault();
+            return;
+        }
+
+        closeScheduleModalPickers();
+    }
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,152 @@
+import uuid
+
+from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+from django.db import models
+from django.utils import timezone
+
+
+class UserRole(models.TextChoices):
+    ADMIN = "ADMIN", "관리자"
+    COUNSELOR = "COUNSELOR", "상담사"
+    CLIENT = "CLIENT", "내담자"
+
+
+class UserStatus(models.TextChoices):
+    PENDING = "PENDING", "승인대기"
+    ACTIVE = "ACTIVE", "활성"
+    INACTIVE = "INACTIVE", "비활성"
+    SUSPENDED = "SUSPENDED", "정지"
+
+
+class UserManager(BaseUserManager):
+    def create_user(self, email, password=None, **extra_fields):
+        if not email:
+            raise ValueError("이메일은 필수입니다.")
+        email = self.normalize_email(email)
+        user = self.model(email=email, **extra_fields)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
+
+    def create_superuser(self, email, password=None, **extra_fields):
+        extra_fields.setdefault("role", UserRole.ADMIN)
+        extra_fields.setdefault("status", UserStatus.ACTIVE)
+        extra_fields.setdefault("is_active", True)
+        extra_fields.setdefault("is_staff", True)
+        extra_fields.setdefault("is_superuser", True)
+        return self.create_user(email, password, **extra_fields)
+
+
+class User(AbstractBaseUser, PermissionsMixin):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    email = models.EmailField("이메일", unique=True)
+    name = models.CharField(
+        "이름",
+        max_length=100,
+        help_text="회원가입 시 확정되며, 내담자 회원정보 수정 화면에서는 변경할 수 없습니다.",
+    )
+    phone = models.CharField("휴대폰", max_length=20, blank=True)
+    role = models.CharField("역할", max_length=20, choices=UserRole.choices, default=UserRole.CLIENT)
+    status = models.CharField(
+        "상태", max_length=20, choices=UserStatus.choices, default=UserStatus.PENDING
+    )
+    is_active = models.BooleanField("계정 활성", default=True)
+    is_staff = models.BooleanField(default=False)
+    created_at = models.DateTimeField("가입일", default=timezone.now)
+    updated_at = models.DateTimeField("수정일", auto_now=True)
+
+    objects = UserManager()
+
+    USERNAME_FIELD = "email"
+    REQUIRED_FIELDS = ["name"]
+
+    class Meta:
+        verbose_name = "사용자"
+        verbose_name_plural = "사용자"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.name} ({self.get_role_display()})"
+
+    @property
+    def is_admin(self):
+        return self.role == UserRole.ADMIN
+
+    @property
+    def is_counselor(self):
+        return self.role == UserRole.COUNSELOR
+
+    @property
+    def is_client(self):
+        return self.role == UserRole.CLIENT
+
+    @property
+    def is_active_user(self):
+        return self.status == UserStatus.ACTIVE
+
+    def save(self, *args, **kwargs):
+        self.is_active = self.status == UserStatus.ACTIVE
+        super().save(*args, **kwargs)
+
+
+class CounselorProfile(models.Model):
+    user = models.OneToOneField(
+        User, on_delete=models.CASCADE, related_name="counselor_profile", verbose_name="사용자"
+    )
+    license_number = models.CharField("자격증 번호", max_length=100, blank=True)
+    specialties = models.JSONField("전문분야", default=list, blank=True)
+    bio = models.TextField("소개", blank=True)
+    max_cases = models.PositiveIntegerField("최대 동시 사례 수", default=10)
+    is_approved = models.BooleanField("승인 여부", default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "상담사 프로필"
+        verbose_name_plural = "상담사 프로필"
+
+    def __str__(self):
+        return f"상담사: {self.user.name}"
+
+
+class ClientProfile(models.Model):
+    user = models.OneToOneField(
+        User, on_delete=models.CASCADE, related_name="client_profile", verbose_name="사용자"
+    )
+    student_id = models.CharField(
+        "학번",
+        max_length=20,
+        blank=True,
+        help_text="회원가입·상담 신청 시 확정되며, 내담자 회원정보 수정 화면에서는 변경할 수 없습니다.",
+    )
+    birth_date = models.DateField("생년월일", null=True, blank=True)
+    gender = models.CharField("성별", max_length=10, blank=True)
+    emergency_contact = models.CharField("비상연락처", max_length=20, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "내담자 프로필"
+        verbose_name_plural = "내담자 프로필"
+
+    def __str__(self):
+        return f"내담자: {self.user.name}"
+
+
+class AuditLog(models.Model):
+    user = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="사용자"
+    )
+    action = models.CharField("행동", max_length=100)
+    target_type = models.CharField("대상 유형", max_length=100, blank=True)
+    target_id = models.UUIDField("대상 ID", null=True, blank=True)
+    ip_address = models.GenericIPAddressField("IP 주소", null=True, blank=True)
+    created_at = models.DateTimeField("일시", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "감사 로그"
+        verbose_name_plural = "감사 로그"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.action} - {self.created_at:%Y-%m-%d %H:%M}"

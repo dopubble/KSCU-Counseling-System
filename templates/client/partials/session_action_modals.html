@@ -1,0 +1,123 @@
+<div class="modal fade" id="sessionScheduleChangeModal" tabindex="-1" aria-labelledby="sessionScheduleChangeModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="post" id="sessionScheduleChangeForm" action="">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title" id="sessionScheduleChangeModalLabel">상담일정 예약</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">
+                        <span id="sessionScheduleChangeTarget" class="fw-semibold"></span>
+                        <span id="sessionScheduleChangeIntro"> 상담 일정 예약을 요청합니다.</span>
+                    </p>
+                    <div class="mb-3 d-none" id="sessionScheduleCurrentDatetimeWrap">
+                        <label class="form-label fw-semibold mb-1">현재 예약 일시</label>
+                        <p class="mb-0 fw-semibold" id="sessionScheduleCurrentDatetime"></p>
+                    </div>
+                    <div class="client-schedule-calendar-legend mb-2" aria-hidden="false">
+                        <span class="client-schedule-calendar-legend-item client-schedule-calendar-legend-item--available">
+                            <span class="client-schedule-calendar-legend-swatch"></span>상담 가능
+                        </span>
+                        <span class="client-schedule-calendar-legend-item client-schedule-calendar-legend-item--blocked">
+                            <span class="client-schedule-calendar-legend-swatch"></span>상담 불가(차단)
+                        </span>
+                        <span class="small text-muted d-block mt-1 mb-0">특정일 예외는 정기 일정보다 우선 표시됩니다.</span>
+                    </div>
+                    <div class="mb-3">
+                        <label for="sessionSchedulePreferredDatetime" class="form-label fw-semibold" id="sessionSchedulePreferredDatetimeLabel">희망 일시</label>
+                        <input type="text"
+                               name="preferred_datetime"
+                               id="sessionSchedulePreferredDatetime"
+                               class="form-control client-schedule-datetime-input"
+                               placeholder="날짜와 시간을 선택해 주세요"
+                               autocomplete="off"
+                               required>
+                    </div>
+                    <div class="mb-0">
+                        <label for="sessionScheduleMessage" class="form-label fw-semibold" id="sessionScheduleMessageLabel">요청 내용 <span class="text-muted fw-normal">(선택 사항)</span></label>
+                        <textarea name="message" id="sessionScheduleMessage" class="form-control" rows="3" placeholder="변경이 필요한 사유와 희망 일정을 알려 주세요. (선택 사항)"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn client-dashboard-action-btn" id="sessionScheduleChangeSubmitBtn">요청 보내기</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="sessionCancelRequestModal" tabindex="-1" aria-labelledby="sessionCancelRequestModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="post" id="sessionCancelRequestForm" action="">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="sessionCancelRequestModalLabel">예약 취소 요청</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">
+                        <span id="sessionCancelRequestTarget" class="fw-semibold"></span> 예약 취소를 요청합니다. 취소 사유를 입력해 주세요.
+                    </p>
+                    <label for="sessionCancelReason" class="form-label fw-semibold">취소 사유</label>
+                    <textarea name="cancel_reason"
+                              id="sessionCancelReason"
+                              class="form-control"
+                              rows="4"
+                              required
+                              minlength="5"
+                              placeholder="취소가 필요한 사유를 입력해 주세요."></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">닫기</button>
+                    <button type="submit" class="btn btn-danger">취소 요청 제출</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="sessionMaterialUploadModal" tabindex="-1" aria-labelledby="sessionMaterialUploadModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="post" id="sessionMaterialUploadForm" action="" enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title" id="sessionMaterialUploadModalLabel">자료 첨부</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">
+                        <span id="sessionMaterialUploadTarget" class="fw-semibold"></span> 상담을 위해 자료를 첨부합니다.
+                    </p>
+                    <div class="mb-3">
+                        <label for="sessionMaterialTitle" class="form-label fw-semibold">자료명 <span class="text-muted fw-normal">(선택)</span></label>
+                        <input type="text" name="title" id="sessionMaterialTitle" class="form-control" maxlength="200" placeholder="예: 심리검사 결과">
+                    </div>
+                    <div class="mb-0">
+                        <label for="sessionMaterialFile" class="form-label fw-semibold">파일</label>
+                        <input type="file"
+                               name="file"
+                               id="sessionMaterialFile"
+                               class="form-control"
+                               accept=".pdf,.hwp,.doc,.docx,.jpg,.jpeg"
+                               required>
+                        <p class="form-text small text-muted mb-0 mt-2">
+                            PDF, HWP, Word(doc/docx), JPG만 가능 · 파일당 최대 10MB
+                        </p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn client-dashboard-action-btn">
+                        <i class="bi bi-upload me-1" aria-hidden="true"></i>첨부하기
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

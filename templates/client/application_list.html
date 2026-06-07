@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% load ui_tags %}
+
+{% block title %}상담 신청 목록{% endblock %}
+
+{% block layout %}
+<section class="site-page client-portal-page py-4 py-lg-5">
+    <div class="container site-container">
+{% block content %}
+        <div class="client-portal-stack">
+        {% page_header title="상담 신청 목록" subtitle="신청하신 상담 내역을 확인할 수 있습니다." heading_tag="h1" title_class="client-portal-title site-page-title" header_class="site-page-header mb-0" c1_label="내 상담실" c1_url_name="client:dashboard" c1_icon="bi-house-door" c2_label="상담 신청 목록" %}
+
+        <div class="card client-dashboard-card border-0 section-spacing">
+            <div class="card-header client-portal-card-header border-0 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <span><i class="bi bi-journal-text me-1"></i>전체 상담 신청</span>
+                <a href="{% url 'counseling:apply' %}" class="btn btn-sm client-dashboard-action-btn">상담 신청하기</a>
+            </div>
+            <div class="card-body p-0">
+                {% if applications %}
+                <div class="table-responsive table-container">
+                    <table class="table client-appointment-table align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th scope="col" class="client-appointment-no-col">연번</th>
+                                <th scope="col">상담 유형</th>
+                                <th scope="col">상담사</th>
+                                <th scope="col" class="client-appointment-date-col">신청일</th>
+                                <th scope="col" class="client-appointment-datetime-col">희망 일시</th>
+                                <th scope="col" class="client-appointment-datetime-col">상담 확정 일자</th>
+                                <th scope="col" class="client-appointment-action-col client-appointment-note-col">비고</th>
+                                <th scope="col" class="client-appointment-action-col">삭제</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for app in applications %}
+                            <tr>
+                                <td data-label="연번" class="client-appointment-no-col">{{ app.application_no }}</td>
+                                <td data-label="상담 유형">
+                                    {% url 'client:application_detail' app.pk as app_detail_url %}
+                                    {% include "includes/counseling_type_link.html" with href=app_detail_url text=app.counseling_type %}
+                                </td>
+                                <td data-label="상담사">
+                                    {% if app.case and app.case.counselor %}
+                                        {{ app.case.counselor.name }}
+                                    {% else %}
+                                        <span class="text-muted">배정 대기</span>
+                                    {% endif %}
+                                </td>
+                                <td data-label="신청일" class="client-appointment-date-col">{{ app.created_at|date:"Y-m-d H:i" }}</td>
+                                <td data-label="희망 일시" class="client-appointment-datetime-col">
+                                    {% if app.preferred_schedule.preferred_date %}
+                                        {{ app.preferred_schedule.preferred_date }}
+                                        {{ app.preferred_schedule.preferred_time }}
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </td>
+                                <td data-label="상담 확정 일자" class="client-appointment-datetime-col">
+                                    {% if app.consultation_confirmed_at %}
+                                        {{ app.consultation_confirmed_at|date:"Y-m-d H:i" }}
+                                    {% else %}
+                                        <span class="text-muted">미확정</span>
+                                    {% endif %}
+                                </td>
+                                <td data-label="비고" class="client-appointment-action-cell client-appointment-note-cell">
+                                    {% if app.can_edit_application_policy and app.status != 'CANCELLED' %}
+                                        <form method="post" action="{% url 'client:edit_application' app.pk %}" class="d-inline">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-sm client-dashboard-action-btn">신청서 수정</button>
+                                        </form>
+                                    {% elif app.has_confirmed_appointment and not app.can_edit_application_policy %}
+                                        <span class="small text-muted">24시간 이내 변경 불가</span>
+                                    {% endif %}
+                                </td>
+                                <td data-label="삭제" class="client-appointment-action-cell">
+                                    {% include "client/partials/delete_application_button.html" with application=app delete_next=request.path %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <p class="client-application-table-footnote table-container"><small>※ 확정된 상담은 예정 24시간 전까지만 변경·취소(무패널티)할 수 있습니다. 24시간 이내 취소 시 회기 1회가 차감되며, 예약 당일 취소 3회 누적 시 조기 종결됩니다.</small></p>
+                {% else %}
+                <p class="text-muted text-center py-4 mb-0 table-container">상담 신청 내역이 없습니다.</p>
+                {% endif %}
+            </div>
+        </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+{% endblock %}

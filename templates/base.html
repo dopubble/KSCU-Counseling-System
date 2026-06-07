@@ -1,0 +1,171 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="google" content="notranslate">
+    <title>{% block title %}숭실사이버대학교 평생교육원 전문상담사 수련과정{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="{% static 'css/main.css' %}" rel="stylesheet">
+    {% block extra_css %}{% endblock %}
+</head>
+<body class="d-flex flex-column min-vh-100">
+    <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom shadow-sm site-navbar">
+        <div class="container site-container">
+            <a class="navbar-brand d-flex align-items-center gap-2" href="{% url 'home' %}">
+                {% static 'images/ssu-logo.svg' as logo_svg %}
+                <img src="{% static 'images/ssu-logo.png' %}"
+                     alt="숭실사이버대학교"
+                     class="brand-logo"
+                     height="40"
+                     onerror="this.onerror=null;this.src='{{ logo_svg }}';">
+                <span class="brand-title">
+                    <span class="brand-title-line brand-title-line--top">숭실사이버대학교 평생교육원</span>
+                    <span class="brand-title-line brand-title-line--bottom">전문상담사 수련과정</span>
+                </span>
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+                    aria-controls="navbarNav" aria-expanded="false" aria-label="메뉴">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto ms-lg-3">
+                    {% if user.is_authenticated and user.role == "ADMIN" %}
+                        {% include "includes/admin_nav_items.html" %}
+                    {% else %}
+                        <li class="nav-item">
+                            <a class="nav-link {% if request.resolver_match.url_name == 'home' %}active{% endif %}"
+                               href="{% url 'home' %}">홈</a>
+                        </li>
+                        {% if user.is_authenticated and user.role == "CLIENT" %}
+                            {% include "includes/client_nav_items.html" %}
+                        {% else %}
+                            <li class="nav-item">
+                                <a class="nav-link {% if request.resolver_match.url_name == 'apply' %}active{% endif %}"
+                                   href="{% url 'counseling:apply' %}">상담 신청</a>
+                            </li>
+                            {% block nav_items %}{% endblock %}
+                        {% endif %}
+                    {% endif %}
+                </ul>
+                <ul class="navbar-nav align-items-lg-center">
+                    {% if user.is_authenticated %}
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle d-flex align-items-center gap-1 py-lg-2"
+                               href="#"
+                               id="userProfileDropdown"
+                               role="button"
+                               data-bs-toggle="dropdown"
+                               aria-expanded="false">
+                                <i class="bi bi-person-circle fs-5"></i>
+                                <span>{{ user.name }}님</span>
+                            </a>
+                            <ul class="dropdown-menu dropdown-menu-end shadow-sm"
+                                aria-labelledby="userProfileDropdown">
+                                {% if user.role == "CLIENT" %}
+                                <li>
+                                    <a class="dropdown-item" href="{% url 'accounts:profile_update' %}">
+                                        <i class="bi bi-pencil-square me-2"></i>정보 수정
+                                    </a>
+                                </li>
+                                {% elif user.role == "COUNSELOR" %}
+                                <li>
+                                    <a class="dropdown-item" href="{% url 'counselor:dashboard' %}">
+                                        <i class="bi bi-briefcase me-2"></i>상담사 홈
+                                    </a>
+                                </li>
+                                {% elif user.role == "ADMIN" %}
+                                <li>
+                                    <a class="dropdown-item" href="/admin/">
+                                        <i class="bi bi-gear me-2"></i>Django Admin
+                                    </a>
+                                </li>
+                                {% endif %}
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <span class="dropdown-item-text small text-muted">
+                                        {{ user.email }}
+                                    </span>
+                                </li>
+                            </ul>
+                        </li>
+                        {% if user.role == "COUNSELOR" %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'counselor:dashboard' %}">상담사</a>
+                        </li>
+                        {% endif %}
+                        <li class="nav-item">
+                            <form method="post" action="{% url 'accounts:logout' %}" class="d-inline ms-lg-2">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-outline-secondary btn-sm">
+                                    로그아웃
+                                </button>
+                            </form>
+                        </li>
+                    {% else %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'accounts:login' %}">로그인</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="btn btn-kscu btn-sm text-white ms-lg-2" href="{% url 'accounts:signup' %}">회원가입</a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    {% if admin_show_cancel_pending_alert %}
+    <div class="container site-container mt-3">
+        <div class="alert alert-warning border-0 shadow-sm mb-0 d-flex flex-wrap align-items-center gap-2" role="alert">
+            <i class="bi bi-exclamation-circle-fill"></i>
+            <span>
+                처리 대기 중인 <strong>상담 취소 요청</strong>이
+                <strong>{{ admin_cancel_pending_count }}건</strong> 있습니다.
+            </span>
+            <a href="{% url 'admin_panel:cancel_pending_list' %}" class="btn btn-sm btn-warning ms-auto">취소 대기 목록</a>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if messages %}
+    <div class="container site-container mt-3">
+        {% for message in messages %}
+        <div class="alert alert-{{ message.tags }} alert-dismissible fade show shadow-sm" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="닫기"></button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <main class="{% block main_class %}flex-grow-1 p-0{% endblock %}">
+        {% block layout %}
+        <div class="site-page py-4 py-lg-5">
+            <div class="container site-container">
+                {% block content %}{% endblock %}
+            </div>
+        </div>
+        {% endblock %}
+    </main>
+
+    <footer class="site-footer py-4 mt-auto">
+        <div class="container site-container">
+            <div class="row align-items-center">
+                <div class="col-md-8 text-center text-md-start">
+                    <p class="mb-0 fw-semibold text-kscu">숭실사이버대학교 평생교육원 전문상담사 수련과정</p>
+                    <p class="mb-0 small text-muted">전문상담사 양성을 위한 수련·실습 지원</p>
+                </div>
+                <div class="col-md-4 text-center text-md-end mt-2 mt-md-0">
+                    <small class="text-muted">&copy; 2026 Soongsil Cyber University</small>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

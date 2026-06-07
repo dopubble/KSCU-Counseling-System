@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% load ui_tags %}
+
+{% block title %}{{ page_title }} — 관리자{% endblock %}
+
+{% block content %}
+<header class="site-page-header mb-4">
+{% page_breadcrumb c1_label="대시보드" c1_url_name="admin_panel:dashboard" c1_icon="bi-speedometer2" c2_label=page_title %}
+<div class="site-page-heading mt-4">
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <div>
+        <h2 class="site-page-title mb-0">{{ page_title }}</h2>
+        <p class="site-page-subtitle mb-0">총 {{ cases_count }}건</p>
+    </div>
+    <div class="btn-group" role="group">
+        <a href="{% url 'admin_panel:case_list' %}?filter=active"
+           class="btn btn-sm {% if filter == 'active' %}btn-success{% else %}btn-outline-success{% endif %}">
+            진행 중인 상담
+        </a>
+        <a href="{% url 'admin_panel:case_list' %}?filter=all"
+           class="btn btn-sm {% if filter == 'all' %}btn-secondary{% else %}btn-outline-secondary{% endif %}">
+            전체
+        </a>
+    </div>
+</div>
+</div>
+</header>
+
+<div class="card border-0 shadow-sm section-spacing">
+    <div class="card-body p-0">
+        {% if cases %}
+        <div class="table-responsive table-container">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>사례번호</th>
+                        <th>내담자</th>
+                        <th>담당 상담사</th>
+                        <th>상태</th>
+                        <th>위험도</th>
+                        <th>개시일</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for case in cases %}
+                    <tr>
+                        <td class="fw-semibold">{{ case.case_number }}</td>
+                        <td>{{ case.client.name }}</td>
+                        <td>{% if case.counselor %}{{ case.counselor.name }}{% else %}<span class="text-muted">미배정</span>{% endif %}</td>
+                        <td>
+                            <span class="badge bg-{% if case.status == 'ACTIVE' %}success{% else %}secondary{% endif %}">
+                                {{ case.get_status_display }}
+                            </span>
+                        </td>
+                        <td>{{ case.get_risk_level_display }}</td>
+                        <td class="text-muted small">{{ case.opened_at|date:"Y-m-d" }}</td>
+                        <td class="text-end">
+                            <a href="{% url 'counseling:application_detail' case.application_id %}"
+                               class="btn btn-sm btn-outline-primary">
+                                {% if case.counselor %}상담사 변경{% else %}배정{% endif %}
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted text-center py-5 mb-0 table-container">해당 조건의 사례가 없습니다.</p>
+        {% endif %}
+    </div>
+</div>
+
+<p class="mt-3">
+    <a href="{% url 'admin_panel:dashboard' %}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left me-1"></i> 대시보드로
+    </a>
+</p>
+{% endblock %}

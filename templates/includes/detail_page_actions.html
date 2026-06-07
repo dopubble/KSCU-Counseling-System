@@ -1,0 +1,25 @@
+{# 상세 페이지 하단 액션 바 — 기록·본문 카드 내부 맨 아래에 배치 #}
+{# back_url/back_label: 좌측 보조(돌아가기) | secondary_*: 우측 추가 보조 | primary_*: 우측 주 액션 #}
+<div class="detail-page-actions d-flex flex-wrap justify-content-between align-items-center gap-3 mt-4 pt-3 border-top">
+    {% if back_url %}
+    <div class="detail-page-actions__back">
+        <a href="{{ back_url }}" class="btn btn-outline-secondary">
+            {% if back_icon %}<i class="{{ back_icon }} me-1" aria-hidden="true"></i>{% else %}<i class="bi bi-arrow-left me-1" aria-hidden="true"></i>{% endif %}{{ back_label|default:"돌아가기" }}
+        </a>
+    </div>
+    {% endif %}
+    {% if secondary_url or primary_url %}
+    <div class="detail-page-actions__end d-flex flex-wrap gap-2{% if not back_url %} ms-auto{% endif %}">
+        {% if secondary_url %}
+        <a href="{{ secondary_url }}" class="btn btn-outline-secondary">
+            {% if secondary_icon %}<i class="{{ secondary_icon }} me-1" aria-hidden="true"></i>{% endif %}{{ secondary_label }}
+        </a>
+        {% endif %}
+        {% if primary_url %}
+        <a href="{{ primary_url }}" class="btn btn-primary">
+            {% if primary_icon %}<i class="{{ primary_icon }} me-1" aria-hidden="true"></i>{% else %}<i class="bi bi-pencil me-1" aria-hidden="true"></i>{% endif %}{{ primary_label|default:"수정" }}
+        </a>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>

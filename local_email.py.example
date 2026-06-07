@@ -1,0 +1,13 @@
+"""
+예시 파일 — 복사하여 local_email.py 로 사용하세요.
+
+    copy local_email.py.example local_email.py   (Windows)
+"""
+
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = "your.account@gmail.com"
+EMAIL_HOST_PASSWORD = "abcdefghijklmnop"
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+STAFF_NOTIFY_EMAILS = [EMAIL_HOST_USER]

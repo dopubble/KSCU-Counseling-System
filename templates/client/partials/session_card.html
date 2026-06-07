@@ -1,0 +1,165 @@
+{% load ui_tags %}
+<article class="client-session-card mb-3" id="session-{{ session.session_number }}">
+    <header class="client-session-card-header">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 w-100">
+            <div class="client-session-card-meta">
+                <span class="client-session-pill">{{ session.session_number }}회기</span>
+                {% if session.scheduled_datetime %}
+                <time class="client-session-card-date fw-bold" datetime="{{ session.scheduled_datetime|date:'c' }}">
+                    {{ session.scheduled_datetime|date:"Y-m-d H:i" }}
+                </time>
+                {% endif %}
+                {% if session.has_session_cancel_pending %}
+                <span class="badge client-dashboard-badge client-session-status-badge client-session-status-badge--cancel-pending">
+                    취소 대기 중
+                </span>
+                {% else %}
+                <span class="badge client-dashboard-badge client-session-status-badge client-session-status-badge--{{ session.status_code|lower }}">
+                    {{ session.client_status_label }}
+                </span>
+                {% endif %}
+            </div>
+            {% if session.has_session_cancel_pending %}
+            <div class="client-session-card-header-actions d-flex flex-wrap align-items-center gap-2">
+                <form method="post"
+                      action="{% url 'client:session_cancel_withdraw' case.pk session.appointment.pk %}"
+                      class="client-session-cancel-withdraw-form mb-0"
+                      data-session-label="{{ session.session_number }}회기">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.path }}">
+                    <button type="submit"
+                            class="btn btn-sm btn-outline-secondary client-session-cancel-withdraw-btn">
+                        <i class="bi bi-arrow-counterclockwise me-1" aria-hidden="true"></i>취소 요청 철회
+                    </button>
+                </form>
+            </div>
+            {% elif session.show_confirmed_session_actions %}
+            <div class="client-session-card-header-actions d-flex flex-wrap align-items-center gap-2">
+                <button type="button"
+                        class="btn btn-sm btn-outline-secondary client-session-action-btn client-session-schedule-change-btn"
+                        {% if session.confirmed_actions_blocked %}disabled{% endif %}
+                        data-session-number="{{ session.session_number }}"
+                        data-session-label="{{ session.session_number }}회기"
+                        data-schedule-action-label="일정 변경 요청"
+                        data-is-confirmed="1"
+                        {% if session.scheduled_datetime %}
+                        data-current-datetime="{{ session.scheduled_datetime|date:'Y-m-d H:i' }}"
+                        data-scheduled-at="{{ session.scheduled_datetime|date:'c' }}"
+                        {% endif %}
+                        data-change-blocked="{% if session.confirmed_actions_blocked %}1{% else %}0{% endif %}">
+                    <i class="bi bi-calendar-event me-1" aria-hidden="true"></i>일정 변경 요청
+                </button>
+                <button type="button"
+                        class="btn btn-sm btn-outline-danger client-session-action-btn client-session-cancel-request-btn"
+                        {% if session.confirmed_actions_blocked %}disabled{% endif %}
+                        data-session-label="{{ session.session_number }}회기"
+                        data-cancel-url="{% url 'client:session_appointment_cancel' case.pk session.appointment.pk %}"
+                        data-cancel-next="{{ request.path }}"
+                        data-change-blocked="{% if session.confirmed_actions_blocked %}1{% else %}0{% endif %}">
+                    <i class="bi bi-x-circle me-1" aria-hidden="true"></i>예약 취소 요청
+                </button>
+            </div>
+            {% elif session.show_pending_session_actions %}
+            <div class="client-session-card-header-actions d-flex flex-wrap align-items-center gap-2">
+                <button type="button"
+                        class="btn btn-sm btn-outline-secondary client-session-action-btn client-session-schedule-change-btn"
+                        data-session-number="{{ session.session_number }}"
+                        data-session-label="{{ session.session_number }}회기"
+                        data-schedule-action-label="일정 수정"
+                        data-is-confirmed="0"
+                        data-is-pending="1"
+                        {% if session.scheduled_datetime %}
+                        data-current-datetime="{{ session.scheduled_datetime|date:'Y-m-d H:i' }}"
+                        data-scheduled-at="{{ session.scheduled_datetime|date:'c' }}"
+                        {% endif %}
+                        data-change-blocked="0">
+                    <i class="bi bi-pencil-square me-1" aria-hidden="true"></i>일정 수정
+                </button>
+                <form method="post"
+                      action="{% url 'client:session_pending_withdraw' case.pk session.appointment.pk %}"
+                      class="client-session-pending-withdraw-form mb-0">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.path }}">
+                    <button type="submit"
+                            class="btn btn-sm btn-outline-danger client-session-pending-withdraw-btn">
+                        <i class="bi bi-x-lg me-1" aria-hidden="true"></i>예약 요청 철회
+                    </button>
+                </form>
+            </div>
+            {% elif session.show_schedule_change_booking %}
+            <div class="client-session-card-header-actions d-flex flex-wrap align-items-center gap-2">
+                <button type="button"
+                        class="btn btn-sm btn-outline-secondary client-session-action-btn client-session-schedule-change-btn"
+                        data-session-number="{{ session.session_number }}"
+                        data-session-label="{{ session.session_number }}회기"
+                        data-schedule-action-label="상담일정 예약"
+                        data-is-confirmed="0"
+                        {% if session.scheduled_datetime %}
+                        data-scheduled-at="{{ session.scheduled_datetime|date:'c' }}"
+                        {% endif %}
+                        data-change-blocked="{% if session.schedule_change_blocked %}1{% else %}0{% endif %}">
+                    <i class="bi bi-calendar-event me-1" aria-hidden="true"></i>상담일정 예약
+                </button>
+            </div>
+            {% endif %}
+        </div>
+        {% if session.show_confirmed_session_actions and session.confirmed_actions_blocked %}
+        <p class="small text-muted mb-0 mt-2 w-100 client-session-actions-lock-notice">
+            상담 24시간 이내에는 변경/취소가 불가합니다.
+        </p>
+        {% endif %}
+        {% if session.status_code == 'CHANGE_REQUESTED' and session.schedule_change_request.preferred_datetime %}
+        <p class="small text-muted mb-0 mt-2 px-1 w-100">
+            <i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>변경 희망: {{ session.schedule_change_request.preferred_datetime|date:"Y-m-d H:i" }}
+        </p>
+        {% endif %}
+        {% if session.has_client_cancel_notice %}
+        <div class="alert alert-secondary border-0 py-2 px-3 mt-2 mb-0 mx-0 w-100">
+            <p class="small fw-semibold mb-1"><i class="bi bi-check-circle me-1" aria-hidden="true"></i>예약 취소가 완료되었습니다</p>
+            {% if session.client_cancel_reason %}
+            <p class="small mb-0 client-pre-wrap text-muted">{{ session.client_cancel_reason }}</p>
+            {% endif %}
+        </div>
+        {% elif session.has_rejection_notice %}
+        <div class="alert alert-danger border-0 py-2 px-3 mt-2 mb-0 mx-0 w-100">
+            <p class="small fw-semibold mb-1"><i class="bi bi-x-circle me-1" aria-hidden="true"></i>예약이 반려되었습니다</p>
+            <p class="small mb-0 client-pre-wrap">{{ session.rejection_reason }}</p>
+        </div>
+        {% endif %}
+    </header>
+    {% if session.show_client_materials_section %}
+    <div class="client-session-card-body">
+        {% include "includes/session_materials_list.html" with session=session case=case portal="client" show_materials_section=True %}
+        {% if session.show_session_actions %}
+        <div class="client-session-card-actions d-flex flex-wrap gap-2 mt-3">
+            <button type="button"
+                    class="btn btn-sm btn-outline-secondary client-session-action-btn"
+                    data-bs-toggle="modal"
+                    data-bs-target="#sessionMaterialUploadModal"
+                    data-session-number="{{ session.session_number }}"
+                    data-session-label="{{ session.session_number }}회기">
+                <i class="bi bi-paperclip me-1" aria-hidden="true"></i>자료 첨부
+            </button>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+    {% if session.show_zoom or session.show_journal %}
+    <footer class="client-session-card-footer d-flex flex-wrap align-items-center gap-2">
+        {% if session.show_zoom %}
+        <a href="{{ session.zoom_url }}"
+           target="_blank"
+           rel="noopener noreferrer"
+           class="btn btn-sm client-dashboard-action-btn">
+            <i class="bi bi-camera-video me-1" aria-hidden="true"></i>Zoom 회의 바로가기
+        </a>
+        {% endif %}
+        {% if session.show_journal %}
+        <a href="{% url 'client:session_detail' case.pk session.appointment.pk %}"
+           class="btn btn-sm btn-outline-primary{% if session.show_zoom %} ms-sm-2{% endif %}">
+            <i class="bi bi-journal-text me-1" aria-hidden="true"></i>상담일지 보기
+        </a>
+        {% endif %}
+    </footer>
+    {% endif %}
+</article>

@@ -1,0 +1,57 @@
+<div class="row g-3{% if compact %} mb-0{% else %} section-spacing{% endif %}">
+    <div class="col-md-3 col-6">
+        <a href="{% url 'admin_panel:counseling_management' %}?tab=waiting" class="stat-card-link text-decoration-none">
+            <div class="card border-0 shadow-sm text-center stat-card h-100">
+                <div class="card-body">
+                    <h6 class="text-muted mb-2">이번 달 신청</h6>
+                    <p class="display-6 text-primary mb-0">{{ stats.applications_this_month }}</p>
+                    {% if not compact %}<small class="text-muted">클릭하여 목록 보기</small>{% endif %}
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-3 col-6">
+        <a href="{% url 'admin_panel:matching_list' %}?filter=waiting" class="stat-card-link text-decoration-none">
+            <div class="card border-0 shadow-sm text-center stat-card h-100">
+                <div class="card-body">
+                    <h6 class="text-muted mb-2">매칭 대기</h6>
+                    <p class="display-6 text-warning mb-0">{{ stats.waiting_match }}</p>
+                    {% if not compact %}<small class="text-muted">클릭하여 매칭하기</small>{% endif %}
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-3 col-6">
+        <a href="{% url 'admin_panel:counseling_management' %}?tab=active" class="stat-card-link text-decoration-none">
+            <div class="card border-0 shadow-sm text-center stat-card h-100">
+                <div class="card-body">
+                    <h6 class="text-muted mb-2">진행 중인 상담</h6>
+                    <p class="display-6 text-success mb-0">{{ stats.active_cases }}</p>
+                    {% if not compact %}<small class="text-muted">클릭하여 목록 보기</small>{% endif %}
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card border-0 shadow-sm text-center h-100">
+            <div class="card-body">
+                <h6 class="text-muted mb-2">오늘 예약</h6>
+                <p class="display-6 text-info mb-0">{{ stats.appointments_today }}</p>
+                {% if not compact %}<small class="text-muted">&nbsp;</small>{% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <a href="{% url 'admin_panel:cancel_pending_list' %}" class="stat-card-link text-decoration-none">
+            <div class="card border-0 shadow-sm text-center stat-card h-100 {% if stats.cancel_pending %}border-warning{% endif %}">
+                <div class="card-body">
+                    <h6 class="text-muted mb-2">취소 요청 대기</h6>
+                    <p class="display-6 {% if stats.cancel_pending %}text-warning{% else %}text-secondary{% endif %} mb-0">
+                        {{ stats.cancel_pending }}
+                    </p>
+                    {% if not compact %}<small class="text-muted">클릭하여 목록 보기</small>{% endif %}
+                </div>
+            </div>
+        </a>
+    </div>
+</div>
