@@ -36,6 +36,14 @@
                             <td>{{ student_id|default:"—" }}</td>
                         </tr>
                         <tr>
+                            <th class="table-light">생년월일</th>
+                            <td>{{ birth_date|default:"—" }}</td>
+                        </tr>
+                        <tr>
+                            <th class="table-light">소속 학과</th>
+                            <td>{{ department|default:"—" }}</td>
+                        </tr>
+                        <tr>
                             <th class="table-light">연락처</th>
                             <td>{{ application.client.phone|default:"—" }}</td>
                         </tr>

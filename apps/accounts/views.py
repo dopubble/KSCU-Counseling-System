@@ -10,6 +10,7 @@ from django.contrib.auth.views import (
 )
 from django.shortcuts import redirect, render
 from django.urls import reverse, reverse_lazy
+from django.utils.decorators import method_decorator
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
 
@@ -52,6 +53,7 @@ def home(request):
     return render(request, "home.html", context)
 
 
+@method_decorator(never_cache, name="dispatch")
 class UserLoginView(LoginView):
     template_name = "accounts/login.html"
     authentication_form = EmailAuthenticationForm
@@ -129,11 +131,18 @@ def pending(request):
 
 
 def _profile_immutable_fields_tampered(request, user, profile) -> bool:
-    """HTML/POST 조작으로 이름·학번 변경을 시도했는지 검사."""
+    """HTML/POST 조작으로 변경 불가 필드 수정 시도 여부."""
     if "name" in request.POST and request.POST.get("name", "") != user.name:
         return True
     current_student_id = profile.student_id or ""
     if "student_id" in request.POST and request.POST.get("student_id", "") != current_student_id:
+        return True
+    posted_birth = request.POST.get("birth_date", "")
+    expected_birth = profile.birth_date.isoformat() if profile.birth_date else ""
+    if "birth_date" in request.POST and posted_birth != expected_birth:
+        return True
+    current_department = profile.department or ""
+    if "department" in request.POST and request.POST.get("department", "") != current_department:
         return True
     return False
 
@@ -153,7 +162,7 @@ def profile_update(request):
 
     if request.method == "POST":
         if _profile_immutable_fields_tampered(request, user, profile):
-            messages.error(request, "이름·학번은 변경할 수 없습니다.")
+            messages.error(request, "이름·학번·생년월일·소속 학과는 변경할 수 없습니다.")
             return redirect("accounts:profile_update")
 
         form = ProfileUpdateForm(request.POST, user=user)

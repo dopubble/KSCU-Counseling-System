@@ -1,7 +1,8 @@
 from .base import *  # noqa: F401, F403
-from .base import _env_str  # star import는 _ 접두 private 이름 제외
+from .base import _env_int, _env_str  # star import는 _ 접두 private 이름 제외
 import os
 
+# env DEBUG=True 여부와 무관 — 운영은 항상 False
 DEBUG = False
 
 MIDDLEWARE = [
@@ -16,13 +17,22 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SAMESITE = "Lax"
 
 # Railway / reverse proxy — HTTPS만 프록시 헤더로 신뢰
 # USE_X_FORWARDED_HOST=True면 Railway 내부 Host로 검증되어 400(DisallowedHost) 발생 가능
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 USE_X_FORWARDED_HOST = False
 
-EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+# base._configure_email_backend() — 자격 증명 없으면 console(신청 저장은 계속 가능)
+# SMTP는 타임아웃을 두어 Gunicorn worker timeout(120s)으로 500 나는 것을 방지
+if EMAIL_HOST_USER and EMAIL_HOST_PASSWORD:  # noqa: F405
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+else:
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+EMAIL_TIMEOUT = _env_int("EMAIL_TIMEOUT", 10)
 
 
 def _sanitize_allowed_host(value: str) -> str:
@@ -83,6 +93,18 @@ def _build_csrf_trusted_origins() -> list[str]:
 CSRF_TRUSTED_ORIGINS = _build_csrf_trusted_origins()
 
 
+def _merge_csrf_trusted_origins(*candidates: str) -> None:
+    """CSRF_TRUSTED_ORIGINS에 Origin 추가(중복·와일드카드 호스트 제외)."""
+    global CSRF_TRUSTED_ORIGINS
+    for candidate in candidates:
+        host = _sanitize_allowed_host(candidate)
+        if not host or host.startswith("."):
+            continue
+        origin = _normalize_origin(host)
+        if origin and origin not in CSRF_TRUSTED_ORIGINS:
+            CSRF_TRUSTED_ORIGINS.append(origin)
+
+
 def _extend_allowed_hosts(hosts: list[str], *candidates: str) -> None:
     for host in candidates:
         host = _sanitize_allowed_host(host)
@@ -111,18 +133,20 @@ for _railway_host in (
 ):
     _extend_allowed_hosts(ALLOWED_HOSTS, _railway_host)  # noqa: F405
 
-# CSRF — Railway 도메인이 env에 없을 때 public domain으로 보완
-if _on_railway and not CSRF_TRUSTED_ORIGINS:
-    _pub = _env_str("RAILWAY_PUBLIC_DOMAIN")
-    if _pub:
-        CSRF_TRUSTED_ORIGINS = [_normalize_origin(_pub)]
+# CSRF — env 오타·누락 시에도 Railway public domain·ALLOWED_HOSTS에서 보완
+if _on_railway:
+    _merge_csrf_trusted_origins(_env_str("RAILWAY_PUBLIC_DOMAIN"))
+    for _host in ALLOWED_HOSTS:  # noqa: F405
+        _merge_csrf_trusted_origins(_host)
 
-# Railway Deploy Logs에서 Host 설정 확인용 (비밀값 없음)
+# Railway Deploy Logs에서 Host/CSRF 설정 확인용 (비밀값 없음)
 if _on_railway:
     import sys
 
     print(
         f"[kscu] DJANGO_SETTINGS_MODULE={os.environ.get('DJANGO_SETTINGS_MODULE')}",
+        f"DEBUG={DEBUG}",
         f"ALLOWED_HOSTS={ALLOWED_HOSTS}",
+        f"CSRF_TRUSTED_ORIGINS={CSRF_TRUSTED_ORIGINS}",
         file=sys.stderr,
     )

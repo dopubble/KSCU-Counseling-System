@@ -12,8 +12,23 @@ except ImportError:
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 _ENV_FILE = BASE_DIR / ".env"
-# override=True: OS/셸에 빈 값이 있어도 .env 내용을 우선
-_DOTENV_LOADED = load_dotenv(_ENV_FILE, override=True, encoding="utf-8")
+
+
+def _running_on_paas() -> bool:
+    """Railway 등 PaaS — 플랫폼 환경 변수가 .env보다 우선해야 함."""
+    return bool(
+        os.environ.get("PORT")
+        or os.environ.get("RAILWAY_ENVIRONMENT")
+        or os.environ.get("RAILWAY_PROJECT_ID")
+    )
+
+
+# 로컬: override=True(.env 우선). PaaS: override=False(Railway Variables 우선)
+_DOTENV_LOADED = (
+    load_dotenv(_ENV_FILE, override=not _running_on_paas(), encoding="utf-8")
+    if _ENV_FILE.is_file()
+    else False
+)
 DOTENV_FILE = str(_ENV_FILE)
 DOTENV_LOADED = bool(_DOTENV_LOADED)
 # load_dotenv 이후에도 파일에서 직접 읽기 (이중 안전)
@@ -73,7 +88,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "crispy_forms",
     "crispy_bootstrap5",
-    "apps.accounts",
+    "apps.accounts.apps.AccountsConfig",
     "apps.counseling",
     "apps.scheduling",
     "apps.documents",

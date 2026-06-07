@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load crispy_forms_tags %}
+{% load crispy_forms_tags static %}
 
 {% block title %}회원가입 - KSCU 전문상담센터{% endblock %}
 
@@ -9,12 +9,29 @@
         <div class="card shadow-sm">
             <div class="card-body p-4">
                 <h2 class="card-title text-center mb-4">회원가입</h2>
-                <form method="post" novalidate>
+                <form method="post" novalidate id="signup-form">
                     {% csrf_token %}
                     {% if next_url %}
                     <input type="hidden" name="next" value="{{ next_url }}">
                     {% endif %}
-                    {{ form|crispy }}
+
+                    {{ form.role|as_crispy_field }}
+                    {{ form.email|as_crispy_field }}
+                    {{ form.name|as_crispy_field }}
+                    {{ form.phone|as_crispy_field }}
+
+                    <div id="signup-client-fields" class="border-top pt-3 mt-2">
+                        <p class="small text-muted mb-3">내담자 가입 시 아래 정보를 입력해 주세요.</p>
+                        {{ form.birth_date|as_crispy_field }}
+                        {{ form.is_kcu_student|as_crispy_field }}
+                        {{ form.student_id|as_crispy_field }}
+                        {{ form.department|as_crispy_field }}
+                    </div>
+
+                    {{ form.password1|as_crispy_field }}
+                    {{ form.password2|as_crispy_field }}
+                    {{ form.agree_terms|as_crispy_field }}
+
                     <button type="submit" class="btn btn-primary w-100 mt-2">가입하기</button>
                 </form>
                 <p class="text-center mt-3 mb-0">
@@ -25,4 +42,8 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/signup_form.js' %}"></script>
 {% endblock %}

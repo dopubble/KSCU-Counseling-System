@@ -1,5 +1,8 @@
+import logging
 import os
 from urllib.parse import quote
+
+logger = logging.getLogger(__name__)
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -116,40 +119,56 @@ def _apply_page_context(request, form, *, is_edit=None):
     }
 
 
-def _get_apply_identity(user):
-    """상담 신청에 사용할 이름·학번(항상 계정 정보)."""
+def _get_apply_profile_snapshot(user):
+    """상담 신청에 사용할 회원 고정 정보(이름·학번·생년월일·학과)."""
     profile, _ = ClientProfile.objects.get_or_create(user=user)
-    return user.name, profile.student_id or ""
+    return {
+        "name": user.name,
+        "student_id": profile.student_id or "",
+        "birth_date": profile.birth_date,
+        "department": profile.department or "",
+    }
+
+
+def _format_birth_date_for_compare(value) -> str:
+    if not value:
+        return ""
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value).strip()
 
 
 def _apply_identity_tampered(request, user) -> bool:
-    """POST 조작으로 이름·학번 변경 시도 여부."""
-    expected_name, expected_student_id = _get_apply_identity(user)
-    if "name" in request.POST and request.POST.get("name", "") != expected_name:
-        return True
-    if (
-        "student_id" in request.POST
-        and request.POST.get("student_id", "") != expected_student_id
-    ):
-        return True
+    """POST 조작으로 고정 필드 변경 시도 여부."""
+    expected = _get_apply_profile_snapshot(user)
+    post_checks = {
+        "name": expected["name"],
+        "student_id": expected["student_id"],
+        "department": expected["department"],
+    }
+    for field_name, expected_value in post_checks.items():
+        if field_name in request.POST and request.POST.get(field_name, "") != expected_value:
+            return True
+    if "birth_date" in request.POST:
+        posted = request.POST.get("birth_date", "")
+        if posted != _format_birth_date_for_compare(expected["birth_date"]):
+            return True
     return False
 
 
 def _enforce_apply_identity(user, data: dict) -> dict:
-    """저장 직전 이름·학번을 로그인 계정 값으로 강제."""
-    name, student_id = _get_apply_identity(user)
+    """저장 직전 고정 필드를 로그인 계정 값으로 강제."""
+    snapshot = _get_apply_profile_snapshot(user)
     enforced = dict(data)
-    enforced["name"] = name
-    enforced["student_id"] = student_id
+    enforced.update(snapshot)
     return enforced
 
 
 def _prefill_apply_form(request):
     initial = {}
     if request.user.is_authenticated:
-        name, student_id = _get_apply_identity(request.user)
-        initial["name"] = name
-        initial["student_id"] = student_id
+        snapshot = _get_apply_profile_snapshot(request.user)
+        initial.update(snapshot)
         initial["phone"] = request.user.phone or ""
     return initial
 
@@ -166,8 +185,8 @@ def _user_can_submit_application(user):
 
 
 def _save_counseling_application(user, data):
-    """신청서 저장 — 이름·학번은 계정 정보 고정, 연락처만 갱신 가능."""
-    name, student_id = _get_apply_identity(user)
+    """신청서 저장 — 고정 필드는 계정 정보, 연락처만 갱신 가능."""
+    snapshot = _get_apply_profile_snapshot(user)
 
     update_fields = []
     if data.get("phone") and user.phone != data["phone"]:
@@ -177,8 +196,11 @@ def _save_counseling_application(user, data):
         update_fields.append("updated_at")
         user.save(update_fields=update_fields)
 
+    birth_date = snapshot["birth_date"]
     preferred_schedule = {
-        "student_id": student_id,
+        "student_id": snapshot["student_id"],
+        "birth_date": birth_date.isoformat() if birth_date else "",
+        "department": snapshot["department"],
         "preferred_date": data["preferred_date"].isoformat(),
         "preferred_time": data["preferred_time"].strftime("%H:%M"),
     }
@@ -197,7 +219,7 @@ def _save_counseling_application(user, data):
 
 def _update_counseling_application(user, application, data):
     """기존 상담 신청 수정 — 동일 pk 유지."""
-    _, student_id = _get_apply_identity(user)
+    snapshot = _get_apply_profile_snapshot(user)
 
     update_fields = []
     if data.get("phone") and user.phone != data["phone"]:
@@ -207,10 +229,13 @@ def _update_counseling_application(user, application, data):
         update_fields.append("updated_at")
         user.save(update_fields=update_fields)
 
+    birth_date = snapshot["birth_date"]
     preferred_schedule = dict(application.preferred_schedule or {})
     preferred_schedule.update(
         {
-            "student_id": student_id,
+            "student_id": snapshot["student_id"],
+            "birth_date": birth_date.isoformat() if birth_date else "",
+            "department": snapshot["department"],
             "preferred_date": data["preferred_date"].isoformat(),
             "preferred_time": data["preferred_time"].strftime("%H:%M"),
         }
@@ -263,7 +288,7 @@ def apply(request):
             if _apply_identity_tampered(request, request.user):
                 messages.warning(
                     request,
-                    "이름·학번은 회원가입 정보로만 저장됩니다. 다른 값은 반영되지 않았습니다.",
+                    "이름·학번·생년월일·소속 학과는 회원가입 정보로만 저장됩니다. 다른 값은 반영되지 않았습니다.",
                 )
             data = _enforce_apply_identity(request.user, form.cleaned_data)
 
@@ -289,7 +314,15 @@ def apply(request):
                     request,
                     "상담 신청이 접수되었습니다. 담당자가 확인 후 연락드립니다.",
                 )
-                if not send_new_application_notification(application):
+                try:
+                    notified = send_new_application_notification(application)
+                except Exception:
+                    logger.exception(
+                        "상담 신청 알림 메일 발송 중 오류 (application_id=%s)",
+                        application.pk,
+                    )
+                    notified = False
+                if not notified:
                     messages.warning(
                         request,
                         "운영 알림 메일 발송에 실패했습니다. 이메일 설정을 확인해 주세요.",
@@ -309,7 +342,7 @@ def apply(request):
         session_prefill = request.session.pop(SESSION_APPLY_PREFILL, None)
         if session_prefill:
             for key, value in deserialize_apply_initial(session_prefill).items():
-                if key not in ("name", "student_id"):
+                if key not in CounselingApplyForm.IDENTITY_FIELD_NAMES:
                     initial[key] = value
         form = CounselingApplyForm(initial=initial, user=request.user)
 
@@ -406,6 +439,18 @@ def application_detail(request, pk):
     elif schedule.get("student_id"):
         student_id = schedule["student_id"]
 
+    birth_date = ""
+    if client_profile and client_profile.birth_date:
+        birth_date = client_profile.birth_date.isoformat()
+    elif schedule.get("birth_date"):
+        birth_date = schedule["birth_date"]
+
+    department = ""
+    if client_profile and client_profile.department:
+        department = client_profile.department
+    elif schedule.get("department"):
+        department = schedule["department"]
+
     return render(
         request,
         "counseling/application_detail.html",
@@ -413,6 +458,8 @@ def application_detail(request, pk):
             "application": application,
             "client_profile": client_profile,
             "student_id": student_id,
+            "birth_date": birth_date,
+            "department": department,
             "schedule": schedule,
             "existing_case": existing_case,
             "match_form": match_form,

@@ -2,7 +2,7 @@ import os
 
 from django import forms
 
-from apps.accounts.models import ClientProfile, UserRole
+from apps.accounts.models import ClientProfile
 
 
 
@@ -31,249 +31,152 @@ COUNSELING_TYPE_CHOICES = [
 
 
 class CounselingApplyForm(forms.Form):
+    IDENTITY_FIELD_NAMES = ("name", "student_id", "birth_date", "department")
+    IDENTITY_HELP = "회원가입 정보와 동일하며 변경할 수 없습니다."
 
     name = forms.CharField(
-
         label="이름",
-
         max_length=100,
-
         widget=forms.TextInput(
-
             attrs={"class": "form-control", "placeholder": "홍길동"}
-
         ),
-
     )
-
     student_id = forms.CharField(
-
         label="학번",
-
         max_length=20,
-
-        widget=forms.TextInput(
-
-            attrs={"class": "form-control", "placeholder": "예: 20241234"}
-
-        ),
-
-    )
-
-    phone = forms.CharField(
-
-        label="연락처",
-
-        max_length=20,
-
         required=False,
-
         widget=forms.TextInput(
-
-            attrs={"class": "form-control", "placeholder": "010-0000-0000"}
-
+            attrs={"class": "form-control", "placeholder": "미입력 시 비워 둡니다"}
         ),
-
     )
-
-    counseling_type = forms.ChoiceField(
-
-        label="상담 희망 분야",
-
-        choices=COUNSELING_TYPE_CHOICES,
-
-        widget=forms.Select(attrs={"class": "form-select"}),
-
-    )
-
-    preferred_date = forms.DateField(
-
-        label="희망 상담일",
-
+    birth_date = forms.DateField(
+        label="생년월일",
+        required=False,
         input_formats=["%Y-%m-%d"],
-
         widget=forms.DateInput(
-
             attrs={"class": "form-control", "type": "date"},
-
             format="%Y-%m-%d",
-
         ),
-
+    )
+    department = forms.CharField(
+        label="소속 학과",
+        max_length=100,
+        required=False,
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "placeholder": "미입력 시 비워 둡니다"}
+        ),
+    )
+    phone = forms.CharField(
+        label="연락처",
+        max_length=20,
+        required=False,
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "placeholder": "010-0000-0000"}
+        ),
+    )
+    counseling_type = forms.ChoiceField(
+        label="상담 희망 분야",
+        choices=COUNSELING_TYPE_CHOICES,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    preferred_date = forms.DateField(
+        label="희망 상담일",
+        input_formats=["%Y-%m-%d"],
+        widget=forms.DateInput(
+            attrs={"class": "form-control", "type": "date"},
+            format="%Y-%m-%d",
+        ),
         error_messages={
-
             "invalid": "날짜 형식이 올바르지 않습니다. 달력에서 날짜를 선택해 주세요.",
-
             "required": "희망 상담일을 선택해 주세요.",
-
         },
-
     )
-
     preferred_time = forms.TimeField(
-
         label="희망 상담 시간",
-
         input_formats=["%H:%M", "%H:%M:%S"],
-
         widget=forms.TimeInput(
-
             attrs={"class": "form-control", "type": "time"},
-
             format="%H:%M",
-
         ),
-
         error_messages={
-
             "invalid": "시간 형식이 올바르지 않습니다. 예: 14:00",
-
             "required": "희망 상담 시간을 선택해 주세요.",
-
         },
-
     )
-
     reason = forms.CharField(
-
         label="상담 신청 사유",
-
         widget=forms.Textarea(
-
             attrs={
-
                 "class": "form-control",
-
                 "rows": 5,
-
                 "placeholder": "상담을 받고 싶은 내용을 간단히 작성해 주세요.",
-
             }
-
         ),
-
     )
-
-
 
     def __init__(self, *args, user=None, **kwargs):
-
         self.user = user
-
         super().__init__(*args, **kwargs)
-
         if user is not None and user.is_authenticated:
-
             self._lock_identity_fields(user)
-
         if self.is_bound and self.errors:
-
             for name, field in self.fields.items():
-
                 if name in self.errors:
-
                     css = field.widget.attrs.get("class", "")
-
                     field.widget.attrs["class"] = f"{css} is-invalid".strip()
 
-
-
     def _lock_identity_fields(self, user):
-
-        """로그인 사용자 — 이름·학번은 회원 정보에서 고정(화면 수정 불가)."""
-
-        identity_help = "회원가입 정보와 동일하며 변경할 수 없습니다."
-
-        for field_name, extra_attrs in (
-
-            ("name", {"readonly": "readonly", "autocomplete": "name"}),
-
-            ("student_id", {"readonly": "readonly"}),
-
-        ):
-
+        """로그인 사용자 — 이름·학번·생년월일·학과는 회원 정보에서 고정."""
+        snapshot = self._profile_snapshot(user)
+        readonly_attrs = {
+            "name": {"readonly": "readonly", "autocomplete": "name"},
+            "student_id": {"readonly": "readonly"},
+            "birth_date": {"readonly": "readonly"},
+            "department": {"readonly": "readonly"},
+        }
+        for field_name in self.IDENTITY_FIELD_NAMES:
             field = self.fields[field_name]
-
             field.disabled = True
-
-            field.help_text = identity_help
-
-            field.widget.attrs.update(extra_attrs)
-
+            field.required = False
+            field.help_text = self.IDENTITY_HELP
+            field.widget.attrs.update(readonly_attrs.get(field_name, {}))
             field.widget.attrs.setdefault("class", "form-control")
+            if field_name == "birth_date":
+                field.widget.attrs.setdefault("type", "date")
 
-        self.fields["name"].initial = user.name
+        self.fields["name"].initial = snapshot["name"]
+        self.fields["student_id"].initial = snapshot["student_id"]
+        self.fields["birth_date"].initial = snapshot["birth_date"]
+        self.fields["department"].initial = snapshot["department"]
 
+    @staticmethod
+    def _profile_snapshot(user):
         try:
-
             profile = user.client_profile
-
         except ClientProfile.DoesNotExist:
-
             profile = None
-
-        self.fields["student_id"].initial = (
-
-            profile.student_id if profile is not None else ""
-
-        ) or ""
-
-
+        return {
+            "name": user.name,
+            "student_id": (profile.student_id if profile else "") or "",
+            "birth_date": profile.birth_date if profile else None,
+            "department": (profile.department if profile else "") or "",
+        }
 
     def clean(self):
-
         cleaned = super().clean()
-
         if self.user is None or not self.user.is_authenticated:
-
             return cleaned
-
-        cleaned["name"] = self.user.name
-
-        try:
-
-            profile = self.user.client_profile
-
-            student_id = profile.student_id or ""
-
-        except ClientProfile.DoesNotExist:
-
-            student_id = ""
-
-        if (
-
-            not student_id
-
-            and self.user.role == UserRole.CLIENT
-
-            and not self.user.is_superuser
-
-        ):
-
-            self.add_error(
-
-                "student_id",
-
-                "회원 정보에 학번이 등록되어 있지 않습니다. 관리자에게 문의해 주세요.",
-
-            )
-
-        else:
-
-            cleaned["student_id"] = student_id
-
+        snapshot = self._profile_snapshot(self.user)
+        cleaned["name"] = snapshot["name"]
+        cleaned["student_id"] = snapshot["student_id"]
+        cleaned["birth_date"] = snapshot["birth_date"]
+        cleaned["department"] = snapshot["department"]
         return cleaned
 
-
-
     def clean_counseling_type(self):
-
         value = self.cleaned_data.get("counseling_type")
-
         if not value:
-
             raise forms.ValidationError("상담 희망 분야를 선택해 주세요.")
-
         return value
 
 
