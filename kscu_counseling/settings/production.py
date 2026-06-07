@@ -1,5 +1,6 @@
 from .base import *  # noqa: F401, F403
 from .base import _env_str  # star import는 _ 접두 private 이름 제외
+import os
 
 DEBUG = False
 
@@ -48,13 +49,22 @@ def _normalize_origin(value: str) -> str:
     return f"https://{value.rstrip('/')}"
 
 
+def _env_csv(name: str) -> list[str]:
+    """쉼표 구분 env — Value에 'KEY=value' 형태로 잘못 넣은 경우 보정."""
+    raw = _env_str(name)
+    prefix = f"{name}="
+    if raw.startswith(prefix):
+        raw = raw[len(prefix) :]
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
 def _build_csrf_trusted_origins() -> list[str]:
     """
     CSRF_TRUSTED_ORIGINS 환경 변수 + Railway 자동 도메인.
     예: CSRF_TRUSTED_ORIGINS=https://app.up.railway.app,https://counseling.example.com
     """
     origins: list[str] = []
-    for part in _env_str("CSRF_TRUSTED_ORIGINS").split(","):
+    for part in _env_csv("CSRF_TRUSTED_ORIGINS"):
         origin = _normalize_origin(part)
         if origin:
             origins.append(origin)
@@ -106,3 +116,13 @@ if _on_railway and not CSRF_TRUSTED_ORIGINS:
     _pub = _env_str("RAILWAY_PUBLIC_DOMAIN")
     if _pub:
         CSRF_TRUSTED_ORIGINS = [_normalize_origin(_pub)]
+
+# Railway Deploy Logs에서 Host 설정 확인용 (비밀값 없음)
+if _on_railway:
+    import sys
+
+    print(
+        f"[kscu] DJANGO_SETTINGS_MODULE={os.environ.get('DJANGO_SETTINGS_MODULE')}",
+        f"ALLOWED_HOSTS={ALLOWED_HOSTS}",
+        file=sys.stderr,
+    )
