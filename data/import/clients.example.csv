@@ -1,0 +1,3 @@
+email,name,phone,password,department,student_id,birth_date,gender
+client01@example.com,홍길동,010-2000-0001,Welcome2026!,상담심리학과,20240001,2000-03-15,남
+client02@example.com,김영희,010-2000-0002,Welcome2026!,,,1995-07-22,여

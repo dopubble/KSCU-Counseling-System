@@ -67,18 +67,33 @@
                             {% endif %}
 
                             <h2 class="h6 text-kscu fw-bold mb-3 pb-2 border-bottom">기본 정보</h2>
+                            <p class="small text-muted mb-3">
+                                이름·학번·생년월일·소속 학과는 회원가입 정보에서 자동으로 불러오며 수정할 수 없습니다.
+                            </p>
                             <div class="row g-3 mb-4">
                                 <div class="col-md-6">
-                                    <label for="id_name" class="form-label fw-semibold">{{ form.name.label }} <span class="text-danger">*</span></label>
+                                    <label for="id_name" class="form-label fw-semibold">{{ form.name.label }}</label>
                                     {{ form.name }}
                                     {% if form.name.help_text %}<div class="form-text">{{ form.name.help_text }}</div>{% endif %}
                                     {% if form.name.errors %}<div class="text-danger small mt-1">{{ form.name.errors.0 }}</div>{% endif %}
                                 </div>
                                 <div class="col-md-6">
-                                    <label for="id_student_id" class="form-label fw-semibold">{{ form.student_id.label }} <span class="text-danger">*</span></label>
+                                    <label for="id_student_id" class="form-label fw-semibold">{{ form.student_id.label }} <span class="text-muted fw-normal">(선택)</span></label>
                                     {{ form.student_id }}
                                     {% if form.student_id.help_text %}<div class="form-text">{{ form.student_id.help_text }}</div>{% endif %}
                                     {% if form.student_id.errors %}<div class="text-danger small mt-1">{{ form.student_id.errors.0 }}</div>{% endif %}
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="id_birth_date" class="form-label fw-semibold">{{ form.birth_date.label }}</label>
+                                    {{ form.birth_date }}
+                                    {% if form.birth_date.help_text %}<div class="form-text">{{ form.birth_date.help_text }}</div>{% endif %}
+                                    {% if form.birth_date.errors %}<div class="text-danger small mt-1">{{ form.birth_date.errors.0 }}</div>{% endif %}
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="id_department" class="form-label fw-semibold">{{ form.department.label }} <span class="text-muted fw-normal">(선택)</span></label>
+                                    {{ form.department }}
+                                    {% if form.department.help_text %}<div class="form-text">{{ form.department.help_text }}</div>{% endif %}
+                                    {% if form.department.errors %}<div class="text-danger small mt-1">{{ form.department.errors.0 }}</div>{% endif %}
                                 </div>
                                 <div class="col-12">
                                     <label for="id_phone" class="form-label fw-semibold">{{ form.phone.label }}</label>

@@ -94,6 +94,8 @@ class CounselorProfile(models.Model):
         User, on_delete=models.CASCADE, related_name="counselor_profile", verbose_name="사용자"
     )
     license_number = models.CharField("자격증 번호", max_length=100, blank=True)
+    birth_date = models.DateField("생년월일", null=True, blank=True)
+    gender = models.CharField("성별", max_length=10, blank=True)
     specialties = models.JSONField("전문분야", default=list, blank=True)
     bio = models.TextField("소개", blank=True)
     max_cases = models.PositiveIntegerField("최대 동시 사례 수", default=10)
@@ -117,9 +119,24 @@ class ClientProfile(models.Model):
         "학번",
         max_length=20,
         blank=True,
-        help_text="회원가입·상담 신청 시 확정되며, 내담자 회원정보 수정 화면에서는 변경할 수 없습니다.",
+        help_text="선택 사항. 회원가입·상담 신청 시 확정되며 이후 변경할 수 없습니다.",
     )
-    birth_date = models.DateField("생년월일", null=True, blank=True)
+    birth_date = models.DateField(
+        "생년월일",
+        null=True,
+        blank=True,
+        help_text="회원가입 시 확정되며 이후 변경할 수 없습니다.",
+    )
+    is_kcu_student = models.BooleanField(
+        "숭실사이버대학교 학생 여부",
+        default=False,
+    )
+    department = models.CharField(
+        "소속 학과",
+        max_length=100,
+        blank=True,
+        help_text="숭실사이버대학교 학생인 경우 회원가입 시 입력합니다.",
+    )
     gender = models.CharField("성별", max_length=10, blank=True)
     emergency_contact = models.CharField("비상연락처", max_length=20, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

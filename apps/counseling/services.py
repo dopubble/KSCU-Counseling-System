@@ -434,6 +434,26 @@ def build_apply_initial_from_application(
             student_id = ""
     initial["student_id"] = student_id
 
+    birth_date = ps.get("birth_date") or ""
+    if not birth_date:
+        try:
+            profile = user.client_profile
+            birth_date = profile.birth_date.isoformat() if profile.birth_date else ""
+        except ClientProfile.DoesNotExist:
+            birth_date = ""
+    elif hasattr(birth_date, "isoformat"):
+        birth_date = birth_date.isoformat()
+    if birth_date:
+        initial["birth_date"] = date.fromisoformat(birth_date)
+
+    department = ps.get("department") or ""
+    if not department:
+        try:
+            department = user.client_profile.department or ""
+        except ClientProfile.DoesNotExist:
+            department = ""
+    initial["department"] = department
+
     pref_date = ps.get("preferred_date")
     if pref_date:
         initial["preferred_date"] = (
@@ -461,6 +481,9 @@ def serialize_apply_initial(initial: dict[str, Any]) -> dict[str, Any]:
     pref_date = data.get("preferred_date")
     if isinstance(pref_date, date):
         data["preferred_date"] = pref_date.isoformat()
+    birth_date = data.get("birth_date")
+    if isinstance(birth_date, date):
+        data["birth_date"] = birth_date.isoformat()
     pref_time = data.get("preferred_time")
     if isinstance(pref_time, time):
         data["preferred_time"] = pref_time.strftime("%H:%M")
@@ -473,6 +496,9 @@ def deserialize_apply_initial(data: dict[str, Any]) -> dict[str, Any]:
     pref_date = initial.get("preferred_date")
     if isinstance(pref_date, str):
         initial["preferred_date"] = date.fromisoformat(pref_date)
+    birth_date = initial.get("birth_date")
+    if isinstance(birth_date, str) and birth_date:
+        initial["birth_date"] = date.fromisoformat(birth_date)
     pref_time = initial.get("preferred_time")
     if isinstance(pref_time, str):
         initial["preferred_time"] = datetime.strptime(pref_time, "%H:%M").time()

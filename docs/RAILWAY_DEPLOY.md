@@ -123,6 +123,16 @@ Railway → **Web 서비스** → **Variables** (Raw Editor 권장)
 CSRF_TRUSTED_ORIGINS=https://your-app.up.railway.app,https://counseling.kcu.ac.kr
 ```
 
+> **로그인·폼 제출 시 `403 CSRF 검증 실패`**  
+> 1. `DJANGO_SETTINGS_MODULE` = `kscu_counseling.settings.production` (development 아님)  
+> 2. `DEBUG` = `False` (또는 Variables에서 삭제 — production 설정이 강제로 False)  
+> 3. `CSRF_TRUSTED_ORIGINS` = `https://실제접속도메인.up.railway.app` (`CSRF_TRUSTED_ORIGINS=` 접두사 붙이지 않기)  
+> 4. 배포 후 **시크릿 창**에서 재시도(예전 CSRF 쿠키 제거)  
+> 5. Deploy Logs에서 `[kscu] CSRF_TRUSTED_ORIGINS=...` 에 현재 URL origin이 포함되는지 확인  
+>
+> 홈(/)은 GET이라 CSRF 없이 열리지만, 로그인 POST는 Origin 검증이 필요합니다.  
+> 이미 로그인된 세션이 남아 있으면 홈에서는 로그인 상태로 보일 수 있습니다.
+
 ### Zoom
 
 | Variable | 필수 |
@@ -142,6 +152,11 @@ CSRF_TRUSTED_ORIGINS=https://your-app.up.railway.app,https://counseling.kcu.ac.k
 | `EMAIL_HOST_PASSWORD` | Google **앱 비밀번호** 16자 |
 | `DEFAULT_FROM_EMAIL` | 발신 주소 |
 | `STAFF_NOTIFY_EMAILS` | `admin@example.com,counselor@example.com` |
+
+> **상담 신청 제출 시 오래 로딩 후 500 오류**  
+> `EMAIL_HOST_USER`만 설정하고 비밀번호가 없거나 SMTP가 Railway에서 막히면, 메일 발송 대기 중 Gunicorn이 타임아웃(120초)될 수 있습니다.  
+> - `EMAIL_HOST_USER`와 `EMAIL_HOST_PASSWORD`(앱 비밀번호) **둘 다** 설정하거나, 테스트 중에는 **둘 다 비워 두세요**(신청 저장은 되고 알림만 콘솔 로그).  
+> - 운영에서는 `EMAIL_TIMEOUT`(기본 10초)로 SMTP 대기 시간이 제한됩니다.
 
 상세: [GMAIL_SMTP_SETUP.md](./GMAIL_SMTP_SETUP.md)
 

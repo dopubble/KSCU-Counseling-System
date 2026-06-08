@@ -16,24 +16,19 @@ db.sqlite3
 media/
 staticfiles/
 
-# Environment
+# Secrets / credentials (절대 커밋 금지)
 .env
 local_email.py
+Account ID.txt
+Account*.txt
+*.credentials
 
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
+# Bulk import (실제 비밀번호 포함 CSV — example 파일만 커밋)
+data/import/*.csv
+!data/import/*.example.csv
 
 # Docker
 *.pid
 
-.env
-Account ID.txt
 db.sqlite3
 venv/

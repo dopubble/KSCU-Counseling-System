@@ -18,11 +18,83 @@ class SignUpForm(UserCreationForm):
     )
     name = forms.CharField(label="이름", max_length=100)
     phone = forms.CharField(label="휴대폰", max_length=20, required=False)
-    agree_terms = forms.BooleanField(label="이용약관 및 개인정보 처리방침에 동의합니다.", required=True)
+    birth_date = forms.DateField(
+        label="생년월일",
+        required=False,
+        widget=forms.DateInput(
+            attrs={"class": "form-control", "type": "date"},
+            format="%Y-%m-%d",
+        ),
+        input_formats=["%Y-%m-%d"],
+    )
+    is_kcu_student = forms.ChoiceField(
+        label="숭실사이버대학교 학생 여부",
+        choices=[("yes", "예"), ("no", "아니오")],
+        widget=forms.RadioSelect,
+        required=False,
+    )
+    student_id = forms.CharField(
+        label="학번",
+        max_length=20,
+        required=False,
+        help_text="선택 사항입니다. 재학생인 경우 입력해 주세요.",
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "placeholder": "예: 20241234 (선택)"},
+        ),
+    )
+    department = forms.CharField(
+        label="소속 학과",
+        max_length=100,
+        required=False,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "예: 상담심리학과",
+                "id": "id_department",
+            },
+        ),
+    )
+    agree_terms = forms.BooleanField(
+        label="이용약관 및 개인정보 처리방침에 동의합니다.",
+        required=True,
+    )
 
     class Meta:
         model = User
         fields = ("email", "name", "phone", "role", "password1", "password2")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for name in ("email", "name", "phone", "password1", "password2"):
+            if name in self.fields:
+                self.fields[name].widget.attrs.setdefault("class", "form-control")
+
+    def clean(self):
+        cleaned = super().clean()
+        role = cleaned.get("role")
+        if role != UserRole.CLIENT:
+            cleaned["department"] = ""
+            return cleaned
+
+        if not cleaned.get("birth_date"):
+            self.add_error("birth_date", "생년월일을 입력해 주세요.")
+
+        is_kcu = cleaned.get("is_kcu_student")
+        if not is_kcu:
+            self.add_error(
+                "is_kcu_student",
+                "숭실사이버대학교 학생 여부를 선택해 주세요.",
+            )
+        elif is_kcu == "yes":
+            department = (cleaned.get("department") or "").strip()
+            if not department:
+                self.add_error("department", "소속 학과를 입력해 주세요.")
+            cleaned["department"] = department
+        else:
+            cleaned["department"] = ""
+
+        cleaned["student_id"] = (cleaned.get("student_id") or "").strip()
+        return cleaned
 
     def save(self, commit=True):
         user = super().save(commit=False)
@@ -37,7 +109,14 @@ class SignUpForm(UserCreationForm):
             if user.role == UserRole.COUNSELOR:
                 CounselorProfile.objects.create(user=user)
             elif user.role == UserRole.CLIENT:
-                ClientProfile.objects.create(user=user)
+                is_kcu = self.cleaned_data.get("is_kcu_student") == "yes"
+                ClientProfile.objects.create(
+                    user=user,
+                    birth_date=self.cleaned_data["birth_date"],
+                    is_kcu_student=is_kcu,
+                    student_id=self.cleaned_data.get("student_id", ""),
+                    department=self.cleaned_data.get("department", ""),
+                )
         return user
 
 
@@ -97,6 +176,23 @@ class ProfileUpdateForm(forms.Form):
             },
         ),
     )
+    birth_date = forms.DateField(
+        label="생년월일",
+        required=False,
+        disabled=True,
+        widget=forms.DateInput(
+            attrs={"class": "form-control", "type": "date", "readonly": "readonly"},
+        ),
+    )
+    department = forms.CharField(
+        label="소속 학과",
+        max_length=100,
+        required=False,
+        disabled=True,
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "readonly": "readonly"},
+        ),
+    )
     email = forms.EmailField(
         label="이메일 (로그인 아이디)",
         widget=forms.EmailInput(
@@ -125,6 +221,11 @@ class ProfileUpdateForm(forms.Form):
             self.fields["phone"].initial = user.phone or ""
             self.fields["student_id"].initial = (
                 profile.student_id if profile is not None else ""
+            )
+            if profile is not None and profile.birth_date:
+                self.fields["birth_date"].initial = profile.birth_date
+            self.fields["department"].initial = (
+                profile.department if profile is not None else ""
             )
 
     def clean_email(self):
