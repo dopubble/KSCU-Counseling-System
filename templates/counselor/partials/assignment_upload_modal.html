@@ -6,21 +6,21 @@
                   enctype="multipart/form-data">
                 {% csrf_token %}
                 <div class="modal-header">
-                    <h5 class="modal-title" id="assignmentUploadModalLabel">과제 제출</h5>
+                    <h5 class="modal-title" id="assignmentUploadModalLabel">과제 첨부</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
                 </div>
                 <div class="modal-body">
                     <p class="small text-muted mb-3">
-                        제출한 과제는 <strong>관리자</strong>가 확인할 수 있습니다. PDF 또는 HWP 파일만 업로드할 수 있습니다.
+                        첨부한 과제는 <strong>관리자</strong>가 확인할 수 있습니다. PDF 또는 HWP 파일만 업로드할 수 있습니다.
                     </p>
                     <div class="mb-3">
-                        <label for="assignmentTitle" class="form-label fw-semibold">과제명</label>
+                        <label for="assignmentTitle" class="form-label fw-semibold">제목</label>
                         <input type="text"
                                name="title"
                                id="assignmentTitle"
                                class="form-control"
                                maxlength="200"
-                               placeholder="예: 3회기 과제 보고서"
+                               placeholder="과제 제목"
                                required>
                     </div>
                     <div class="mb-3">
@@ -38,11 +38,11 @@
                         <textarea name="note"
                                   id="assignmentNote"
                                   class="form-control"
-                                  rows="3"
+                                  rows="5"
                                   placeholder="관리자에게 전달할 메모"></textarea>
                     </div>
                     <div class="mb-0">
-                        <label for="assignmentFile" class="form-label fw-semibold">과제 파일</label>
+                        <label for="assignmentFile" class="form-label fw-semibold">첨부 파일</label>
                         <input type="file"
                                name="file"
                                id="assignmentFile"
@@ -57,7 +57,7 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
                     <button type="submit" class="btn btn-counselor">
-                        <i class="bi bi-upload me-1" aria-hidden="true"></i>제출
+                        <i class="bi bi-check-lg me-1" aria-hidden="true"></i>등록
                     </button>
                 </div>
             </form>
