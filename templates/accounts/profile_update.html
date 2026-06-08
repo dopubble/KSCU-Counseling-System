@@ -14,10 +14,9 @@
 {% endif %}
 {% endblock %}
 
-{% block layout %}
+{% block content %}
 <section class="site-page {% if is_counselor %}counselor-page{% else %}client-portal-page{% endif %} py-4 py-lg-5">
     <div class="container site-container">
-{% block content %}
         <div class="{% if not is_counselor %}client-portal-stack{% endif %}">
             {% if is_counselor %}
             {% page_header title="내정보 수정" subtitle="이메일·휴대폰·비밀번호만 변경할 수 있습니다. 가입 시 입력한 나머지 정보는 확인만 가능합니다." heading_tag="h1" title_class="h3 fw-semibold site-page-title mb-0" header_class="site-page-header mb-4" c1_label="대시보드" c1_url_name="counselor:dashboard" c1_icon="bi-briefcase" c2_label="내정보 수정" %}
@@ -76,5 +75,4 @@
         </div>
     </div>
 </section>
-{% endblock %}
 {% endblock %}

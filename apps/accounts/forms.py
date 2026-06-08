@@ -165,7 +165,7 @@ class KoreanPasswordChangeForm(PasswordChangeForm):
                 field.widget.attrs.setdefault("autocomplete", "new-password")
 
 
-class OptionalPasswordChangeFieldsMixin:
+class OptionalPasswordChangeFieldsForm(forms.Form):
     """내정보 수정 — 비밀번호는 입력한 경우에만 변경."""
 
     old_password = forms.CharField(
@@ -216,7 +216,7 @@ class OptionalPasswordChangeFieldsMixin:
         return new1
 
 
-class ProfileUpdateForm(OptionalPasswordChangeFieldsMixin, forms.Form):
+class ProfileUpdateForm(OptionalPasswordChangeFieldsForm):
     """내담자 내정보 수정 — 이메일·연락처·비밀번호 변경 가능."""
 
     name = forms.CharField(
@@ -326,7 +326,7 @@ class ProfileUpdateForm(OptionalPasswordChangeFieldsMixin, forms.Form):
         return getattr(self, "_new_password", None)
 
 
-class CounselorProfileUpdateForm(OptionalPasswordChangeFieldsMixin, forms.Form):
+class CounselorProfileUpdateForm(OptionalPasswordChangeFieldsForm):
     """상담사 내정보 수정 — 이메일·연락처·비밀번호 변경 가능."""
 
     role_display = forms.CharField(
