@@ -16,7 +16,10 @@ WEEKDAY_CHOICES = (
 )
 
 SETTING_RECURRING = "recurring"
+SETTING_DAILY = "daily"
 SETTING_SPECIFIC = "specific"
+
+WEEKDAY_DAILY_DAYS = (0, 1, 2, 3, 4)  # 월~금
 
 
 class CounselorAvailabilityForm(forms.Form):
@@ -26,6 +29,7 @@ class CounselorAvailabilityForm(forms.Form):
         label="설정 구분",
         choices=(
             (SETTING_RECURRING, "매주 반복"),
+            (SETTING_DAILY, "매일"),
             (SETTING_SPECIFIC, "특정 날짜"),
         ),
         initial=SETTING_RECURRING,
@@ -89,6 +93,11 @@ class CounselorAvailabilityForm(forms.Form):
             if day_of_week is None or day_of_week == "":
                 self.add_error("day_of_week", "요일을 선택해 주세요.")
             cleaned["specific_date"] = None
+            cleaned["weekdays"] = [day_of_week]
+        elif setting_type == SETTING_DAILY:
+            cleaned["specific_date"] = None
+            cleaned["day_of_week"] = None
+            cleaned["weekdays"] = list(WEEKDAY_DAILY_DAYS)
         elif setting_type == SETTING_SPECIFIC:
             if not specific_date:
                 self.add_error("specific_date", "특정 날짜를 선택해 주세요.")
@@ -99,6 +108,7 @@ class CounselorAvailabilityForm(forms.Form):
             ):
                 self.add_error("specific_date", "오늘 이후 날짜만 등록할 수 있습니다.")
             cleaned["day_of_week"] = None
+            cleaned["weekdays"] = []
         return cleaned
 
     def __init__(self, *args, **kwargs):

@@ -99,6 +99,15 @@
                             <div class="form-check">
                                 <input type="radio"
                                        name="setting_type"
+                                       id="id_setting_type_daily"
+                                       value="daily"
+                                       class="form-check-input counselor-availability-setting-radio"
+                                       {% if setting_type_value == "daily" %}checked{% endif %}>
+                                <label class="form-check-label" for="id_setting_type_daily">매일</label>
+                            </div>
+                            <div class="form-check">
+                                <input type="radio"
+                                       name="setting_type"
                                        id="id_setting_type_specific"
                                        value="specific"
                                        class="form-check-input counselor-availability-setting-radio"
@@ -110,6 +119,10 @@
                         <div class="invalid-feedback d-block">{{ form.setting_type.errors.0 }}</div>
                         {% endif %}
                     </fieldset>
+
+                    <div class="mb-3 d-none" id="availabilityDailyFields">
+                        <p class="text-muted small mb-0">월요일~금요일에 동일한 시간이 등록됩니다.</p>
+                    </div>
 
                     <div class="mb-3" id="availabilityRecurringFields">
                         <label for="id_day_of_week" class="form-label fw-semibold">요일</label>
@@ -215,17 +228,30 @@
 <script>
 (function () {
     const recurringFields = document.getElementById("availabilityRecurringFields");
+    const dailyFields = document.getElementById("availabilityDailyFields");
     const specificFields = document.getElementById("availabilitySpecificFields");
     const settingRadios = document.querySelectorAll('input[name="setting_type"]');
+    const daySelect = document.getElementById("id_day_of_week");
 
     function syncAvailabilityFields() {
         const selected = document.querySelector('input[name="setting_type"]:checked');
-        const isSpecific = selected && selected.value === "specific";
+        const value = selected ? selected.value : "recurring";
+        const isSpecific = value === "specific";
+        const isDaily = value === "daily";
         if (recurringFields) {
-            recurringFields.classList.toggle("d-none", isSpecific);
+            recurringFields.classList.toggle("d-none", isSpecific || isDaily);
+        }
+        if (dailyFields) {
+            dailyFields.classList.toggle("d-none", !isDaily);
         }
         if (specificFields) {
             specificFields.classList.toggle("d-none", !isSpecific);
+        }
+        if (daySelect) {
+            daySelect.disabled = isDaily || isSpecific;
+            if (isDaily) {
+                daySelect.value = "";
+            }
         }
     }
 

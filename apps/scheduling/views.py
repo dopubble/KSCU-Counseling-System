@@ -6,7 +6,12 @@ from django.views.decorators.http import require_POST
 
 from apps.accounts.decorators import counselor_required
 
-from .forms import AppointmentScheduleForm, CounselorAvailabilityForm, SETTING_RECURRING
+from .forms import (
+    AppointmentScheduleForm,
+    CounselorAvailabilityForm,
+    SETTING_DAILY,
+    SETTING_RECURRING,
+)
 from .models import Appointment, AppointmentStatus, CounselorAvailability
 from .services import (
     AppointmentServiceError,
@@ -43,17 +48,37 @@ def availability_create(request):
     form = CounselorAvailabilityForm(request.POST)
     if form.is_valid():
         data = form.cleaned_data
-        is_recurring = data["setting_type"] == SETTING_RECURRING
-        CounselorAvailability.objects.create(
-            counselor=request.user,
-            is_recurring=is_recurring,
-            specific_date=None if is_recurring else data["specific_date"],
-            day_of_week=data["day_of_week"] if is_recurring else None,
-            start_time=data["start_time"],
-            end_time=data["end_time"],
-            is_available=data["is_available"] == "1",
-        )
-        messages.success(request, "가용 시간이 등록되었습니다.")
+        setting_type = data["setting_type"]
+        is_available = data["is_available"] == "1"
+
+        if setting_type == SETTING_DAILY:
+            weekdays = data["weekdays"]
+            for day in weekdays:
+                CounselorAvailability.objects.create(
+                    counselor=request.user,
+                    is_recurring=True,
+                    specific_date=None,
+                    day_of_week=day,
+                    start_time=data["start_time"],
+                    end_time=data["end_time"],
+                    is_available=is_available,
+                )
+            messages.success(
+                request,
+                f"가용 시간이 월~금요일({len(weekdays)}개)에 등록되었습니다.",
+            )
+        else:
+            is_recurring = setting_type == SETTING_RECURRING
+            CounselorAvailability.objects.create(
+                counselor=request.user,
+                is_recurring=is_recurring,
+                specific_date=None if is_recurring else data["specific_date"],
+                day_of_week=data["day_of_week"] if is_recurring else None,
+                start_time=data["start_time"],
+                end_time=data["end_time"],
+                is_available=is_available,
+            )
+            messages.success(request, "가용 시간이 등록되었습니다.")
         return redirect("scheduling:availability_list")
 
     messages.error(request, "입력 내용을 확인해 주세요.")
