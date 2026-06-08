@@ -39,13 +39,20 @@ from .forms import (
 )
 from apps.sessions_app.forms import CounselingJournalForm
 from apps.sessions_app.initial_record_forms import InitialCounselingRecordForm
-from apps.sessions_app.models import CounselingJournal, InitialCounselingRecord
+from apps.sessions_app.termination_record_forms import TerminationCounselingRecordForm
+from apps.sessions_app.models import (
+    CounselingJournal,
+    InitialCounselingRecord,
+    TerminationCounselingRecord,
+)
 from apps.sessions_app.pdf import (
     PDF_PASSWORD_NOTICE,
     build_initial_record_pdf,
     build_journal_pdf,
+    build_termination_record_pdf,
     initial_record_pdf_filename,
     journal_pdf_filename,
+    termination_record_pdf_filename,
 )
 
 from apps.scheduling.availability import (
@@ -1347,6 +1354,13 @@ def user_can_download_initial_record_pdf(user, record):
     return record.case.counselor_id == user.id
 
 
+def user_can_download_termination_record_pdf(user, record):
+    """종결기록지 PDF: 해당 사례 담당 상담사만"""
+    if not user.is_authenticated:
+        return False
+    return record.case.counselor_id == user.id
+
+
 def _get_case_journal(request, case_pk, session_number):
     """사례·회기 번호로 일지 조회 (상담사 사례 접근 권한 포함)"""
     case = _get_counselor_case(request, case_pk)
@@ -2145,17 +2159,22 @@ def _session1_appointment_for_case(case):
     )
 
 
+def _ensure_case_counselor_assigned(case):
+    """내담자·상담사 매칭(담당 배정) 후 기록지 작성 허용."""
+    if not case.counselor_id:
+        raise PermissionDenied("담당 상담사가 배정된 후에 작성할 수 있습니다.")
+
+
 def _ensure_initial_record_allowed(case):
-    """1회기 예약 확정·완료 상태에서만 기록지 작성 허용."""
-    appointment = _session1_appointment_for_case(case)
-    if not appointment:
-        raise PermissionDenied("1회기 예약이 없어 초기상담 기록지를 작성할 수 없습니다.")
-    if appointment.status not in (
-        AppointmentStatus.CONFIRMED,
-        AppointmentStatus.COMPLETED,
-    ):
-        raise PermissionDenied("1회기 예약이 확정된 후에 작성할 수 있습니다.")
-    return appointment
+    """1회기 초기상담 기록지 — 매칭 후 작성 허용."""
+    _ensure_case_counselor_assigned(case)
+
+
+def _ensure_termination_record_allowed(case):
+    """마지막 회기 종결기록지 — 매칭 후 작성 허용."""
+    _ensure_case_counselor_assigned(case)
+    if not case.total_sessions or case.total_sessions < 1:
+        raise PermissionDenied("설정된 회기 정보가 없어 종결기록지를 작성할 수 없습니다.")
 
 
 def _render_initial_record_form(request, case, form, *, is_edit=False, record=None):
@@ -2289,5 +2308,149 @@ def initial_record_edit(request, pk):
         form = InitialCounselingRecordForm(instance=record)
 
     return _render_initial_record_form(
+        request, case, form, is_edit=True, record=record
+    )
+
+
+def _get_case_termination_record(request, case_pk):
+    case = _get_counselor_case(request, case_pk)
+    try:
+        record = case.termination_counseling_record
+    except TerminationCounselingRecord.DoesNotExist:
+        record = None
+    return case, record
+
+
+def _termination_record_client_summary(case):
+    return _initial_record_client_summary(case)
+
+
+def _render_termination_record_form(request, case, form, *, is_edit=False, record=None):
+    return render(
+        request,
+        "counselor/termination_record_form.html",
+        {
+            "case": case,
+            "form": form,
+            "client_summary": _termination_record_client_summary(case),
+            "is_edit": is_edit,
+            "record": record,
+            "page_title": "종결기록지 수정" if is_edit else "종결기록지 작성",
+            "breadcrumb_label": "종결기록지",
+            "submit_label": "저장하기",
+            "total_sessions": case.total_sessions,
+        },
+    )
+
+
+@counselor_required
+def termination_record_create(request, pk):
+    """마지막 회기 종결기록지 작성 (상담사 전용)."""
+    case = _get_counselor_case(request, pk)
+    _ensure_termination_record_allowed(case)
+
+    if TerminationCounselingRecord.objects.filter(case=case).exists():
+        record = case.termination_counseling_record
+        if record.is_draft:
+            return redirect("counselor:termination_record_edit", pk=case.pk)
+        return redirect("counselor:termination_record_detail", pk=case.pk)
+
+    if request.method == "POST":
+        form = TerminationCounselingRecordForm(request.POST)
+        if form.is_valid():
+            record = form.save(commit=False)
+            record.case = case
+            record.counselor = request.user
+            record.save()
+            messages.success(request, "종결기록지가 저장되었습니다.")
+            return redirect("counselor:case_detail", pk=case.pk)
+        messages.error(request, "입력 내용을 확인해 주세요.")
+    else:
+        form = TerminationCounselingRecordForm()
+
+    return _render_termination_record_form(request, case, form, is_edit=False)
+
+
+@counselor_required
+def termination_record_detail(request, pk):
+    """종결기록지 상세 (상담사 전용)."""
+    case, record = _get_case_termination_record(request, pk)
+    if not record:
+        return redirect("counselor:termination_record_create", pk=case.pk)
+    if record.is_draft:
+        return redirect("counselor:termination_record_edit", pk=case.pk)
+
+    return render(
+        request,
+        "counselor/termination_record_detail.html",
+        {
+            "case": case,
+            "record": record,
+            "client_summary": _termination_record_client_summary(case),
+            "total_sessions": case.total_sessions,
+            "can_edit": record.counselor_id == request.user.pk
+            or case.counselor_id == request.user.pk,
+            "can_download_pdf": user_can_download_termination_record_pdf(
+                request.user, record
+            ),
+            "pdf_password_notice": PDF_PASSWORD_NOTICE,
+        },
+    )
+
+
+@counselor_required
+def termination_record_pdf(request, pk):
+    """종결기록지 PDF 다운로드 (상담사 전용)."""
+    case, record = _get_case_termination_record(request, pk)
+    if not record or record.is_draft:
+        raise Http404("저장된 종결기록지가 없습니다.")
+    if not user_can_download_termination_record_pdf(request.user, record):
+        raise PermissionDenied("PDF 다운로드 권한이 없습니다.")
+
+    pdf_password = (request.user.email or "").strip()
+    if not pdf_password:
+        raise PermissionDenied(
+            "PDF 암호화를 위해 계정 이메일이 필요합니다. 프로필에 이메일을 등록해 주세요."
+        )
+
+    client_summary = _termination_record_client_summary(case)
+    pdf_bytes = build_termination_record_pdf(
+        record,
+        client_summary=client_summary,
+        user_password=pdf_password,
+    )
+    filename = termination_record_pdf_filename(record)
+    ascii_name = f"termination_record_{case.case_number}.pdf".replace("/", "-")
+    response = HttpResponse(pdf_bytes, content_type="application/pdf")
+    response["Content-Disposition"] = (
+        f'attachment; filename="{ascii_name}"; '
+        f"filename*=UTF-8''{quote(filename)}"
+    )
+    response["Content-Length"] = len(pdf_bytes)
+    return response
+
+
+@counselor_required
+def termination_record_edit(request, pk):
+    """종결기록지 수정 (상담사 전용)."""
+    case, record = _get_case_termination_record(request, pk)
+    _ensure_termination_record_allowed(case)
+    if not record:
+        return redirect("counselor:termination_record_create", pk=case.pk)
+
+    if request.method == "POST":
+        form = TerminationCounselingRecordForm(request.POST, instance=record)
+        if form.is_valid():
+            updated = form.save(commit=False)
+            if not updated.counselor_id:
+                updated.counselor = request.user
+            updated.save()
+            messages.success(request, "종결기록지가 저장되었습니다.")
+            return redirect("counselor:case_detail", pk=case.pk)
+        messages.error(request, "입력 내용을 확인해 주세요.")
+    else:
+        form = TerminationCounselingRecordForm(instance=record)
+
+    return _render_termination_record_form(
         request, case, form, is_edit=True, record=record
     )

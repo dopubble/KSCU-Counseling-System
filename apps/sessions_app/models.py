@@ -113,6 +113,43 @@ class InitialCounselingRecord(models.Model):
         return f"{self.case.case_number} - 초기상담 기록지"
 
 
+class TerminationCounselingRecord(models.Model):
+    """종결기록지 — 마지막 회기 전용, 상담사만 열람·작성."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    case = models.OneToOneField(
+        "counseling.Case",
+        on_delete=models.CASCADE,
+        related_name="termination_counseling_record",
+        verbose_name="사례",
+    )
+    counselor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="termination_counseling_records",
+        verbose_name="상담사",
+    )
+    counseling_period = models.TextField("상담 진행 일시", blank=True)
+    main_topics = models.TextField("상담받은 주요주제", blank=True)
+    termination_reason = models.TextField("종결(중단) 사유", blank=True)
+    counselor_opinion = models.TextField("내담자에 대한 상담자 소견", blank=True)
+    post_termination_plan = models.TextField(
+        "종결 후 계획 또는 후속조치",
+        blank=True,
+    )
+    other_notes = models.TextField("기타", blank=True)
+    is_draft = models.BooleanField("임시저장", default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "종결기록지"
+        verbose_name_plural = "종결기록지"
+
+    def __str__(self):
+        return f"{self.case.case_number} - 종결기록지"
+
+
 class ZoomMeeting(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     appointment = models.OneToOneField(

@@ -13,7 +13,7 @@ from apps.accounts.models import ClientProfile, CounselorProfile, User, UserRole
 from apps.documents.models import SessionMaterial
 from apps.scheduling.models import Appointment, AppointmentStatus
 from apps.scheduling.services import create_appointment_request
-from apps.sessions_app.models import CounselingJournal, InitialCounselingRecord
+from apps.sessions_app.models import CounselingJournal, InitialCounselingRecord, TerminationCounselingRecord
 
 from .cancellation_policy import (
     AppointmentOperationError,
@@ -761,6 +761,9 @@ class CaseSessionCard:
     rejected_appointment: Optional[Appointment] = None
     pending_appointment: Optional[Appointment] = None
     initial_record: Optional[InitialCounselingRecord] = None
+    termination_record: Optional[TerminationCounselingRecord] = None
+    counselor_assigned: bool = False
+    total_sessions: int = 0
 
     @property
     def has_materials(self) -> bool:
@@ -1052,13 +1055,8 @@ class CaseSessionCard:
 
     @property
     def show_counselor_journal(self) -> bool:
-        """상담사: 확정(진행중) 또는 완료 회기에서 일지 작성/열람."""
-        if self.appointment is None:
-            return False
-        return self.appointment.status in (
-            AppointmentStatus.CONFIRMED,
-            AppointmentStatus.COMPLETED,
-        )
+        """상담사: 내담자 매칭(담당 배정) 후 일지 작성·열람."""
+        return self.counselor_assigned
 
     @property
     def counselor_journal_label(self) -> str:
@@ -1068,15 +1066,8 @@ class CaseSessionCard:
 
     @property
     def show_initial_record(self) -> bool:
-        """상담사: 1회기에서만 초기상담 기록지 작성·열람."""
-        if self.session_number != 1:
-            return False
-        if self.appointment is None:
-            return False
-        return self.appointment.status in (
-            AppointmentStatus.CONFIRMED,
-            AppointmentStatus.COMPLETED,
-        )
+        """상담사: 1회기에서 초기상담 기록지 작성·열람 (매칭 후)."""
+        return self.session_number == 1 and self.counselor_assigned
 
     @property
     def initial_record_label(self) -> str:
@@ -1085,6 +1076,21 @@ class CaseSessionCard:
         if self.initial_record:
             return "초기상담 기록지 이어쓰기"
         return "초기상담 기록지 작성"
+
+    @property
+    def show_termination_record(self) -> bool:
+        """상담사: 마지막 회기에서 종결기록지 작성·열람 (매칭 후)."""
+        if not self.counselor_assigned or self.total_sessions < 1:
+            return False
+        return self.session_number == self.total_sessions
+
+    @property
+    def termination_record_label(self) -> str:
+        if self.termination_record and not self.termination_record.is_draft:
+            return "종결기록지 보기"
+        if self.termination_record:
+            return "종결기록지 이어쓰기"
+        return "종결기록지 작성"
 
     @property
     def counselor_can_update_status(self) -> bool:
@@ -1256,6 +1262,12 @@ def build_case_session_cards(case: Case) -> list[CaseSessionCard]:
         initial_record = case.initial_counseling_record
     except InitialCounselingRecord.DoesNotExist:
         pass
+    termination_record = None
+    try:
+        termination_record = case.termination_counseling_record
+    except TerminationCounselingRecord.DoesNotExist:
+        pass
+    counselor_assigned = bool(case.counselor_id)
 
     rejected_by_session: dict[int, Appointment] = {}
     active_appointments: list[Appointment] = []
@@ -1330,6 +1342,9 @@ def build_case_session_cards(case: Case) -> list[CaseSessionCard]:
                 appointment=appointment,
                 journal=journal,
                 initial_record=initial_record if session_number == 1 else None,
+                termination_record=termination_record if session_number == total else None,
+                counselor_assigned=counselor_assigned,
+                total_sessions=total,
                 zoom_url=_resolve_appointment_zoom_url(appointment, case)
                 if appointment
                 else "",
@@ -1389,6 +1404,18 @@ class CounselorSessionCardView:
     @property
     def initial_record_label(self) -> str:
         return self._card.initial_record_label
+
+    @property
+    def show_termination_record(self) -> bool:
+        return self._card.show_termination_record
+
+    @property
+    def termination_record(self):
+        return self._card.termination_record
+
+    @property
+    def termination_record_label(self) -> str:
+        return self._card.termination_record_label
 
 
 def build_counselor_session_views(case: Case) -> list[CounselorSessionCardView]:

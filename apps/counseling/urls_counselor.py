@@ -120,4 +120,24 @@ urlpatterns = [
         views.initial_record_pdf,
         name="initial_record_pdf",
     ),
+    path(
+        "case/<uuid:pk>/termination-record/new/",
+        views.termination_record_create,
+        name="termination_record_create",
+    ),
+    path(
+        "case/<uuid:pk>/termination-record/",
+        views.termination_record_detail,
+        name="termination_record_detail",
+    ),
+    path(
+        "case/<uuid:pk>/termination-record/edit/",
+        views.termination_record_edit,
+        name="termination_record_edit",
+    ),
+    path(
+        "case/<uuid:pk>/termination-record/pdf/",
+        views.termination_record_pdf,
+        name="termination_record_pdf",
+    ),
 ]
