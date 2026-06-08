@@ -258,7 +258,7 @@ def _parse_database_url(url: str) -> dict:
     return config
 
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "")
+DATABASE_URL = _env_str("DATABASE_URL", "")
 if DATABASE_URL:
     DATABASES = {"default": _parse_database_url(DATABASE_URL)}
 else:
