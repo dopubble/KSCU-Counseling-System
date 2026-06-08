@@ -55,6 +55,64 @@ class CounselingJournal(models.Model):
         return f"{self.case.case_number} - {self.session_number}회차"
 
 
+class InitialCounselingRecord(models.Model):
+    """초기상담 기록지 — 1회기 전용, 상담사만 열람·작성."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    case = models.OneToOneField(
+        "counseling.Case",
+        on_delete=models.CASCADE,
+        related_name="initial_counseling_record",
+        verbose_name="사례",
+    )
+    counselor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="initial_counseling_records",
+        verbose_name="상담사",
+    )
+    session_start_datetime = models.DateTimeField(
+        "상담 시작 일시",
+        null=True,
+        blank=True,
+    )
+    presented_problems_summary = models.TextField(
+        "제시된 문제·주제·패턴·현재 상태 요약",
+        blank=True,
+    )
+    functioning_impact = models.TextField(
+        "현재와 과거의 기능 및 문제의 영향",
+        blank=True,
+    )
+    relational_history = models.TextField(
+        "관계적 역사",
+        blank=True,
+    )
+    clinical_history = models.TextField(
+        "임상적 역사",
+        blank=True,
+    )
+    theological_evaluation = models.TextField(
+        "신학적 평가",
+        blank=True,
+    )
+    clinical_strategy = models.TextField(
+        "임상적 전략",
+        blank=True,
+    )
+    other_notes = models.TextField("기타", blank=True)
+    is_draft = models.BooleanField("임시저장", default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "초기상담 기록지"
+        verbose_name_plural = "초기상담 기록지"
+
+    def __str__(self):
+        return f"{self.case.case_number} - 초기상담 기록지"
+
+
 class ZoomMeeting(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     appointment = models.OneToOneField(

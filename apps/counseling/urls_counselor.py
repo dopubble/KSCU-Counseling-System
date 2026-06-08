@@ -100,4 +100,24 @@ urlpatterns = [
         views.journal_edit,
         name="journal_edit",
     ),
+    path(
+        "case/<uuid:pk>/initial-record/new/",
+        views.initial_record_create,
+        name="initial_record_create",
+    ),
+    path(
+        "case/<uuid:pk>/initial-record/",
+        views.initial_record_detail,
+        name="initial_record_detail",
+    ),
+    path(
+        "case/<uuid:pk>/initial-record/edit/",
+        views.initial_record_edit,
+        name="initial_record_edit",
+    ),
+    path(
+        "case/<uuid:pk>/initial-record/pdf/",
+        views.initial_record_pdf,
+        name="initial_record_pdf",
+    ),
 ]

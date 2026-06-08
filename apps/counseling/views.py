@@ -38,10 +38,13 @@ from .forms import (
     SessionScheduleChangeForm,
 )
 from apps.sessions_app.forms import CounselingJournalForm
-from apps.sessions_app.models import CounselingJournal
+from apps.sessions_app.initial_record_forms import InitialCounselingRecordForm
+from apps.sessions_app.models import CounselingJournal, InitialCounselingRecord
 from apps.sessions_app.pdf import (
     PDF_PASSWORD_NOTICE,
+    build_initial_record_pdf,
     build_journal_pdf,
+    initial_record_pdf_filename,
     journal_pdf_filename,
 )
 
@@ -1363,6 +1366,13 @@ def user_can_edit_journal(user, journal):
     return user_can_download_journal_pdf(user, journal)
 
 
+def user_can_download_initial_record_pdf(user, record):
+    """초기상담 기록지 PDF: 해당 사례 담당 상담사만"""
+    if not user.is_authenticated:
+        return False
+    return record.case.counselor_id == user.id
+
+
 def _get_case_journal(request, case_pk, session_number):
     """사례·회기 번호로 일지 조회 (상담사 사례 접근 권한 포함)"""
     case = _get_counselor_case(request, case_pk)
@@ -2108,3 +2118,202 @@ def journal_edit(request, pk, session_number):
         form = CounselingJournalForm(instance=journal, case=case)
 
     return _render_journal_form(request, case, form, is_edit=True, journal=journal)
+
+
+def _initial_record_client_summary(case):
+    """초기상담 기록지 상단 — 매칭된 내담자 정보."""
+    application = case.application
+    schedule = application.preferred_schedule or {}
+    client_profile = _get_client_profile(case.client)
+
+    birth_date = ""
+    if client_profile and client_profile.birth_date:
+        birth_date = client_profile.birth_date.strftime("%Y-%m-%d")
+    elif schedule.get("birth_date"):
+        birth_date = schedule["birth_date"]
+
+    gender = ""
+    if client_profile and client_profile.gender:
+        gender = client_profile.gender
+    elif schedule.get("gender"):
+        gender = schedule["gender"]
+
+    occupation = (schedule.get("occupation") or schedule.get("job") or "").strip()
+    if not occupation and client_profile and client_profile.department:
+        occupation = client_profile.department
+
+    return {
+        "client_name": case.client.name,
+        "gender": gender or "—",
+        "birth_date": birth_date or "—",
+        "occupation": occupation or "—",
+        "phone": case.client.phone or "—",
+        "email": case.client.email or "—",
+        "case_number": case.case_number,
+    }
+
+
+def _get_case_initial_record(request, case_pk):
+    case = _get_counselor_case(request, case_pk)
+    try:
+        record = case.initial_counseling_record
+    except InitialCounselingRecord.DoesNotExist:
+        record = None
+    return case, record
+
+
+def _session1_appointment_for_case(case):
+    return (
+        case.appointments.filter(session_number=1)
+        .exclude(status__in=[AppointmentStatus.CANCELLED])
+        .order_by("-created_at")
+        .first()
+    )
+
+
+def _ensure_initial_record_allowed(case):
+    """1회기 예약 확정·완료 상태에서만 기록지 작성 허용."""
+    appointment = _session1_appointment_for_case(case)
+    if not appointment:
+        raise PermissionDenied("1회기 예약이 없어 초기상담 기록지를 작성할 수 없습니다.")
+    if appointment.status not in (
+        AppointmentStatus.CONFIRMED,
+        AppointmentStatus.COMPLETED,
+    ):
+        raise PermissionDenied("1회기 예약이 확정된 후에 작성할 수 있습니다.")
+    return appointment
+
+
+def _render_initial_record_form(request, case, form, *, is_edit=False, record=None):
+    return render(
+        request,
+        "counselor/initial_record_form.html",
+        {
+            "case": case,
+            "form": form,
+            "client_summary": _initial_record_client_summary(case),
+            "is_edit": is_edit,
+            "record": record,
+            "page_title": "초기상담 기록지 수정" if is_edit else "초기상담 기록지 작성",
+            "breadcrumb_label": "초기상담 기록지",
+            "submit_label": "저장하기",
+        },
+    )
+
+
+@counselor_required
+def initial_record_create(request, pk):
+    """1회기 초기상담 기록지 작성 (상담사 전용)."""
+    case = _get_counselor_case(request, pk)
+    _ensure_initial_record_allowed(case)
+
+    if InitialCounselingRecord.objects.filter(case=case).exists():
+        record = case.initial_counseling_record
+        if record.is_draft:
+            return redirect("counselor:initial_record_edit", pk=case.pk)
+        return redirect("counselor:initial_record_detail", pk=case.pk)
+
+    appointment = _session1_appointment_for_case(case)
+
+    if request.method == "POST":
+        form = InitialCounselingRecordForm(request.POST)
+        if form.is_valid():
+            record = form.save(commit=False)
+            record.case = case
+            record.counselor = request.user
+            record.save()
+            messages.success(request, "초기상담 기록지가 저장되었습니다.")
+            return redirect("counselor:case_detail", pk=case.pk)
+        messages.error(request, "입력 내용을 확인해 주세요.")
+    else:
+        initial = {}
+        if appointment and appointment.scheduled_at:
+            local_dt = timezone.localtime(appointment.scheduled_at)
+            initial["session_start_datetime"] = local_dt.strftime("%Y-%m-%dT%H:%M")
+        form = InitialCounselingRecordForm(initial=initial)
+
+    return _render_initial_record_form(request, case, form, is_edit=False)
+
+
+@counselor_required
+def initial_record_detail(request, pk):
+    """초기상담 기록지 상세 (상담사 전용)."""
+    case, record = _get_case_initial_record(request, pk)
+    if not record:
+        return redirect("counselor:initial_record_create", pk=case.pk)
+    if record.is_draft:
+        return redirect("counselor:initial_record_edit", pk=case.pk)
+
+    return render(
+        request,
+        "counselor/initial_record_detail.html",
+        {
+            "case": case,
+            "record": record,
+            "client_summary": _initial_record_client_summary(case),
+            "can_edit": record.counselor_id == request.user.pk
+            or case.counselor_id == request.user.pk,
+            "can_download_pdf": user_can_download_initial_record_pdf(
+                request.user, record
+            ),
+            "pdf_password_notice": PDF_PASSWORD_NOTICE,
+        },
+    )
+
+
+@counselor_required
+def initial_record_pdf(request, pk):
+    """초기상담 기록지 PDF 다운로드 (상담사 전용)."""
+    case, record = _get_case_initial_record(request, pk)
+    if not record or record.is_draft:
+        raise Http404("저장된 초기상담 기록지가 없습니다.")
+    if not user_can_download_initial_record_pdf(request.user, record):
+        raise PermissionDenied("PDF 다운로드 권한이 없습니다.")
+
+    pdf_password = (request.user.email or "").strip()
+    if not pdf_password:
+        raise PermissionDenied(
+            "PDF 암호화를 위해 계정 이메일이 필요합니다. 프로필에 이메일을 등록해 주세요."
+        )
+
+    client_summary = _initial_record_client_summary(case)
+    pdf_bytes = build_initial_record_pdf(
+        record,
+        client_summary=client_summary,
+        user_password=pdf_password,
+    )
+    filename = initial_record_pdf_filename(record)
+    ascii_name = f"initial_record_{case.case_number}.pdf".replace("/", "-")
+    response = HttpResponse(pdf_bytes, content_type="application/pdf")
+    response["Content-Disposition"] = (
+        f'attachment; filename="{ascii_name}"; '
+        f"filename*=UTF-8''{quote(filename)}"
+    )
+    response["Content-Length"] = len(pdf_bytes)
+    return response
+
+
+@counselor_required
+def initial_record_edit(request, pk):
+    """초기상담 기록지 수정 (상담사 전용)."""
+    case, record = _get_case_initial_record(request, pk)
+    _ensure_initial_record_allowed(case)
+    if not record:
+        return redirect("counselor:initial_record_create", pk=case.pk)
+
+    if request.method == "POST":
+        form = InitialCounselingRecordForm(request.POST, instance=record)
+        if form.is_valid():
+            updated = form.save(commit=False)
+            if not updated.counselor_id:
+                updated.counselor = request.user
+            updated.save()
+            messages.success(request, "초기상담 기록지가 저장되었습니다.")
+            return redirect("counselor:case_detail", pk=case.pk)
+        messages.error(request, "입력 내용을 확인해 주세요.")
+    else:
+        form = InitialCounselingRecordForm(instance=record)
+
+    return _render_initial_record_form(
+        request, case, form, is_edit=True, record=record
+    )

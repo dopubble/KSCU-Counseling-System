@@ -18,7 +18,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.pdfencrypt import StandardEncryption
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from .models import CounselingJournal
+from .models import CounselingJournal, InitialCounselingRecord
 
 PDF_PASSWORD_NOTICE = (
     "다운로드된 PDF 파일의 암호는 로그인 계정 이메일 주소입니다. (예: 0000@naver.com)"
@@ -213,3 +213,195 @@ def build_journal_pdf(
 def journal_pdf_filename(journal: CounselingJournal) -> str:
     case_number = journal.case.case_number.replace("/", "-")
     return f"상담일지_{case_number}_{journal.session_number}회기.pdf"
+
+
+def build_initial_record_pdf(
+    record: InitialCounselingRecord,
+    *,
+    client_summary: dict | None = None,
+    user_password: str | None = None,
+) -> bytes:
+    """초기상담 기록지 PDF 바이트 반환."""
+    if not user_password or not str(user_password).strip():
+        raise ImproperlyConfigured("PDF 암호화를 위해 user_password(이메일)가 필요합니다.")
+
+    user_password = str(user_password).strip()
+    font = _register_korean_font()
+    case = record.case
+    summary = client_summary or {}
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=20 * mm,
+        rightMargin=20 * mm,
+        topMargin=18 * mm,
+        bottomMargin=18 * mm,
+        title=f"초기상담 기록지 {case.case_number}",
+        encrypt=encryptWithPassword(user_password),
+    )
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "Title",
+        parent=styles["Heading1"],
+        fontName=font,
+        fontSize=16,
+        leading=20,
+        alignment=TA_CENTER,
+        spaceAfter=6,
+        textColor=colors.HexColor("#1a365d"),
+    )
+    subtitle_style = ParagraphStyle(
+        "Subtitle",
+        parent=styles["Normal"],
+        fontName=font,
+        fontSize=9,
+        leading=12,
+        alignment=TA_CENTER,
+        textColor=colors.grey,
+        spaceAfter=14,
+    )
+    body_style = ParagraphStyle(
+        "Body",
+        parent=styles["Normal"],
+        fontName=font,
+        fontSize=10,
+        leading=15,
+        spaceAfter=8,
+    )
+    section_style = ParagraphStyle(
+        "Section",
+        parent=styles["Heading2"],
+        fontName=font,
+        fontSize=11,
+        leading=14,
+        spaceBefore=10,
+        spaceAfter=6,
+        textColor=colors.HexColor("#2c5282"),
+    )
+    table_header_style = ParagraphStyle(
+        "TableHeader",
+        parent=styles["Normal"],
+        fontName=font,
+        fontSize=9,
+        leading=12,
+        textColor=colors.HexColor("#4a5568"),
+    )
+
+    counselor_name = record.counselor.name if record.counselor_id else "—"
+
+    client_rows = [
+        [
+            _para("이름", table_header_style),
+            _para(summary.get("client_name") or case.client.name, body_style),
+            _para("성별", table_header_style),
+            _para(summary.get("gender") or "—", body_style),
+        ],
+        [
+            _para("생년월일", table_header_style),
+            _para(summary.get("birth_date") or "—", body_style),
+            _para("직업", table_header_style),
+            _para(summary.get("occupation") or "—", body_style),
+        ],
+        [
+            _para("연락처", table_header_style),
+            _para(summary.get("phone") or "—", body_style),
+            _para("이메일", table_header_style),
+            _para(summary.get("email") or "—", body_style),
+        ],
+    ]
+    client_table = Table(client_rows, colWidths=[28 * mm, 57 * mm, 28 * mm, 57 * mm])
+    client_table.setStyle(
+        TableStyle(
+            [
+                ("FONT", (0, 0), (-1, -1), font, 9),
+                ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#edf2f7")),
+                ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#edf2f7")),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e0")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]
+        )
+    )
+
+    meta_table = Table(
+        [
+            ["사례번호", case.case_number, "담당 상담사", counselor_name],
+            ["작성일", _fmt_datetime(record.updated_at), "상담 시작 일시", _fmt_datetime(record.session_start_datetime)],
+        ],
+        colWidths=[28 * mm, 57 * mm, 28 * mm, 57 * mm],
+    )
+    meta_table.setStyle(
+        TableStyle(
+            [
+                ("FONT", (0, 0), (-1, -1), font, 9),
+                ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#edf2f7")),
+                ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#edf2f7")),
+                ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#4a5568")),
+                ("TEXTCOLOR", (2, 0), (2, -1), colors.HexColor("#4a5568")),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e0")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]
+        )
+    )
+
+    story = [
+        _para("숭실사이버대학교 | 평생교육원", subtitle_style),
+        _para("초기상담 기록지", title_style),
+        _para("본 문서는 상담 기록으로 대외비이며 무단 배포를 금합니다.", subtitle_style),
+        Spacer(1, 4 * mm),
+        _para("내담자 기본정보", section_style),
+        client_table,
+        Spacer(1, 4 * mm),
+        meta_table,
+        Spacer(1, 6 * mm),
+        _para("상담 기본정보", section_style),
+    ]
+
+    sections = [
+        (
+            "1. 제시된 문제들, 중심 주제, 패턴, 현재 주의를 요하는 내담자의 상태를 요약하면?",
+            record.presented_problems_summary,
+        ),
+        (
+            "2. 현재와 과거의 기능: 현재의 문제들이 자신의 행동이나 대인관계에 영향을 미치는 방식은?",
+            record.functioning_impact,
+        ),
+        (
+            "3. 내담자의 관계적 역사: 관련된 개인적, 가족적, 공동체적·문화적 역사는?",
+            record.relational_history,
+        ),
+        (
+            "4. 내담자의 임상적 역사: 관련된 신체적, 상담·치료적, 정신의학적 역사는?",
+            record.clinical_history,
+        ),
+        (
+            "5. 신학적 평가: 종교성, 소속된 종교단체, 종교적 신념 및 행위 등 신학적 진단을 한다면?",
+            record.theological_evaluation,
+        ),
+        (
+            "6. 임상적 전략: 현재의 진단 및 최초의 임상적 개입과 차후 임상 계획은 (단기 및 장기)?",
+            record.clinical_strategy,
+        ),
+        ("7. 기타", record.other_notes),
+    ]
+    for heading, content in sections:
+        story.append(_para(heading, section_style))
+        story.append(_para(content, body_style))
+
+    doc.build(story)
+    return buffer.getvalue()
+
+
+def initial_record_pdf_filename(record: InitialCounselingRecord) -> str:
+    case_number = record.case.case_number.replace("/", "-")
+    return f"초기상담기록지_{case_number}.pdf"

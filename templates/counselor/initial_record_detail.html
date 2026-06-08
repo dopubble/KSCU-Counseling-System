@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% load static ui_tags %}
+
+{% block title %}초기상담 기록지 — {{ client_summary.client_name }}{% endblock %}
+
+{% block nav_items %}
+<li class="nav-item"><a class="nav-link" href="{% url 'counselor:dashboard' %}">내 사례</a></li>
+<li class="nav-item"><a class="nav-link" href="{% url 'counselor:case_detail' case.pk %}">사례 상세</a></li>
+<li class="nav-item"><span class="nav-link active">초기상담 기록지</span></li>
+{% endblock %}
+
+{% block extra_css %}
+<link href="{% static 'css/counselor.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block layout %}
+<div class="site-page counselor-page py-4 py-lg-5">
+    <div class="container site-container">
+{% block content %}
+    {% page_header show_heading=False c1_label="대시보드" c1_url_name="counselor:dashboard" c1_icon="bi-briefcase" c2_label=client_summary.client_name c2_url_name="counselor:case_detail" c2_url_arg=case.pk c3_label="초기상담 기록지" %}
+    <div class="site-page-heading mt-4">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+            <div>
+                <h1 class="h3 fw-semibold text-kscu mb-1">
+                    <i class="bi bi-file-earmark-medical me-2"></i>초기상담 기록지
+                </h1>
+                <p class="text-muted mb-0">
+                    1회기 · 사례번호 {{ client_summary.case_number }}
+                    <span class="badge bg-warning-subtle text-warning-emphasis ms-2">상담사 전용</span>
+                </p>
+            </div>
+            <div class="text-md-end d-flex flex-wrap gap-2 justify-content-md-end">
+                {% if can_download_pdf %}
+                <div>
+                    <a href="{% url 'counselor:initial_record_pdf' case.pk %}" class="btn btn-outline-danger">
+                        <i class="bi bi-file-earmark-pdf me-1"></i>PDF 다운로드
+                    </a>
+                    <p class="small text-muted mb-0 mt-2">{{ pdf_password_notice }}</p>
+                </div>
+                {% endif %}
+                {% if can_edit %}
+                <a href="{% url 'counselor:initial_record_edit' case.pk %}" class="btn btn-outline-primary align-self-start">
+                    <i class="bi bi-pencil-square me-1"></i>수정
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm section-spacing">
+        <div class="card-header bg-white py-3 border-bottom">
+            <h2 class="h6 fw-semibold mb-0 text-kscu">내담자 기본정보</h2>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-container">
+                <table class="table table-bordered mb-0">
+                    <tbody>
+                        <tr>
+                            <th class="bg-light" style="width: 12%;">이름</th>
+                            <td style="width: 38%;" class="fw-semibold">{{ client_summary.client_name }}</td>
+                            <th class="bg-light" style="width: 12%;">성별</th>
+                            <td style="width: 38%;">{{ client_summary.gender }}</td>
+                        </tr>
+                        <tr>
+                            <th class="bg-light">생년월일</th>
+                            <td>{{ client_summary.birth_date }}</td>
+                            <th class="bg-light">직업</th>
+                            <td>{{ client_summary.occupation }}</td>
+                        </tr>
+                        <tr>
+                            <th class="bg-light">연락처</th>
+                            <td>{{ client_summary.phone }}</td>
+                            <th class="bg-light">이메일</th>
+                            <td>{{ client_summary.email }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm section-spacing">
+        <div class="card-header bg-white py-3 border-bottom">
+            <h2 class="h6 fw-semibold mb-0 text-kscu">상담 기본정보</h2>
+        </div>
+        <div class="card-body p-4 p-md-5">
+            <dl class="initial-record-detail-list">
+                <dt>1. 상담 시작 일시</dt>
+                <dd>
+                    {% if record.session_start_datetime %}
+                    {{ record.session_start_datetime|date:"Y-m-d H:i" }}
+                    {% else %}—{% endif %}
+                </dd>
+
+                <dt>2. 제시된 문제·주제·패턴·현재 상태</dt>
+                <dd class="client-pre-wrap">{% if record.presented_problems_summary %}{{ record.presented_problems_summary }}{% else %}—{% endif %}</dd>
+
+                <dt>3. 현재와 과거의 기능</dt>
+                <dd class="client-pre-wrap">{% if record.functioning_impact %}{{ record.functioning_impact }}{% else %}—{% endif %}</dd>
+
+                <dt>4. 관계적 역사</dt>
+                <dd class="client-pre-wrap">{% if record.relational_history %}{{ record.relational_history }}{% else %}—{% endif %}</dd>
+
+                <dt>5. 임상적 역사</dt>
+                <dd class="client-pre-wrap">{% if record.clinical_history %}{{ record.clinical_history }}{% else %}—{% endif %}</dd>
+
+                <dt>6. 신학적 평가</dt>
+                <dd class="client-pre-wrap">{% if record.theological_evaluation %}{{ record.theological_evaluation }}{% else %}—{% endif %}</dd>
+
+                <dt>7. 임상적 전략</dt>
+                <dd class="client-pre-wrap">{% if record.clinical_strategy %}{{ record.clinical_strategy }}{% else %}—{% endif %}</dd>
+
+                <dt>8. 기타</dt>
+                <dd class="client-pre-wrap">{% if record.other_notes %}{{ record.other_notes }}{% else %}—{% endif %}</dd>
+            </dl>
+        </div>
+    </div>
+
+    <div class="mt-4">
+        <a href="{% url 'counselor:case_detail' case.pk %}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left me-1"></i>사례 상세로
+        </a>
+    </div>
+    </div>
+</div>
+{% endblock %}
+{% endblock %}

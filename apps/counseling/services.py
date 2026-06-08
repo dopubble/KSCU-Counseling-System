@@ -13,7 +13,7 @@ from apps.accounts.models import ClientProfile, CounselorProfile, User, UserRole
 from apps.documents.models import SessionMaterial
 from apps.scheduling.models import Appointment, AppointmentStatus
 from apps.scheduling.services import create_appointment_request
-from apps.sessions_app.models import CounselingJournal
+from apps.sessions_app.models import CounselingJournal, InitialCounselingRecord
 
 from .cancellation_policy import (
     AppointmentOperationError,
@@ -760,6 +760,7 @@ class CaseSessionCard:
     schedule_change_request: Optional[SessionScheduleChangeRequest] = None
     rejected_appointment: Optional[Appointment] = None
     pending_appointment: Optional[Appointment] = None
+    initial_record: Optional[InitialCounselingRecord] = None
 
     @property
     def has_materials(self) -> bool:
@@ -1075,6 +1076,26 @@ class CaseSessionCard:
         return "상담일지 작성"
 
     @property
+    def show_initial_record(self) -> bool:
+        """상담사: 1회기에서만 초기상담 기록지 작성·열람."""
+        if self.session_number != 1:
+            return False
+        if self.appointment is None:
+            return False
+        return self.appointment.status in (
+            AppointmentStatus.CONFIRMED,
+            AppointmentStatus.COMPLETED,
+        )
+
+    @property
+    def initial_record_label(self) -> str:
+        if self.initial_record and not self.initial_record.is_draft:
+            return "초기상담 기록지 보기"
+        if self.initial_record:
+            return "초기상담 기록지 이어쓰기"
+        return "초기상담 기록지 작성"
+
+    @property
     def counselor_can_update_status(self) -> bool:
         if self.appointment is None:
             return False
@@ -1239,6 +1260,11 @@ def build_case_session_cards(case: Case) -> list[CaseSessionCard]:
         j.session_number: j
         for j in CounselingJournal.objects.filter(case=case, is_draft=False)
     }
+    initial_record = None
+    try:
+        initial_record = case.initial_counseling_record
+    except InitialCounselingRecord.DoesNotExist:
+        pass
 
     rejected_by_session: dict[int, Appointment] = {}
     active_appointments: list[Appointment] = []
@@ -1312,6 +1338,7 @@ def build_case_session_cards(case: Case) -> list[CaseSessionCard]:
                 session_number=session_number,
                 appointment=appointment,
                 journal=journal,
+                initial_record=initial_record if session_number == 1 else None,
                 zoom_url=_resolve_appointment_zoom_url(appointment, case)
                 if appointment
                 else "",
@@ -1359,6 +1386,18 @@ class CounselorSessionCardView:
         if self.action_appointment is not None:
             return True
         return self._card.show_counselor_appointment_actions
+
+    @property
+    def show_initial_record(self) -> bool:
+        return self._card.show_initial_record
+
+    @property
+    def initial_record(self):
+        return self._card.initial_record
+
+    @property
+    def initial_record_label(self) -> str:
+        return self._card.initial_record_label
 
 
 def build_counselor_session_views(case: Case) -> list[CounselorSessionCardView]:

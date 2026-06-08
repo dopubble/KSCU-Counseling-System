@@ -113,7 +113,7 @@
     </div>
     {% endif %}
 
-    {% if session.show_zoom or session.show_counselor_journal %}
+    {% if session.show_zoom or session.show_counselor_journal or session.show_initial_record %}
     <div class="client-session-card-footer d-flex flex-wrap align-items-center gap-2">
         {% if session.show_zoom %}
         <a href="{{ session.zoom_url }}"
@@ -122,6 +122,24 @@
            class="btn btn-sm client-dashboard-action-btn">
             <i class="bi bi-camera-video me-1" aria-hidden="true"></i>회의 시작 (호스트)
         </a>
+        {% endif %}
+        {% if session.show_initial_record %}
+            {% if session.initial_record and not session.initial_record.is_draft %}
+            <a href="{% url 'counselor:initial_record_detail' case.pk %}"
+               class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-file-earmark-medical me-1" aria-hidden="true"></i>{{ session.initial_record_label }}
+            </a>
+            {% elif session.initial_record %}
+            <a href="{% url 'counselor:initial_record_edit' case.pk %}"
+               class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-file-earmark-medical me-1" aria-hidden="true"></i>{{ session.initial_record_label }}
+            </a>
+            {% else %}
+            <a href="{% url 'counselor:initial_record_create' case.pk %}"
+               class="btn btn-sm btn-counselor text-white">
+                <i class="bi bi-file-earmark-medical me-1" aria-hidden="true"></i>{{ session.initial_record_label }}
+            </a>
+            {% endif %}
         {% endif %}
         {% if session.show_counselor_journal %}
             {% if session.journal and not session.journal.is_draft %}

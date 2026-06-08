@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% load static ui_tags %}
+
+{% block title %}{{ page_title }} — {{ client_summary.client_name }}{% endblock %}
+
+{% block nav_items %}
+<li class="nav-item"><a class="nav-link" href="{% url 'counselor:dashboard' %}">내 사례</a></li>
+<li class="nav-item"><a class="nav-link" href="{% url 'counselor:case_detail' case.pk %}">사례 상세</a></li>
+<li class="nav-item"><span class="nav-link active">{{ breadcrumb_label }}</span></li>
+{% endblock %}
+
+{% block extra_css %}
+<link href="{% static 'css/counselor.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block layout %}
+<div class="site-page counselor-page journal-form-page py-4 py-lg-5">
+    <div class="container site-container">
+{% block content %}
+    {% page_header show_heading=False c1_label="대시보드" c1_url_name="counselor:dashboard" c1_icon="bi-briefcase" c2_label=client_summary.client_name c2_url_name="counselor:case_detail" c2_url_arg=case.pk c3_label=breadcrumb_label %}
+    <div class="site-page-heading mt-4 mb-4">
+        <h1 class="h3 fw-semibold text-kscu mb-1">
+            <i class="bi bi-file-earmark-medical me-2"></i>{{ page_title }}
+        </h1>
+        <p class="text-muted mb-0">
+            1회기 전용 · 사례번호 {{ client_summary.case_number }}
+            <span class="badge bg-warning-subtle text-warning-emphasis ms-2">상담사 전용 · 내담자 비공개</span>
+        </p>
+    </div>
+
+    <div class="card border-0 shadow-sm client-info-card section-spacing">
+        <div class="card-header bg-white py-3 border-bottom">
+            <h2 class="h6 fw-semibold mb-0 text-kscu">
+                <i class="bi bi-person-vcard me-2"></i>내담자 기본정보
+                <span class="badge bg-light text-muted ms-2 fw-normal">자동 입력 · 수정 불가</span>
+            </h2>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-container">
+                <table class="table table-bordered mb-0 initial-record-info-table">
+                    <tbody>
+                        <tr>
+                            <th scope="row" class="bg-light" style="width: 12%;">이름</th>
+                            <td style="width: 38%;" class="fw-semibold">{{ client_summary.client_name }}</td>
+                            <th scope="row" class="bg-light" style="width: 12%;">성별</th>
+                            <td style="width: 38%;">{{ client_summary.gender }}</td>
+                        </tr>
+                        <tr>
+                            <th scope="row" class="bg-light">생년월일</th>
+                            <td>{{ client_summary.birth_date }}</td>
+                            <th scope="row" class="bg-light">직업</th>
+                            <td>{{ client_summary.occupation }}</td>
+                        </tr>
+                        <tr>
+                            <th scope="row" class="bg-light">연락처</th>
+                            <td>{{ client_summary.phone }}</td>
+                            <th scope="row" class="bg-light">이메일</th>
+                            <td>{{ client_summary.email }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm section-spacing">
+        <div class="card-header bg-white py-3 border-bottom">
+            <h2 class="h6 fw-semibold mb-0 text-kscu">
+                <i class="bi bi-pencil-square me-2"></i>상담 기본정보
+            </h2>
+        </div>
+        <div class="card-body p-4 p-md-5">
+            <form method="post" novalidate>
+                {% csrf_token %}
+
+                {% if form.errors %}
+                <div class="alert alert-danger border-0 mb-4">
+                    <p class="fw-semibold mb-2"><i class="bi bi-exclamation-circle me-1"></i>입력 내용을 확인해 주세요</p>
+                    <ul class="mb-0 small">
+                        {% for field in form %}
+                            {% for error in field.errors %}
+                            <li><strong>{{ field.label }}</strong>: {{ error }}</li>
+                            {% endfor %}
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+
+                <div class="journal-section mb-4">
+                    <h3 class="journal-section-title">1. 상담 시작 일시</h3>
+                    <div class="col-md-6">
+                        <label for="id_session_start_datetime" class="form-label fw-semibold">
+                            {{ form.session_start_datetime.label }} <span class="text-danger">*</span>
+                        </label>
+                        {{ form.session_start_datetime }}
+                        {% if form.session_start_datetime.errors %}
+                        <div class="text-danger small mt-1">{{ form.session_start_datetime.errors.0 }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                {% for field in form %}
+                    {% if field.name != 'session_start_datetime' %}
+                    <div class="journal-section mb-4">
+                        <h3 class="journal-section-title">{{ forloop.counter|add:1 }}. {{ field.label }}</h3>
+                        {{ field }}
+                        {% if field.errors %}
+                        <div class="text-danger small mt-1">{{ field.errors.0 }}</div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                {% endfor %}
+
+                <div class="d-flex flex-wrap gap-2 justify-content-between pt-4 border-top">
+                    <a href="{% url 'counselor:case_detail' case.pk %}" class="btn btn-outline-secondary btn-lg">
+                        <i class="bi bi-x-lg me-1"></i>취소
+                    </a>
+                    <button type="submit" class="btn btn-primary btn-lg px-5">
+                        <i class="bi bi-check2-circle me-2"></i>{{ submit_label }}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <footer class="text-center text-muted small mt-5 pt-4 border-top">
+        숭실사이버대학교 | 평생교육원
+    </footer>
+    </div>
+</div>
+{% endblock %}
+{% endblock %}
