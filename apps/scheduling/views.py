@@ -6,6 +6,7 @@ from django.views.decorators.http import require_POST
 
 from apps.accounts.decorators import counselor_required
 
+from .display import group_availabilities_for_display
 from .forms import (
     AppointmentScheduleForm,
     CounselorAvailabilityForm,
@@ -27,14 +28,17 @@ def _counselor_availabilities(user):
     )
 
 
+def _counselor_availability_groups(user):
+    return group_availabilities_for_display(_counselor_availabilities(user))
+
+
 @counselor_required
 def availability_list(request):
-    availabilities = _counselor_availabilities(request.user)
     return render(
         request,
         "counselor/availability.html",
         {
-            "availabilities": availabilities,
+            "availability_groups": _counselor_availability_groups(request.user),
             "form": CounselorAvailabilityForm(),
         },
     )
@@ -86,7 +90,7 @@ def availability_create(request):
         request,
         "counselor/availability.html",
         {
-            "availabilities": _counselor_availabilities(request.user),
+            "availability_groups": _counselor_availability_groups(request.user),
             "form": form,
             "open_availability_modal": True,
         },
@@ -96,13 +100,20 @@ def availability_create(request):
 @counselor_required
 @require_POST
 def availability_delete(request, pk):
-    availability = get_object_or_404(
-        CounselorAvailability,
-        pk=pk,
+    ids = request.POST.getlist("availability_ids")
+    if not ids:
+        ids = [str(pk)]
+    deleted, _ = CounselorAvailability.objects.filter(
+        pk__in=ids,
         counselor=request.user,
-    )
-    availability.delete()
-    messages.success(request, "가용 시간이 삭제되었습니다.")
+    ).delete()
+    if deleted:
+        if len(ids) > 1:
+            messages.success(request, f"가용 시간 {deleted}건이 삭제되었습니다.")
+        else:
+            messages.success(request, "가용 시간이 삭제되었습니다.")
+    else:
+        messages.error(request, "삭제할 가용 시간을 찾을 수 없습니다.")
     return redirect("scheduling:availability_list")
 
 

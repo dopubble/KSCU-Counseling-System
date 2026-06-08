@@ -54,29 +54,31 @@
                             <h3 class="client-counselor-availability-title h6 fw-semibold mb-2">
                                 📁 상담 일정 (가용·차단)
                             </h3>
-                            {% if counselor_availabilities %}
+                            {% if counselor_availability_groups %}
                             <ul class="client-counselor-availability-list list-unstyled mb-2">
-                                {% for avail in counselor_availabilities %}
+                                {% for group in counselor_availability_groups %}
                                 <li class="client-counselor-availability-item">
+                                    {% with avail=group.items.0 %}
                                     {% if avail.is_recurring %}
-                                    <span class="badge client-counselor-availability-badge{% if avail.is_available %} client-counselor-availability-badge--recurring-available{% else %} client-counselor-availability-badge--recurring-blocked{% endif %}">
-                                        <span class="client-counselor-availability-label">매주 {{ avail.day_label }}</span>
-                                        <span class="client-counselor-availability-time">{{ avail.start_time|time:"H:i" }} ~ {{ avail.end_time|time:"H:i" }}</span>
-                                        <span class="client-counselor-availability-status">{% if avail.is_available %}(가능){% else %}(상담불가){% endif %}</span>
+                                    <span class="badge client-counselor-availability-badge{% if group.is_available %} client-counselor-availability-badge--recurring-available{% else %} client-counselor-availability-badge--recurring-blocked{% endif %}">
+                                        <span class="client-counselor-availability-label">{{ group.schedule_label }}</span>
+                                        <span class="client-counselor-availability-time">{{ group.start_time|time:"H:i" }} ~ {{ group.end_time|time:"H:i" }}</span>
+                                        <span class="client-counselor-availability-status">{% if group.is_available %}(가능){% else %}(상담불가){% endif %}</span>
                                     </span>
                                     {% elif avail.specific_date %}
-                                    <span class="badge client-counselor-availability-badge{% if avail.is_available %} client-counselor-availability-badge--specific-available{% else %} client-counselor-availability-badge--specific-blocked{% endif %}">
-                                        <span class="client-counselor-availability-label">{{ avail.specific_date|date:"Y-m-d" }}</span>
-                                        <span class="client-counselor-availability-time">{{ avail.start_time|time:"H:i" }} ~ {{ avail.end_time|time:"H:i" }}</span>
-                                        <span class="client-counselor-availability-status">{% if avail.is_available %}(가능){% else %}(상담불가){% endif %}</span>
+                                    <span class="badge client-counselor-availability-badge{% if group.is_available %} client-counselor-availability-badge--specific-available{% else %} client-counselor-availability-badge--specific-blocked{% endif %}">
+                                        <span class="client-counselor-availability-label">{{ group.schedule_label }}</span>
+                                        <span class="client-counselor-availability-time">{{ group.start_time|time:"H:i" }} ~ {{ group.end_time|time:"H:i" }}</span>
+                                        <span class="client-counselor-availability-status">{% if group.is_available %}(가능){% else %}(상담불가){% endif %}</span>
                                     </span>
                                     {% else %}
                                     <span class="badge client-counselor-availability-badge client-counselor-availability-badge--recurring-available">
-                                        <span class="client-counselor-availability-label">{{ avail.schedule_label }}</span>
-                                        <span class="client-counselor-availability-time">{{ avail.start_time|time:"H:i" }} ~ {{ avail.end_time|time:"H:i" }}</span>
-                                        <span class="client-counselor-availability-status">{% if avail.is_available %}(가능){% else %}(상담불가){% endif %}</span>
+                                        <span class="client-counselor-availability-label">{{ group.schedule_label }}</span>
+                                        <span class="client-counselor-availability-time">{{ group.start_time|time:"H:i" }} ~ {{ group.end_time|time:"H:i" }}</span>
+                                        <span class="client-counselor-availability-status">{% if group.is_available %}(가능){% else %}(상담불가){% endif %}</span>
                                     </span>
                                     {% endif %}
+                                    {% endwith %}
                                 </li>
                                 {% endfor %}
                             </ul>

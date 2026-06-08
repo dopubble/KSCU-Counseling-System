@@ -50,6 +50,7 @@ from apps.scheduling.availability import (
     is_counselor_slot_available,
     serialize_counselor_availability_rules,
 )
+from apps.scheduling.display import group_availabilities_for_display
 from apps.scheduling.forms import AppointmentRejectForm, AppointmentRequestForm
 from apps.scheduling.models import Appointment, AppointmentStatus, CounselorAvailability
 from apps.scheduling.services import (
@@ -794,12 +795,14 @@ def client_case_detail(request, pk):
     )
     counselor = case.counselor
     if counselor:
-        counselor_availabilities = CounselorAvailability.objects.filter(
-            counselor=counselor,
-        ).order_by("specific_date", "day_of_week", "start_time")
+        counselor_availability_groups = group_availabilities_for_display(
+            CounselorAvailability.objects.filter(counselor=counselor).order_by(
+                "specific_date", "day_of_week", "start_time"
+            )
+        )
         counselor_availability_rules = serialize_counselor_availability_rules(counselor)
     else:
-        counselor_availabilities = CounselorAvailability.objects.none()
+        counselor_availability_groups = []
         counselor_availability_rules = []
 
     return render(
@@ -826,7 +829,7 @@ def client_case_detail(request, pk):
             "change_blocked": confirmed_appointment_blocks_client_change(application),
             "shared_materials": shared_materials,
             "counselor_blocked_dates": counselor_blocked_dates,
-            "counselor_availabilities": counselor_availabilities,
+            "counselor_availability_groups": counselor_availability_groups,
             "counselor_availability_rules": counselor_availability_rules,
         },
     )
