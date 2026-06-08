@@ -67,6 +67,8 @@ EMAIL_ALIASES: dict[str, str] = {
 def find_complaint_seed_for_email(email: str) -> ClientComplaintSeed | None:
     """이메일(별칭 포함)으로 시드 조회."""
     lowered = email.strip().lower()
+    if not lowered:
+        return None
     candidates = {lowered}
     if lowered in EMAIL_ALIASES:
         candidates.add(EMAIL_ALIASES[lowered].lower())
@@ -77,6 +79,37 @@ def find_complaint_seed_for_email(email: str) -> ClientComplaintSeed | None:
         if seed.email.lower() in candidates:
             return seed
     return None
+
+
+def find_complaint_seed_for_client(*, email: str = "", name: str = "") -> ClientComplaintSeed | None:
+    """이메일·이름으로 시드 조회 (운영 DB 이메일 불일치 대비)."""
+    seed = find_complaint_seed_for_email(email)
+    if seed:
+        return seed
+    normalized_name = (name or "").strip()
+    if not normalized_name:
+        return None
+    for item in CLIENT_COMPLAINT_SEEDS:
+        if item.name == normalized_name:
+            return item
+    return None
+
+
+def find_complaint_seed_for_case(case) -> ClientComplaintSeed | None:
+    """사례의 내담자 정보로 시드 조회."""
+    client = getattr(case, "client", None)
+    if client is None:
+        return None
+    seed = find_complaint_seed_for_client(
+        email=getattr(client, "email", "") or "",
+        name=getattr(client, "name", "") or "",
+    )
+    if seed:
+        return seed
+    application = getattr(case, "application", None)
+    schedule = (application.preferred_schedule or {}) if application else {}
+    alt_email = schedule.get("email") or schedule.get("client_email") or ""
+    return find_complaint_seed_for_email(str(alt_email))
 
 
 DEFAULT_REASON_MARKERS = ("관리자 일괄 접수", "내담자 사전 등록")
@@ -102,16 +135,31 @@ LEGACY_TRUNCATED_REASONS: frozenset[str] = frozenset(
 )
 
 
-def presenting_reason_for_application(application, *, client_email: str = "") -> str:
+def presenting_reason_for_case(case) -> str:
+    """사례 기준 주요 호소 문제 (스프레드시트 시드 우선)."""
+    seed = find_complaint_seed_for_case(case)
+    if seed:
+        return clean_reason(seed.reason)
+    application = getattr(case, "application", None)
+    if application is None:
+        return "—"
+    return clean_reason(application.reason or "") or "—"
+
+
+def presenting_reason_for_application(application, *, client_email: str = "", client_name: str = "") -> str:
     """상담 신청·시드 기준 주요 호소 문제 (스프레드시트 원문)."""
-    email = (client_email or "").strip()
-    if not email and application is not None and hasattr(application, "client_id"):
-        client = getattr(application, "client", None)
-        if client is not None:
-            email = client.email or ""
-    seed = find_complaint_seed_for_email(email)
+    seed = find_complaint_seed_for_client(email=client_email, name=client_name)
     if seed:
         return clean_reason(seed.reason)
     if application is None:
         return "—"
+    if not client_email and hasattr(application, "client_id"):
+        client = getattr(application, "client", None)
+        if client is not None:
+            seed = find_complaint_seed_for_client(
+                email=client.email or "",
+                name=client.name or "",
+            )
+            if seed:
+                return clean_reason(seed.reason)
     return clean_reason(application.reason or "") or "—"

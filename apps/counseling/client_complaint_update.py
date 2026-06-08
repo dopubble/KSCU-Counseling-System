@@ -60,6 +60,16 @@ def _find_client_by_email(email: str) -> User | None:
     return None
 
 
+def _find_client_for_seed(seed) -> User | None:
+    client = _find_client_by_email(seed.email)
+    if client:
+        return client
+    return User.objects.filter(
+        name=seed.name,
+        role=UserRole.CLIENT,
+    ).first()
+
+
 def _target_applications_for_client(client) -> list[CounselingApplication]:
     """ACTIVE 사례에 연결된 신청을 우선 포함."""
     apps: list[CounselingApplication] = []
@@ -119,7 +129,7 @@ def update_client_complaints(
     for seed in CLIENT_COMPLAINT_SEEDS:
         reason = clean_reason(seed.reason)
 
-        client = _find_client_by_email(seed.email)
+        client = _find_client_for_seed(seed)
         if not client:
             summary.missing_user += 1
             summary.results.append(
