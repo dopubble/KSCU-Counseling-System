@@ -133,7 +133,7 @@ def create_zoom_meeting(
         "timezone": tz,
         "settings": {
             "join_before_host": True,
-            "waiting_room": True,
+            "waiting_room": False,
             "host_video": True,
             "participant_video": True,
         },
