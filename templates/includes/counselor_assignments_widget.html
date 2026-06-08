@@ -1,4 +1,4 @@
-{# 상담사 과제 제출 — 게시판 위젯과 동일한 UI #}
+{# 상담사 과제 제출 — 게시판 위젯과 동일한 UI, 회차별 최종본 #}
 <div class="card client-dashboard-card border-0 mb-4" id="counselorAssignments">
     <div class="card-header client-portal-card-header border-0 d-flex align-items-center justify-content-between gap-2">
         <div class="d-flex align-items-center gap-2 min-w-0">
@@ -27,6 +27,7 @@
                             aria-expanded="false"
                             aria-controls="assignmentCollapse{{ assignment.pk }}">
                         <span class="board-post-title-wrap min-w-0">
+                            <span class="badge text-bg-primary me-2 flex-shrink-0">{{ assignment.session_label }}</span>
                             <span class="board-post-title text-truncate">{{ assignment.title }}</span>
                             <span class="badge text-bg-light board-post-file-badge ms-2 flex-shrink-0">
                                 <i class="bi bi-paperclip" aria-hidden="true"></i> 첨부
@@ -40,13 +41,16 @@
                      data-bs-parent="#assignmentPostAccordion">
                     <div class="accordion-body board-post-body">
                         <div class="d-flex flex-wrap align-items-center gap-2 small text-muted mb-3">
-                            <span>{{ assignment.created_at|date:"Y-m-d H:i" }}</span>
-                            {% if assignment.session_number %}
-                            <span class="board-post-meta-sep" aria-hidden="true">·</span>
-                            <span>{{ assignment.session_number }}회기</span>
+                            <span class="badge text-bg-success">최신본</span>
+                            {% if assignment.was_revised %}
+                            <span class="badge text-bg-secondary">재제출</span>
                             {% endif %}
                             <span class="board-post-meta-sep" aria-hidden="true">·</span>
-                            <span><i class="bi bi-person-badge me-1" aria-hidden="true"></i>상담사</span>
+                            <span>최종 제출 {{ assignment.updated_at|date:"Y-m-d H:i" }}</span>
+                            {% if assignment.was_revised %}
+                            <span class="board-post-meta-sep" aria-hidden="true">·</span>
+                            <span class="text-muted">최초 {{ assignment.created_at|date:"Y-m-d H:i" }}</span>
+                            {% endif %}
                         </div>
 
                         {% if assignment.note %}
@@ -66,7 +70,7 @@
                             <form method="post"
                                   action="{% url 'counselor:assignment_delete' case.pk assignment.pk %}"
                                   class="mb-0"
-                                  onsubmit="return confirm('이 과제를 삭제하시겠습니까?');">
+                                  onsubmit="return confirm('{{ assignment.session_label }} 과제를 삭제하시겠습니까?');">
                                 {% csrf_token %}
                                 <button type="submit" class="btn btn-sm btn-outline-danger">
                                     <i class="bi bi-trash me-1" aria-hidden="true"></i>삭제
@@ -83,7 +87,7 @@
         <div class="text-center py-4 px-3">
             <p class="text-muted mb-0">등록된 과제가 없습니다.</p>
             {% if can_submit_assignment %}
-            <p class="small text-muted mb-0 mt-2">PDF 또는 HWP 파일을 첨부해 주세요.</p>
+            <p class="small text-muted mb-0 mt-2">회차를 선택한 뒤 PDF 또는 HWP 파일을 첨부해 주세요.</p>
             {% endif %}
         </div>
         {% endif %}

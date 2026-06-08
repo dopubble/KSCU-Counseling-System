@@ -501,7 +501,7 @@ class BoardPostForm(forms.Form):
 
 
 class CounselorAssignmentUploadForm(forms.Form):
-    """상담사 과제 제출 — HWP/PDF만 허용."""
+    """상담사 과제 제출 — HWP/PDF만 허용, 회차 필수."""
 
     ALLOWED_EXTENSIONS = {".pdf", ".hwp"}
     MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
@@ -509,19 +509,16 @@ class CounselorAssignmentUploadForm(forms.Form):
     INVALID_TYPE_MESSAGE = "허용되지 않는 파일 형식입니다. PDF 또는 HWP만 가능합니다."
     MAX_SIZE_MESSAGE = "파일 크기는 10MB 이하여야 합니다."
 
+    session_number = forms.ChoiceField(
+        label="회차",
+        choices=[],
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
     title = forms.CharField(
         label="과제명",
         max_length=200,
         widget=forms.TextInput(
-            attrs={"class": "form-control", "placeholder": "예: 3회기 과제 보고서"}
-        ),
-    )
-    session_number = forms.IntegerField(
-        label="회차",
-        required=False,
-        min_value=1,
-        widget=forms.NumberInput(
-            attrs={"class": "form-control", "placeholder": "선택 입력"}
+            attrs={"class": "form-control", "placeholder": "예: 과제 보고서"}
         ),
     )
     note = forms.CharField(
@@ -536,7 +533,7 @@ class CounselorAssignmentUploadForm(forms.Form):
         ),
     )
     file = forms.FileField(
-        label="과제 파일",
+        label="첨부 파일",
         widget=forms.ClearableFileInput(
             attrs={
                 "class": "form-control",
@@ -544,6 +541,19 @@ class CounselorAssignmentUploadForm(forms.Form):
             }
         ),
     )
+
+    def __init__(self, *args, case=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        total = max(getattr(case, "total_sessions", 0) or 0, 1)
+        self.fields["session_number"].choices = [
+            (str(n), f"{n}회기") for n in range(1, total + 1)
+        ]
+
+    def clean_session_number(self):
+        value = self.cleaned_data.get("session_number")
+        if not value:
+            raise forms.ValidationError("회차를 선택해 주세요.")
+        return int(value)
 
     def clean_file(self):
         file_obj = self.cleaned_data.get("file")
@@ -558,10 +568,4 @@ class CounselorAssignmentUploadForm(forms.Form):
             raise forms.ValidationError(self.MAX_SIZE_MESSAGE)
 
         return file_obj
-
-    def clean_session_number(self):
-        value = self.cleaned_data.get("session_number")
-        if value in (None, ""):
-            return None
-        return value
 

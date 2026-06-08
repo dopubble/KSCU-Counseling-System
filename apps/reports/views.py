@@ -211,7 +211,7 @@ def cancel_pending_list(request):
 
 @role_required(UserRole.ADMIN)
 def counselor_assignment_list(request):
-    """상담사 과제 제출 목록 (관리자 확인용)."""
+    """상담사 과제 제출 목록 — 사례·회차별 최종본."""
     assignments = (
         CounselorAssignmentSubmission.objects.select_related(
             "case",
@@ -219,7 +219,7 @@ def counselor_assignment_list(request):
             "case__counselor",
             "submitted_by",
         )
-        .order_by("-created_at")
+        .order_by("case__case_number", "session_number")
     )
     return render(
         request,

@@ -77,6 +77,7 @@ from apps.scheduling.services import (
 )
 from apps.scheduling.utils import ZoomAPIError, ZoomNotConfiguredError, is_zoom_configured
 from apps.documents.models import CounselorAssignmentSubmission, SessionMaterial
+from apps.documents.assignment_service import upsert_counselor_assignment
 
 from .cancellation_policy import (
     AppointmentOperationError,
@@ -773,7 +774,7 @@ def get_case_counselor_assignments(case):
     return (
         CounselorAssignmentSubmission.objects.filter(case=case)
         .select_related("submitted_by")
-        .order_by("-created_at")
+        .order_by("session_number")
     )
 
 
@@ -1503,6 +1504,9 @@ def counselor_case_detail(request, pk):
             "can_submit_assignment": user_can_submit_assignment(request.user, case),
             "is_admin_view": request.user.is_superuser
             or request.user.role == UserRole.ADMIN,
+            "assignment_session_choices": list(
+                range(1, max(case.total_sessions, 1) + 1)
+            ),
         },
     )
 
@@ -1936,7 +1940,7 @@ def counselor_assignment_upload(request, case_pk):
     if not user_can_submit_assignment(request.user, case):
         raise PermissionDenied("과제 제출 권한이 없습니다.")
 
-    form = CounselorAssignmentUploadForm(request.POST, request.FILES)
+    form = CounselorAssignmentUploadForm(request.POST, request.FILES, case=case)
     if not form.is_valid():
         for field, errors in form.errors.items():
             if errors:
@@ -1946,15 +1950,21 @@ def counselor_assignment_upload(request, case_pk):
             messages.error(request, "입력 내용을 확인해 주세요.")
         return redirect("counselor:case_detail", pk=case.pk)
 
-    CounselorAssignmentSubmission.objects.create(
+    _, created = upsert_counselor_assignment(
         case=case,
+        counselor=request.user,
+        session_number=form.cleaned_data["session_number"],
         title=form.cleaned_data["title"].strip(),
-        session_number=form.cleaned_data.get("session_number"),
         note=(form.cleaned_data.get("note") or "").strip(),
         file=form.cleaned_data["file"],
-        submitted_by=request.user,
     )
-    messages.success(request, "과제가 제출되었습니다. 관리자가 확인할 수 있습니다.")
+    if created:
+        messages.success(request, "과제가 제출되었습니다. 관리자가 확인할 수 있습니다.")
+    else:
+        messages.success(
+            request,
+            f"{form.cleaned_data['session_number']}회기 과제가 최신 파일로 갱신되었습니다.",
+        )
     return redirect("counselor:case_detail", pk=case.pk)
 
 

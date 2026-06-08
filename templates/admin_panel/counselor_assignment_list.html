@@ -10,7 +10,9 @@
         상담사 과제 제출
         <span class="badge bg-primary align-middle">{{ assignments_count }}</span>
     </h2>
-    <p class="text-muted small mt-2 mb-0">상담사가 사례 상세에서 제출한 HWP·PDF 과제를 확인할 수 있습니다.</p>
+    <p class="text-muted small mt-2 mb-0">
+        사례·회차별 최종본만 표시됩니다. 동일 회차 재업로드 시 기존 행이 갱신됩니다.
+    </p>
 </div>
 
 {% if assignments %}
@@ -20,37 +22,47 @@
             <table class="table table-hover align-middle mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th>제출일</th>
-                        <th>과제명</th>
-                        <th>사례번호</th>
-                        <th>내담자</th>
-                        <th>상담사</th>
-                        <th>회차</th>
-                        <th>파일</th>
-                        <th></th>
+                        <th scope="col">사례번호</th>
+                        <th scope="col">내담자</th>
+                        <th scope="col">상담사</th>
+                        <th scope="col">회차</th>
+                        <th scope="col">최종 제출일</th>
+                        <th scope="col">파일 다운로드</th>
+                        <th scope="col" class="text-end">사례 보기</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for assignment in assignments %}
                     <tr>
-                        <td class="text-nowrap small">{{ assignment.created_at|date:"Y-m-d H:i" }}</td>
-                        <td>
-                            <span class="fw-semibold">{{ assignment.title }}</span>
-                            {% if assignment.note %}
-                            <p class="small text-muted mb-0 mt-1 client-pre-wrap">{{ assignment.note|truncatechars:80 }}</p>
-                            {% endif %}
-                        </td>
-                        <td class="font-monospace">{{ assignment.case.case_number }}</td>
+                        <td class="font-monospace fw-semibold">{{ assignment.case.case_number }}</td>
                         <td>{{ assignment.case.client.name }}</td>
                         <td>{{ assignment.submitted_by.name }}</td>
-                        <td>{% if assignment.session_number %}{{ assignment.session_number }}회{% else %}—{% endif %}</td>
-                        <td class="small">{{ assignment.get_filename }}</td>
+                        <td>
+                            <span class="badge text-bg-primary">{{ assignment.session_label }}</span>
+                        </td>
                         <td class="text-nowrap">
+                            <div class="d-flex flex-wrap align-items-center gap-1">
+                                <span class="badge text-bg-success">최신본</span>
+                                {% if assignment.was_revised %}
+                                <span class="badge text-bg-secondary">재제출</span>
+                                {% endif %}
+                            </div>
+                            <div class="small mt-1">{{ assignment.updated_at|date:"Y-m-d H:i" }}</div>
+                            {% if assignment.was_revised %}
+                            <div class="small text-muted">최초 {{ assignment.created_at|date:"Y-m-d H:i" }}</div>
+                            {% endif %}
+                        </td>
+                        <td>
                             <a href="{% url 'admin_panel:assignment_file' assignment.pk %}"
                                class="btn btn-sm btn-outline-primary"
                                download>
-                                <i class="bi bi-download me-1" aria-hidden="true"></i>다운로드
+                                <i class="bi bi-download me-1" aria-hidden="true"></i>{{ assignment.get_filename }}
                             </a>
+                            <div class="small text-muted mt-1 text-truncate" style="max-width: 12rem;">
+                                {{ assignment.title }}
+                            </div>
+                        </td>
+                        <td class="text-end text-nowrap">
                             <a href="{% url 'counselor:case_detail' assignment.case.pk %}#counselorAssignments"
                                class="btn btn-sm btn-outline-secondary">
                                 사례 보기

@@ -36,19 +36,22 @@ class SessionMaterialAdmin(admin.ModelAdmin):
 @admin.register(CounselorAssignmentSubmission)
 class CounselorAssignmentSubmissionAdmin(admin.ModelAdmin):
     list_display = (
-        "title",
         "case",
         "session_number",
+        "title",
         "submitted_by",
+        "updated_at",
         "created_at",
     )
-    list_filter = ("created_at",)
+    list_filter = ("session_number", "updated_at")
     search_fields = (
         "title",
         "note",
         "case__case_number",
         "submitted_by__name",
         "submitted_by__email",
+        "case__client__name",
     )
     autocomplete_fields = ("case", "submitted_by")
     readonly_fields = ("created_at", "updated_at")
+    ordering = ("case__case_number", "session_number")
