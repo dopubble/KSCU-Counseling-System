@@ -11,8 +11,9 @@ from apps.accounts.models import User, UserRole
 from apps.counseling.client_complaint_seed import (
     CLIENT_COMPLAINT_SEEDS,
     EMAIL_ALIASES,
-    LEGACY_TRUNCATED_REASONS,
+    MISPLACED_CATEGORY_REASONS,
     clean_reason,
+    counseling_types_for_seed,
 )
 from apps.counseling.constants import DEFAULT_COUNSELING_TYPES
 from apps.counseling.models import ApplicationStatus, Case, CaseStatus, CounselingApplication
@@ -104,7 +105,7 @@ def update_client_complaints(
     create_missing: bool = False,
 ) -> ComplaintUpdateSummary:
     """
-    시드 목록의 주요 호소 문제를 각 내담자 상담 신청(reason)에 반영.
+    시드 목록의 상담 호소 문제(유형)와 주요 호소 문제 작성(reason)을 반영.
 
     only_default_reason=True 이면 '관리자 일괄 접수' 등 기본 문구만 덮어씀.
     """
@@ -120,14 +121,15 @@ def update_client_complaints(
             return True
         if any(marker in text for marker in default_markers):
             return True
-        if text in LEGACY_TRUNCATED_REASONS:
+        if text in MISPLACED_CATEGORY_REASONS:
             return True
         if only_default_reason:
             return False
         return True
 
     for seed in CLIENT_COMPLAINT_SEEDS:
-        reason = clean_reason(seed.reason)
+        written_reason = clean_reason(seed.written_reason)
+        counseling_types = counseling_types_for_seed(seed)
 
         client = _find_client_for_seed(seed)
         if not client:
@@ -138,7 +140,7 @@ def update_client_complaints(
                     seed.email,
                     "missing_user",
                     "내담자 계정 없음",
-                    reason,
+                    written_reason,
                 )
             )
             continue
@@ -158,16 +160,16 @@ def update_client_complaints(
                             seed.email,
                             "skipped",
                             "ACTIVE 사례 있으나 연결된 신청 없음 — 수동 확인",
-                            reason,
+                            written_reason,
                         )
                     )
                     continue
                 try:
                     with transaction.atomic():
-                        app = create_application_for_client(
+                        create_application_for_client(
                             client,
-                            counseling_types=list(DEFAULT_COUNSELING_TYPES),
-                            reason=reason,
+                            counseling_types=counseling_types or list(DEFAULT_COUNSELING_TYPES),
+                            reason=written_reason,
                         )
                     summary.updated += 1
                     summary.results.append(
@@ -176,7 +178,7 @@ def update_client_complaints(
                             seed.email,
                             "created",
                             "상담 신청 생성",
-                            reason,
+                            written_reason,
                         )
                     )
                     continue
@@ -188,7 +190,7 @@ def update_client_complaints(
                             seed.email,
                             "error",
                             str(exc),
-                            reason,
+                            written_reason,
                         )
                     )
                     continue
@@ -200,7 +202,7 @@ def update_client_complaints(
                         seed.email,
                         "would_create",
                         "상담 신청 생성 예정",
-                        reason,
+                        written_reason,
                     )
                 )
                 continue
@@ -212,7 +214,7 @@ def update_client_complaints(
                     seed.email,
                     "missing_application",
                     "상담 신청 없음",
-                    reason,
+                    written_reason,
                 )
             )
             continue
@@ -232,7 +234,7 @@ def update_client_complaints(
                         seed.email,
                         "skipped",
                         "이미 사용자 작성 호소 문제 있음",
-                        reason,
+                        written_reason,
                     )
                 )
                 continue
@@ -245,23 +247,25 @@ def update_client_complaints(
                     seed.email,
                     "would_update",
                     f"신청 {len(targets)}건",
-                    reason,
+                    written_reason,
                 )
             )
             continue
 
         try:
+            types_to_apply = counseling_types or list(DEFAULT_COUNSELING_TYPES)
             with transaction.atomic():
                 now = timezone.now()
                 for app in targets:
-                    app.reason = reason
+                    app.reason = written_reason
+                    app.counseling_types = types_to_apply
                     app.updated_at = now
-                    app.save(update_fields=["reason", "updated_at"])
-                # 사례에 연결되지 않은 신청이 있어도 동일 내담자 전체 신청에 반영
+                    app.save(update_fields=["reason", "counseling_types", "updated_at"])
                 CounselingApplication.objects.filter(
                     client=client,
                 ).exclude(status=ApplicationStatus.CANCELLED).update(
-                    reason=reason,
+                    reason=written_reason,
+                    counseling_types=types_to_apply,
                     updated_at=now,
                 )
             summary.updated += len(targets)
@@ -271,7 +275,7 @@ def update_client_complaints(
                     seed.email,
                     "updated",
                     f"신청 {len(targets)}건",
-                    reason,
+                    written_reason,
                 )
             )
         except Exception as exc:
@@ -282,7 +286,7 @@ def update_client_complaints(
                     seed.email,
                     "error",
                     str(exc),
-                    reason,
+                    written_reason,
                 )
             )
 

@@ -128,8 +128,12 @@
                                     <td>{{ case.client.phone|default:"—" }}</td>
                                 </tr>
                                 <tr>
-                                    <th>신청 분야</th>
-                                    <td>{{ application.counseling_type }}</td>
+                                    <th>주요 호소 문제</th>
+                                    <td>{{ presenting_complaint_categories }}</td>
+                                </tr>
+                                <tr>
+                                    <th>주요 호소 문제 작성</th>
+                                    <td class="small client-pre-wrap">{{ presenting_reason }}</td>
                                 </tr>
                                 <tr>
                                     <th>희망 일시</th>
@@ -139,10 +143,6 @@
                                             {% if schedule.preferred_time %}{{ schedule.preferred_time }}{% endif %}
                                         {% else %}—{% endif %}
                                     </td>
-                                </tr>
-                                <tr>
-                                    <th>주요 호소 문제</th>
-                                    <td class="small client-pre-wrap">{{ presenting_reason }}</td>
                                 </tr>
                             </tbody>
                         </table>

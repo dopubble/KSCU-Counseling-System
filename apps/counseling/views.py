@@ -37,7 +37,10 @@ from .forms import (
     SessionMaterialUploadForm,
     SessionScheduleChangeForm,
 )
-from .client_complaint_seed import presenting_reason_for_case
+from .client_complaint_seed import (
+    presenting_complaint_categories_for_case,
+    presenting_written_reason_for_case,
+)
 from apps.sessions_app.forms import CounselingJournalForm
 from apps.sessions_app.initial_record_forms import InitialCounselingRecordForm
 from apps.sessions_app.termination_record_forms import TerminationCounselingRecordForm
@@ -1447,7 +1450,8 @@ def counselor_case_detail(request, pk):
         {
             "case": case,
             "application": application,
-            "presenting_reason": presenting_reason_for_case(case),
+            "presenting_complaint_categories": presenting_complaint_categories_for_case(case),
+            "presenting_reason": presenting_written_reason_for_case(case),
             "student_id": student_id,
             "schedule": schedule,
             "journal_count": case.journals.count(),
