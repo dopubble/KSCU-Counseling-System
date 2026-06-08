@@ -10,7 +10,8 @@ from apps.accounts.models import User, UserRole
 from apps.counseling.client_complaint_seed import (
     CLIENT_COMPLAINT_SEEDS,
     EMAIL_ALIASES,
-    normalize_reason,
+    LEGACY_TRUNCATED_REASONS,
+    clean_reason,
 )
 from apps.counseling.constants import DEFAULT_COUNSELING_TYPES
 from apps.counseling.models import ApplicationStatus, Case, CaseStatus, CounselingApplication
@@ -102,8 +103,20 @@ def update_client_complaints(
         "내담자 사전 등록",
     )
 
+    def _should_overwrite(reason: str) -> bool:
+        text = clean_reason(reason)
+        if not text:
+            return True
+        if any(marker in text for marker in default_markers):
+            return True
+        if text in LEGACY_TRUNCATED_REASONS:
+            return True
+        if only_default_reason:
+            return False
+        return True
+
     for seed in CLIENT_COMPLAINT_SEEDS:
-        reason = normalize_reason(seed.reason)
+        reason = clean_reason(seed.reason)
 
         client = _find_client_by_email(seed.email)
         if not client:
@@ -198,8 +211,7 @@ def update_client_complaints(
             targets = [
                 app
                 for app in applications
-                if any(marker in (app.reason or "") for marker in default_markers)
-                or not (app.reason or "").strip()
+                if _should_overwrite(app.reason or "")
             ]
             if not targets:
                 summary.skipped += 1

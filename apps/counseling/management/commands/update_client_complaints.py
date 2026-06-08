@@ -4,11 +4,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection
 
-from apps.counseling.client_complaint_seed import (
-    CLIENT_COMPLAINT_SEEDS,
-    MAX_REASON_LENGTH,
-    normalize_reason,
-)
+from apps.counseling.client_complaint_seed import CLIENT_COMPLAINT_SEEDS
 from apps.counseling.client_complaint_update import update_client_complaints
 
 
@@ -47,14 +43,6 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         if options["apply"] and not options["allow_local"]:
             self._ensure_database_ready()
-
-        over_limit = [
-            (s.name, len(normalize_reason(s.reason)))
-            for s in CLIENT_COMPLAINT_SEEDS
-            if len(normalize_reason(s.reason)) > MAX_REASON_LENGTH
-        ]
-        if over_limit:
-            raise CommandError(f"100자 초과 항목: {over_limit}")
 
         dry_run = not options["apply"]
         summary = update_client_complaints(
