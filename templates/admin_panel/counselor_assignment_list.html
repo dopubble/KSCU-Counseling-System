@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% load ui_tags %}
+
+{% block title %}상담사 과제 제출{% endblock %}
+
+{% block content %}
+{% page_header show_heading=False c1_label="대시보드" c1_url_name="admin_panel:dashboard" c1_icon="bi-speedometer2" c2_label="상담사 과제 제출" %}
+<div class="site-page-heading mt-4">
+    <h2 class="site-page-title mb-0">
+        상담사 과제 제출
+        <span class="badge bg-primary align-middle">{{ assignments_count }}</span>
+    </h2>
+    <p class="text-muted small mt-2 mb-0">상담사가 사례 상세에서 제출한 HWP·PDF 과제를 확인할 수 있습니다.</p>
+</div>
+
+{% if assignments %}
+<div class="card shadow-sm border-0 section-spacing">
+    <div class="card-body p-0">
+        <div class="table-responsive table-container">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>제출일</th>
+                        <th>과제명</th>
+                        <th>사례번호</th>
+                        <th>내담자</th>
+                        <th>상담사</th>
+                        <th>회차</th>
+                        <th>파일</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for assignment in assignments %}
+                    <tr>
+                        <td class="text-nowrap small">{{ assignment.created_at|date:"Y-m-d H:i" }}</td>
+                        <td>
+                            <span class="fw-semibold">{{ assignment.title }}</span>
+                            {% if assignment.note %}
+                            <p class="small text-muted mb-0 mt-1 client-pre-wrap">{{ assignment.note|truncatechars:80 }}</p>
+                            {% endif %}
+                        </td>
+                        <td class="font-monospace">{{ assignment.case.case_number }}</td>
+                        <td>{{ assignment.case.client.name }}</td>
+                        <td>{{ assignment.submitted_by.name }}</td>
+                        <td>{% if assignment.session_number %}{{ assignment.session_number }}회{% else %}—{% endif %}</td>
+                        <td class="small">{{ assignment.get_filename }}</td>
+                        <td class="text-nowrap">
+                            <a href="{% url 'admin_panel:assignment_file' assignment.pk %}"
+                               class="btn btn-sm btn-outline-primary"
+                               download>
+                                <i class="bi bi-download me-1" aria-hidden="true"></i>다운로드
+                            </a>
+                            <a href="{% url 'counselor:case_detail' assignment.case.pk %}#counselorAssignments"
+                               class="btn btn-sm btn-outline-secondary">
+                                사례 보기
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% else %}
+<p class="text-muted section-spacing">아직 제출된 과제가 없습니다.</p>
+{% endif %}
+{% endblock %}

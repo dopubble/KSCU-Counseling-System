@@ -1,0 +1,66 @@
+<div class="modal fade" id="assignmentUploadModal" tabindex="-1" aria-labelledby="assignmentUploadModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <form method="post"
+                  action="{% url 'counselor:assignment_upload' case.pk %}"
+                  enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title" id="assignmentUploadModalLabel">과제 제출</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">
+                        제출한 과제는 <strong>관리자</strong>가 확인할 수 있습니다. PDF 또는 HWP 파일만 업로드할 수 있습니다.
+                    </p>
+                    <div class="mb-3">
+                        <label for="assignmentTitle" class="form-label fw-semibold">과제명</label>
+                        <input type="text"
+                               name="title"
+                               id="assignmentTitle"
+                               class="form-control"
+                               maxlength="200"
+                               placeholder="예: 3회기 과제 보고서"
+                               required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="assignmentSession" class="form-label fw-semibold">회차 <span class="text-muted fw-normal">(선택)</span></label>
+                        <input type="number"
+                               name="session_number"
+                               id="assignmentSession"
+                               class="form-control"
+                               min="1"
+                               max="{{ case.total_sessions }}"
+                               placeholder="특정 회기와 연관된 경우 입력">
+                    </div>
+                    <div class="mb-3">
+                        <label for="assignmentNote" class="form-label fw-semibold">메모 <span class="text-muted fw-normal">(선택)</span></label>
+                        <textarea name="note"
+                                  id="assignmentNote"
+                                  class="form-control"
+                                  rows="3"
+                                  placeholder="관리자에게 전달할 메모"></textarea>
+                    </div>
+                    <div class="mb-0">
+                        <label for="assignmentFile" class="form-label fw-semibold">과제 파일</label>
+                        <input type="file"
+                               name="file"
+                               id="assignmentFile"
+                               class="form-control"
+                               accept=".pdf,.hwp"
+                               required>
+                        <p class="form-text small text-muted mb-0 mt-2">
+                            PDF, HWP만 가능 · 파일당 최대 10MB
+                        </p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-counselor">
+                        <i class="bi bi-upload me-1" aria-hidden="true"></i>제출
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

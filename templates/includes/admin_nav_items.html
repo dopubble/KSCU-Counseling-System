@@ -8,6 +8,10 @@
        href="{% url 'admin_panel:counseling_management' %}">상담 통합 관리</a>
 </li>
 <li class="nav-item">
+    <a class="nav-link {% if ns == 'admin_panel' and url_name == 'counselor_assignment_list' %}active{% endif %}"
+       href="{% url 'admin_panel:counselor_assignment_list' %}">과제 제출</a>
+</li>
+<li class="nav-item">
     <a class="nav-link {% if ns == 'admin_panel' and url_name == 'cancel_pending_list' %}active{% endif %}"
        href="{% url 'admin_panel:cancel_pending_list' %}">취소 대기</a>
 </li>

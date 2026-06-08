@@ -48,6 +48,12 @@ def closure_report_upload_path(instance, filename):
     return f"closure_reports/{instance.case_id}/{uuid.uuid4()}.{ext}"
 
 
+def counselor_assignment_upload_path(instance, filename):
+    basename = _upload_basename(filename)
+    date_path = timezone.now().strftime("%Y/%m/%d")
+    return f"counselor_assignments/{instance.case_id}/{date_path}/{basename}"
+
+
 class ConsentDocType(models.TextChoices):
     PRIVACY = "PRIVACY", "개인정보 동의"
     COUNSELING = "COUNSELING", "상담 동의"
@@ -250,3 +256,55 @@ class SessionMaterial(models.Model):
         if self.uploaded_by.role == UserRole.ADMIN:
             return "bi-shield-check"
         return "bi-file-earmark"
+
+
+class CounselorAssignmentSubmission(models.Model):
+    """상담사가 사례별로 관리자에게 제출하는 과제 (HWP/PDF)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    case = models.ForeignKey(
+        "counseling.Case",
+        on_delete=models.CASCADE,
+        related_name="counselor_assignments",
+        verbose_name="사례",
+    )
+    session_number = models.PositiveIntegerField(
+        "회차",
+        null=True,
+        blank=True,
+        help_text="특정 회기와 연관된 과제인 경우 선택합니다.",
+    )
+    title = models.CharField("과제명", max_length=200)
+    note = models.TextField("메모", blank=True)
+    file = models.FileField(
+        "파일",
+        upload_to=counselor_assignment_upload_path,
+    )
+    submitted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="counselor_assignment_submissions",
+        verbose_name="제출 상담사",
+    )
+    created_at = models.DateTimeField("제출일", auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "상담사 과제 제출"
+        verbose_name_plural = "상담사 과제 제출"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.case.case_number} — {self.title}"
+
+    def get_filename(self) -> str:
+        if not self.file:
+            return ""
+        return os.path.basename(self.file.name.replace("\\", "/"))
+
+    def can_delete_by(self, user) -> bool:
+        if not user.is_authenticated:
+            return False
+        if user.is_superuser or user.role == UserRole.ADMIN:
+            return True
+        return self.submitted_by_id == user.pk

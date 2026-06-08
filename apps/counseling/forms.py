@@ -499,3 +499,69 @@ class BoardPostForm(forms.Form):
         cleaned["content"] = content
         return cleaned
 
+
+class CounselorAssignmentUploadForm(forms.Form):
+    """상담사 과제 제출 — HWP/PDF만 허용."""
+
+    ALLOWED_EXTENSIONS = {".pdf", ".hwp"}
+    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+    ACCEPT_ATTR = ".pdf,.hwp"
+    INVALID_TYPE_MESSAGE = "허용되지 않는 파일 형식입니다. PDF 또는 HWP만 가능합니다."
+    MAX_SIZE_MESSAGE = "파일 크기는 10MB 이하여야 합니다."
+
+    title = forms.CharField(
+        label="과제명",
+        max_length=200,
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "placeholder": "예: 3회기 과제 보고서"}
+        ),
+    )
+    session_number = forms.IntegerField(
+        label="회차",
+        required=False,
+        min_value=1,
+        widget=forms.NumberInput(
+            attrs={"class": "form-control", "placeholder": "선택 입력"}
+        ),
+    )
+    note = forms.CharField(
+        label="메모",
+        required=False,
+        widget=forms.Textarea(
+            attrs={
+                "class": "form-control",
+                "rows": 3,
+                "placeholder": "관리자에게 전달할 메모 (선택)",
+            }
+        ),
+    )
+    file = forms.FileField(
+        label="과제 파일",
+        widget=forms.ClearableFileInput(
+            attrs={
+                "class": "form-control",
+                "accept": ACCEPT_ATTR,
+            }
+        ),
+    )
+
+    def clean_file(self):
+        file_obj = self.cleaned_data.get("file")
+        if not file_obj:
+            raise forms.ValidationError("과제 파일을 선택해 주세요.")
+
+        ext = os.path.splitext(file_obj.name)[1].lower()
+        if ext not in self.ALLOWED_EXTENSIONS:
+            raise forms.ValidationError(self.INVALID_TYPE_MESSAGE)
+
+        if file_obj.size > self.MAX_FILE_SIZE:
+            raise forms.ValidationError(self.MAX_SIZE_MESSAGE)
+
+        return file_obj
+
+    def clean_session_number(self):
+        value = self.cleaned_data.get("session_number")
+        if value in (None, ""):
+            return None
+        return value
+

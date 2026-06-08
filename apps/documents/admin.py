@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import ClosureReport, ConsentDocument, SessionMaterial
+from .models import ClosureReport, ConsentDocument, CounselorAssignmentSubmission, SessionMaterial
 
 
 @admin.register(ConsentDocument)
@@ -30,4 +30,25 @@ class SessionMaterialAdmin(admin.ModelAdmin):
     search_fields = ("title", "content", "case__case_number", "appointment__case__case_number")
     autocomplete_fields = ("case", "appointment", "uploaded_by")
     list_editable = ("is_shared",)
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(CounselorAssignmentSubmission)
+class CounselorAssignmentSubmissionAdmin(admin.ModelAdmin):
+    list_display = (
+        "title",
+        "case",
+        "session_number",
+        "submitted_by",
+        "created_at",
+    )
+    list_filter = ("created_at",)
+    search_fields = (
+        "title",
+        "note",
+        "case__case_number",
+        "submitted_by__name",
+        "submitted_by__email",
+    )
+    autocomplete_fields = ("case", "submitted_by")
     readonly_fields = ("created_at", "updated_at")

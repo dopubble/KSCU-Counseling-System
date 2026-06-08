@@ -1,6 +1,6 @@
 from django.db.models import Count
-from django.http import JsonResponse
-from django.shortcuts import redirect, render
+from django.http import FileResponse, Http404, JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
@@ -14,6 +14,7 @@ from apps.counseling.models import ApplicationStatus, Case, CaseStatus, Counseli
 from apps.counseling.services import get_available_counselors, get_counselor_active_case_counts
 from apps.counseling.services import count_cancel_pending_appointments
 from apps.scheduling.models import Appointment, AppointmentStatus
+from apps.documents.models import CounselorAssignmentSubmission
 
 
 def health_check(request):
@@ -205,6 +206,44 @@ def cancel_pending_list(request):
             "appointments": appointments,
             "appointments_count": appointments.count(),
         },
+    )
+
+
+@role_required(UserRole.ADMIN)
+def counselor_assignment_list(request):
+    """상담사 과제 제출 목록 (관리자 확인용)."""
+    assignments = (
+        CounselorAssignmentSubmission.objects.select_related(
+            "case",
+            "case__client",
+            "case__counselor",
+            "submitted_by",
+        )
+        .order_by("-created_at")
+    )
+    return render(
+        request,
+        "admin_panel/counselor_assignment_list.html",
+        {
+            "assignments": assignments,
+            "assignments_count": assignments.count(),
+        },
+    )
+
+
+@role_required(UserRole.ADMIN)
+def admin_assignment_file(request, assignment_pk):
+    """과제 파일 다운로드 (관리자)."""
+    assignment = get_object_or_404(
+        CounselorAssignmentSubmission.objects.select_related("case"),
+        pk=assignment_pk,
+    )
+    if not assignment.file:
+        raise Http404("File not found")
+    return FileResponse(
+        assignment.file.open("rb"),
+        as_attachment=True,
+        filename=assignment.get_filename(),
     )
 
 

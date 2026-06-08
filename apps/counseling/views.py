@@ -33,6 +33,7 @@ from .forms import (
     BoardPostForm,
     CancelRequestForm,
     CounselingApplyForm,
+    CounselorAssignmentUploadForm,
     CounselorMatchForm,
     SessionMaterialUploadForm,
     SessionScheduleChangeForm,
@@ -75,7 +76,7 @@ from apps.scheduling.services import (
     reject_appointment_request,
 )
 from apps.scheduling.utils import ZoomAPIError, ZoomNotConfiguredError, is_zoom_configured
-from apps.documents.models import SessionMaterial
+from apps.documents.models import CounselorAssignmentSubmission, SessionMaterial
 
 from .cancellation_policy import (
     AppointmentOperationError,
@@ -747,6 +748,32 @@ def _session_material_file_response(material):
         material.file.open("rb"),
         as_attachment=True,
         filename=material.get_filename(),
+    )
+
+
+def _assignment_file_response(assignment):
+    if not assignment.file:
+        raise Http404("File not found")
+    return FileResponse(
+        assignment.file.open("rb"),
+        as_attachment=True,
+        filename=assignment.get_filename(),
+    )
+
+
+def user_can_submit_assignment(user, case) -> bool:
+    if not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    return user.role == UserRole.COUNSELOR and case.counselor_id == user.pk
+
+
+def get_case_counselor_assignments(case):
+    return (
+        CounselorAssignmentSubmission.objects.filter(case=case)
+        .select_related("submitted_by")
+        .order_by("-created_at")
     )
 
 
@@ -1472,6 +1499,10 @@ def counselor_case_detail(request, pk):
             "schedule_change_requests_for_case": get_schedule_change_requests_for_counselor(
                 case
             ),
+            "counselor_assignments": get_case_counselor_assignments(case),
+            "can_submit_assignment": user_can_submit_assignment(request.user, case),
+            "is_admin_view": request.user.is_superuser
+            or request.user.role == UserRole.ADMIN,
         },
     )
 
@@ -1894,6 +1925,67 @@ def counselor_shared_material_delete(request, case_pk, material_pk):
         material.file.delete(save=False)
     material.delete()
     messages.success(request, "게시글이 삭제되었습니다.")
+    return redirect("counselor:case_detail", pk=case.pk)
+
+
+@counselor_required
+@require_POST
+def counselor_assignment_upload(request, case_pk):
+    """상담사 과제 제출 (HWP/PDF)."""
+    case = _get_counselor_case(request, case_pk)
+    if not user_can_submit_assignment(request.user, case):
+        raise PermissionDenied("과제 제출 권한이 없습니다.")
+
+    form = CounselorAssignmentUploadForm(request.POST, request.FILES)
+    if not form.is_valid():
+        for field, errors in form.errors.items():
+            if errors:
+                messages.error(request, errors[0])
+                break
+        else:
+            messages.error(request, "입력 내용을 확인해 주세요.")
+        return redirect("counselor:case_detail", pk=case.pk)
+
+    CounselorAssignmentSubmission.objects.create(
+        case=case,
+        title=form.cleaned_data["title"].strip(),
+        session_number=form.cleaned_data.get("session_number"),
+        note=(form.cleaned_data.get("note") or "").strip(),
+        file=form.cleaned_data["file"],
+        submitted_by=request.user,
+    )
+    messages.success(request, "과제가 제출되었습니다. 관리자가 확인할 수 있습니다.")
+    return redirect("counselor:case_detail", pk=case.pk)
+
+
+@role_required(UserRole.COUNSELOR, UserRole.ADMIN)
+def counselor_assignment_file(request, case_pk, assignment_pk):
+    """과제 파일 다운로드 (담당 상담사·관리자)."""
+    case = _get_board_manage_case(request, case_pk)
+    assignment = get_object_or_404(
+        CounselorAssignmentSubmission,
+        pk=assignment_pk,
+        case=case,
+    )
+    return _assignment_file_response(assignment)
+
+
+@role_required(UserRole.COUNSELOR, UserRole.ADMIN)
+@require_POST
+def counselor_assignment_delete(request, case_pk, assignment_pk):
+    """과제 제출 삭제 (제출자·관리자)."""
+    case = _get_board_manage_case(request, case_pk)
+    assignment = get_object_or_404(
+        CounselorAssignmentSubmission,
+        pk=assignment_pk,
+        case=case,
+    )
+    if not assignment.can_delete_by(request.user):
+        raise PermissionDenied("삭제 권한이 없습니다.")
+    if assignment.file:
+        assignment.file.delete(save=False)
+    assignment.delete()
+    messages.success(request, "과제 제출이 삭제되었습니다.")
     return redirect("counselor:case_detail", pk=case.pk)
 
 
