@@ -146,21 +146,22 @@ def confirm_appointment_with_zoom(appointment: Appointment) -> tuple[Appointment
         raise
 
     join_url = (meeting_data.get("join_url") or "").strip()
-    launch_url = pick_meeting_launch_url(meeting_data)
-    if not join_url and not launch_url:
+    start_url = (meeting_data.get("start_url") or "").strip()
+    if not join_url and not start_url:
         raise ZoomAPIError("Zoom 회의 참여 링크(Join URL)를 받지 못했습니다.")
 
     zoom_meeting, _created = ZoomMeeting.objects.update_or_create(
         appointment=appointment,
         defaults={
             "zoom_meeting_id": str(meeting_data.get("id", "")),
-            "join_url": join_url or launch_url,
-            "start_url": meeting_data.get("start_url", "") or "",
+            "join_url": join_url,
+            "start_url": start_url,
             "password": meeting_data.get("password", "") or "",
         },
     )
 
-    case.zoom_meeting_url = launch_url or join_url
+    # 사례·내담자용 링크는 짧은 join_url 우선 (start_url은 호스트용·매우 길 수 있음)
+    case.zoom_meeting_url = join_url or start_url
     case.save(update_fields=["zoom_meeting_url"])
 
     appointment.status = AppointmentStatus.CONFIRMED

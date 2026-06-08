@@ -1,10 +1,14 @@
 from django.contrib import messages
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
+import logging
+
 from apps.accounts.decorators import counselor_required
+
+logger = logging.getLogger(__name__)
 
 from .display import group_availabilities_for_display
 from .forms import (
@@ -191,7 +195,17 @@ def appointment_manage(request, pk):
                         request,
                         "선택한 시간에 이미 다른 확정 예약이 있습니다.",
                     )
+                except ValidationError as exc:
+                    messages.error(
+                        request,
+                        exc.messages[0] if getattr(exc, "messages", None) else str(exc),
+                    )
                 except Exception:
+                    logger.exception(
+                        "Appointment confirm failed (appointment=%s, case=%s)",
+                        appointment.pk,
+                        case.pk,
+                    )
                     messages.error(
                         request,
                         "예약 확정 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",

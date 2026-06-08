@@ -6,7 +6,7 @@ logger = logging.getLogger(__name__)
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -1561,7 +1561,19 @@ def counselor_session_appointment_confirm(request, case_pk, appointment_pk):
         )
         if err:
             return err
+    except ValidationError as exc:
+        err = _ajax_error_response(
+            request,
+            exc.messages[0] if getattr(exc, "messages", None) else str(exc),
+        )
+        if err:
+            return err
     except Exception:
+        logger.exception(
+            "Session appointment confirm failed (case=%s, appointment=%s)",
+            case.pk,
+            appointment.pk,
+        )
         err = _ajax_error_response(
             request,
             "예약 확정 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",

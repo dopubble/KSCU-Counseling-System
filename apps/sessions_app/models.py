@@ -64,10 +64,10 @@ class ZoomMeeting(models.Model):
         verbose_name="예약",
     )
     zoom_meeting_id = models.CharField("Zoom Meeting ID", max_length=100)
-    join_url = models.URLField("참가 URL")
-    start_url = models.URLField("호스트 URL", blank=True)
+    join_url = models.URLField("참가 URL", max_length=2000)
+    start_url = models.URLField("호스트 URL", max_length=2000, blank=True)
     password = models.CharField("비밀번호", max_length=50, blank=True)
-    recording_url = models.URLField("녹화 URL", blank=True)
+    recording_url = models.URLField("녹화 URL", max_length=2000, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

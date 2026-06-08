@@ -116,9 +116,9 @@ class Case(models.Model):
     notes = models.TextField("메모", blank=True)
     zoom_meeting_url = models.URLField(
         "Zoom 회의 링크",
-        max_length=500,
+        max_length=2000,
         blank=True,
-        help_text="상담 예약 시 Zoom API로 생성된 회의 URL",
+        help_text="상담 예약 시 Zoom API로 생성된 회의 URL(참가 링크)",
     )
     total_sessions = models.PositiveIntegerField(
         "총 회기 수",
