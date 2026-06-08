@@ -34,11 +34,6 @@ urlpatterns = [
         name="shared_material_file",
     ),
     path(
-        "case/<uuid:case_pk>/session/<uuid:appointment_pk>/",
-        views.client_session_detail,
-        name="session_detail",
-    ),
-    path(
         "case/<uuid:case_pk>/session/<uuid:appointment_pk>/materials/",
         views.client_session_materials,
         name="session_materials",

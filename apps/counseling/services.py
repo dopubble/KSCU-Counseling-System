@@ -1051,15 +1051,6 @@ class CaseSessionCard:
         )
 
     @property
-    def show_journal(self) -> bool:
-        return (
-            self.appointment is not None
-            and self.appointment.status == AppointmentStatus.COMPLETED
-            and self.journal is not None
-            and not self.journal.is_draft
-        )
-
-    @property
     def show_counselor_journal(self) -> bool:
         """상담사: 확정(진행중) 또는 완료 회기에서 일지 작성/열람."""
         if self.appointment is None:

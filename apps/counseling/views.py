@@ -864,32 +864,6 @@ def client_shared_material_file(request, case_pk, material_pk):
 
 
 @role_required(UserRole.CLIENT)
-def client_session_detail(request, case_pk, appointment_pk):
-    """내담자 회기 상담일지 요약 (완료 회기)"""
-    case = _get_client_case(request, case_pk)
-    appointment = _get_client_case_appointment(case, appointment_pk)
-    card = next(
-        (c for c in build_case_session_cards(case) if c.appointment.pk == appointment.pk),
-        None,
-    )
-    if not card or not card.show_journal:
-        messages.error(request, "열람 가능한 상담일지가 없습니다.")
-        return redirect("client:case_detail", pk=case.pk)
-
-    journal = card.journal
-    return render(
-        request,
-        "client/session_detail.html",
-        {
-            "case": case,
-            "appointment": appointment,
-            "journal": journal,
-            "session_number": card.session_number,
-        },
-    )
-
-
-@role_required(UserRole.CLIENT)
 def client_session_materials(request, case_pk, appointment_pk):
     """회기별 자료함"""
     case = _get_client_case(request, case_pk)

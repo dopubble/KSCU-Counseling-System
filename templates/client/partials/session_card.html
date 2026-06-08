@@ -144,22 +144,14 @@
         {% endif %}
     </div>
     {% endif %}
-    {% if session.show_zoom or session.show_journal %}
+    {% if session.show_zoom %}
     <footer class="client-session-card-footer d-flex flex-wrap align-items-center gap-2">
-        {% if session.show_zoom %}
         <a href="{{ session.zoom_url }}"
            target="_blank"
            rel="noopener noreferrer"
            class="btn btn-sm client-dashboard-action-btn">
             <i class="bi bi-camera-video me-1" aria-hidden="true"></i>Zoom 회의 바로가기
         </a>
-        {% endif %}
-        {% if session.show_journal %}
-        <a href="{% url 'client:session_detail' case.pk session.appointment.pk %}"
-           class="btn btn-sm btn-outline-primary{% if session.show_zoom %} ms-sm-2{% endif %}">
-            <i class="bi bi-journal-text me-1" aria-hidden="true"></i>상담일지 보기
-        </a>
-        {% endif %}
     </footer>
     {% endif %}
 </article>
