@@ -8,8 +8,8 @@ from django.db import connection
 
 from apps.counseling.emailing import send_new_application_notification
 from apps.counseling.models import CounselingApplication
+from apps.counseling.constants import DEFAULT_COUNSELING_TYPES, normalize_counseling_types
 from apps.counseling.seed_applications import (
-    DEFAULT_COUNSELING_TYPE,
     DEFAULT_REASON,
     SeedApplicationRow,
     build_rows_for_all_active_clients,
@@ -49,8 +49,8 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             "--counseling-type",
-            default=DEFAULT_COUNSELING_TYPE,
-            help=f"기본 상담 유형 (기본: {DEFAULT_COUNSELING_TYPE})",
+            default=",".join(DEFAULT_COUNSELING_TYPES),
+            help=f"기본 상담 유형 (쉼표 구분, 기본: {','.join(DEFAULT_COUNSELING_TYPES)})",
         )
         parser.add_argument(
             "--reason",
@@ -135,7 +135,7 @@ class Command(BaseCommand):
             except ValueError as exc:
                 raise CommandError(str(exc)) from exc
 
-        default_type = options["counseling_type"]
+        default_types = normalize_counseling_types(options["counseling_type"])
         default_reason = options["reason"]
         for email in options.get("emails") or []:
             email = email.strip().lower()
@@ -143,7 +143,7 @@ class Command(BaseCommand):
                 rows.append(
                     SeedApplicationRow(
                         email=email,
-                        counseling_type=default_type,
+                        counseling_types=default_types,
                         reason=default_reason,
                     )
                 )
@@ -158,8 +158,8 @@ class Command(BaseCommand):
 
         # CSV/--all-clients 행에 기본값이 비어 있으면 CLI 기본값 적용
         for row in rows:
-            if not row.counseling_type:
-                row.counseling_type = default_type
+            if not row.counseling_types:
+                row.counseling_types = default_types
             if not row.reason:
                 row.reason = default_reason
 

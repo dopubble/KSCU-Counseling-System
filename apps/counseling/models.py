@@ -50,7 +50,7 @@ class CounselingApplication(models.Model):
         related_name="applications",
         verbose_name="내담자",
     )
-    counseling_type = models.CharField("상담 유형", max_length=50)
+    counseling_types = models.JSONField("상담 유형", default=list, blank=True)
     reason = models.TextField("상담 사유")
     preferred_schedule = models.JSONField("희망 일정", default=dict, blank=True)
     status = models.CharField(
@@ -69,6 +69,15 @@ class CounselingApplication(models.Model):
         indexes = [
             models.Index(fields=["status", "created_at"]),
         ]
+
+    def get_counseling_types_display(self, separator: str = ", ") -> str:
+        types = self.counseling_types or []
+        return separator.join(types)
+
+    @property
+    def counseling_type(self) -> str:
+        """템플릿·레거시 호환용 (쉼표로 연결된 표시 문자열)."""
+        return self.get_counseling_types_display()
 
     def __str__(self):
         return f"{self.client.name} - {self.counseling_type} ({self.get_status_display()})"

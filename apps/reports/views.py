@@ -208,11 +208,14 @@ def cancel_pending_list(request):
 
 @role_required(UserRole.ADMIN)
 def statistics(request):
-    type_distribution = (
-        CounselingApplication.objects.values("counseling_type")
-        .annotate(count=Count("id"))
-        .order_by("-count")
-    )
+    type_counts: dict[str, int] = {}
+    for types in CounselingApplication.objects.values_list("counseling_types", flat=True):
+        for counseling_type in types or []:
+            type_counts[counseling_type] = type_counts.get(counseling_type, 0) + 1
+    type_distribution = [
+        {"counseling_type": key, "count": value}
+        for key, value in sorted(type_counts.items(), key=lambda item: -item[1])
+    ]
     status_distribution = (
         Case.objects.values("status")
         .annotate(count=Count("id"))

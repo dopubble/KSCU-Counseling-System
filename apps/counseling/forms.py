@@ -3,7 +3,11 @@ import os
 from django import forms
 
 from apps.accounts.models import ClientProfile
-from apps.counseling.constants import COUNSELING_TYPE_CHOICES, COUNSELING_TYPE_VALUES
+from apps.counseling.constants import (
+    COUNSELING_TYPE_CHOICES,
+    COUNSELING_TYPE_VALUES,
+    normalize_counseling_types,
+)
 
 
 
@@ -53,10 +57,12 @@ class CounselingApplyForm(forms.Form):
             attrs={"class": "form-control", "placeholder": "010-0000-0000"}
         ),
     )
-    counseling_type = forms.ChoiceField(
+    counseling_types = forms.MultipleChoiceField(
         label="상담 희망 분야",
         choices=COUNSELING_TYPE_CHOICES,
-        widget=forms.Select(attrs={"class": "form-select"}),
+        widget=forms.CheckboxSelectMultiple(
+            attrs={"class": "counseling-type-checkboxes"}
+        ),
     )
     preferred_date = forms.DateField(
         label="희망 상담일",
@@ -96,6 +102,7 @@ class CounselingApplyForm(forms.Form):
     def __init__(self, *args, user=None, **kwargs):
         self.user = user
         super().__init__(*args, **kwargs)
+        self.fields["counseling_types"].widget.attrs.update({"class": "form-check-input"})
         if user is not None and user.is_authenticated:
             self._lock_identity_fields(user)
         if self.is_bound and self.errors:
@@ -152,12 +159,10 @@ class CounselingApplyForm(forms.Form):
         cleaned["department"] = snapshot["department"]
         return cleaned
 
-    def clean_counseling_type(self):
-        value = self.cleaned_data.get("counseling_type")
+    def clean_counseling_types(self):
+        value = normalize_counseling_types(self.cleaned_data.get("counseling_types"))
         if not value:
-            raise forms.ValidationError("상담 희망 분야를 선택해 주세요.")
-        if value not in COUNSELING_TYPE_VALUES:
-            raise forms.ValidationError("유효하지 않은 상담 희망 분야입니다.")
+            raise forms.ValidationError("상담 희망 분야를 하나 이상 선택해 주세요.")
         return value
 
 

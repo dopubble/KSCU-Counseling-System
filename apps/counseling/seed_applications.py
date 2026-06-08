@@ -10,8 +10,9 @@ from pathlib import Path
 from django.utils import timezone
 
 from apps.accounts.models import ClientProfile, User, UserRole, UserStatus
-from apps.counseling.constants import DEFAULT_COUNSELING_TYPE
+from apps.counseling.constants import DEFAULT_COUNSELING_TYPES, normalize_counseling_types
 from apps.counseling.models import ApplicationStatus, CounselingApplication
+
 DEFAULT_REASON = "관리자 일괄 접수 (내담자 사전 등록)"
 DEFAULT_PREFERRED_TIME = time(10, 0)
 DEFAULT_DAYS_AHEAD = 7
@@ -20,7 +21,7 @@ DEFAULT_DAYS_AHEAD = 7
 @dataclass
 class SeedApplicationRow:
     email: str
-    counseling_type: str = DEFAULT_COUNSELING_TYPE
+    counseling_types: list[str] = field(default_factory=lambda: list(DEFAULT_COUNSELING_TYPES))
     reason: str = DEFAULT_REASON
     preferred_date: date | None = None
     preferred_time: time | None = None
@@ -120,7 +121,8 @@ def read_seed_rows(path: Path) -> list[SeedApplicationRow]:
         if not email:
             raise ValueError(f"{line_no}행: email(이메일) 컬럼이 비어 있습니다.")
 
-        counseling_type = _column(row, "counseling_type", "상담유형", "상담 유형") or DEFAULT_COUNSELING_TYPE
+        types_raw = _column(row, "counseling_types", "counseling_type", "상담유형", "상담 유형")
+        counseling_types = normalize_counseling_types(types_raw) if types_raw else list(DEFAULT_COUNSELING_TYPES)
         reason = _column(row, "reason", "상담사유", "사유") or DEFAULT_REASON
 
         preferred_date_raw = _column(row, "preferred_date", "희망일", "희망일자")
@@ -132,7 +134,7 @@ def read_seed_rows(path: Path) -> list[SeedApplicationRow]:
         result.append(
             SeedApplicationRow(
                 email=email.lower(),
-                counseling_type=counseling_type,
+                counseling_types=counseling_types,
                 reason=reason,
                 preferred_date=preferred_date,
                 preferred_time=preferred_time,
@@ -165,7 +167,7 @@ def _profile_snapshot(user: User) -> dict:
 def create_application_for_client(
     client: User,
     *,
-    counseling_type: str = DEFAULT_COUNSELING_TYPE,
+    counseling_types: list[str] | None = None,
     reason: str = DEFAULT_REASON,
     preferred_date: date | None = None,
     preferred_time: time | None = None,
@@ -174,6 +176,10 @@ def create_application_for_client(
     """내담자 1명에게 상담 신청서를 생성 (웹 /counseling/apply/ 와 동일한 필드 구조)."""
     if client.role != UserRole.CLIENT:
         raise ValueError(f"내담자 계정이 아닙니다: {client.email}")
+
+    types = normalize_counseling_types(counseling_types or DEFAULT_COUNSELING_TYPES)
+    if not types:
+        raise ValueError("상담 유형이 비어 있습니다.")
 
     snapshot = _profile_snapshot(client)
     birth_date = snapshot["birth_date"]
@@ -192,7 +198,7 @@ def create_application_for_client(
 
     return CounselingApplication.objects.create(
         client=client,
-        counseling_type=counseling_type,
+        counseling_types=types,
         reason=reason,
         preferred_schedule=preferred_schedule,
         status=ApplicationStatus.WAITING_MATCH,
@@ -258,13 +264,14 @@ def seed_application_rows(
                 )
                 continue
 
+            types_label = ", ".join(row.counseling_types)
             if dry_run:
                 summary.created += 1
                 summary.results.append(
                     SeedApplicationResult(
                         row.email,
                         "would_create",
-                        f"{row.counseling_type} / 매칭대기",
+                        f"{types_label} / 매칭대기",
                         row.line_no,
                     )
                 )
@@ -272,7 +279,7 @@ def seed_application_rows(
 
             application = create_application_for_client(
                 client,
-                counseling_type=row.counseling_type,
+                counseling_types=row.counseling_types,
                 reason=row.reason,
                 preferred_date=row.preferred_date,
                 preferred_time=row.preferred_time,

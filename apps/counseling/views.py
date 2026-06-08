@@ -210,7 +210,7 @@ def _save_counseling_application(user, data):
 
     return CounselingApplication.objects.create(
         client=user,
-        counseling_type=data["counseling_type"],
+        counseling_types=data["counseling_types"],
         reason=data["reason"],
         preferred_schedule=preferred_schedule,
         status=ApplicationStatus.WAITING_MATCH,
@@ -241,14 +241,14 @@ def _update_counseling_application(user, application, data):
         }
     )
 
-    application.counseling_type = data["counseling_type"]
+    application.counseling_types = data["counseling_types"]
     application.reason = data["reason"]
     application.preferred_schedule = preferred_schedule
     if application.status == ApplicationStatus.CANCELLED:
         application.status = ApplicationStatus.WAITING_MATCH
     application.save(
         update_fields=[
-            "counseling_type",
+            "counseling_types",
             "reason",
             "preferred_schedule",
             "status",

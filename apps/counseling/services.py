@@ -422,7 +422,7 @@ def build_apply_initial_from_application(
     initial: dict[str, Any] = {
         "name": user.name,
         "phone": user.phone or "",
-        "counseling_type": application.counseling_type,
+        "counseling_types": application.counseling_types or [],
         "reason": application.reason,
     }
 

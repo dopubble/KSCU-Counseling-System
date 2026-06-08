@@ -5,10 +5,14 @@ from .models import Case, CounselingApplication, SessionScheduleChangeRequest
 
 @admin.register(CounselingApplication)
 class CounselingApplicationAdmin(admin.ModelAdmin):
-    list_display = ("client", "counseling_type", "status", "created_at")
-    list_filter = ("status", "counseling_type")
+    list_display = ("client", "display_counseling_types", "status", "created_at")
+    list_filter = ("status",)
     search_fields = ("client__name", "client__email", "reason")
     readonly_fields = ("created_at", "updated_at")
+
+    @admin.display(description="상담 유형")
+    def display_counseling_types(self, obj):
+        return obj.get_counseling_types_display()
 
 
 @admin.register(Case)
