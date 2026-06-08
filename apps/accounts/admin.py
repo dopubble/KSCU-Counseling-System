@@ -40,8 +40,6 @@ class CounselorProfileInline(admin.StackedInline):
     fk_name = "user"
     fields = (
         "license_number",
-        "birth_date",
-        "gender",
         "specialties",
         "bio",
         "max_cases",
@@ -162,8 +160,6 @@ class CounselorProfileAdmin(admin.ModelAdmin):
     list_display = (
         "user_name",
         "user_email",
-        "birth_date",
-        "gender",
         "user_status",
         "license_number",
         "specialties_summary",
@@ -183,7 +179,7 @@ class CounselorProfileAdmin(admin.ModelAdmin):
         (None, {"fields": ("user",)}),
         (
             "상담사 정보",
-            {"fields": ("license_number", "birth_date", "gender", "specialties", "bio", "max_cases", "is_approved")},
+            {"fields": ("license_number", "specialties", "bio", "max_cases", "is_approved")},
         ),
         ("일시", {"fields": ("created_at", "updated_at")}),
     )
@@ -217,7 +213,6 @@ class ClientProfileAdmin(admin.ModelAdmin):
         "is_kcu_student",
         "department",
         "birth_date",
-        "gender",
     )
     list_filter = ("is_kcu_student",)
     search_fields = ("user__name", "user__email", "student_id", "department")
