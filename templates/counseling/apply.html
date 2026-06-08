@@ -107,13 +107,10 @@
                             <div class="row g-3 mb-4">
                                 <div class="col-12">
                                     <span class="form-label fw-semibold d-block">{{ form.counseling_types.label }} <span class="text-danger">*</span></span>
-                                    <div class="form-text mb-2">해당하는 항목을 모두 선택해 주세요.</div>
-                                    <div class="counseling-type-options border rounded p-3 bg-white">
+                                    <div class="form-text mb-2">해당하는 항목을 모두 선택할 수 있습니다.</div>
+                                    <div class="counseling-type-options d-flex flex-wrap gap-3 border rounded p-3 bg-white">
                                         {% for option in form.counseling_types %}
-                                            {% if option.data.value == "자녀관계" %}
-                                            <hr class="my-3 text-muted">
-                                            {% endif %}
-                                            <div class="form-check mb-2">
+                                            <div class="form-check mb-0">
                                                 {{ option.tag }}
                                                 <label class="form-check-label" for="{{ option.id_for_label }}">{{ option.choice_label }}</label>
                                             </div>
@@ -136,6 +133,7 @@
                                 <div class="col-12">
                                     <label for="id_reason" class="form-label fw-semibold">{{ form.reason.label }} <span class="text-danger">*</span></label>
                                     {{ form.reason }}
+                                    <div class="form-text">100자 이내로 작성해 주세요.</div>
                                     {% if form.reason.errors %}<div class="text-danger small mt-1">{{ form.reason.errors.0 }}</div>{% endif %}
                                 </div>
                             </div>

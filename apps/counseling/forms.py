@@ -89,12 +89,14 @@ class CounselingApplyForm(forms.Form):
         },
     )
     reason = forms.CharField(
-        label="상담 신청 사유",
+        label="주요 호소 문제 작성(100자 이내)",
+        max_length=100,
         widget=forms.Textarea(
             attrs={
                 "class": "form-control",
-                "rows": 5,
-                "placeholder": "상담을 받고 싶은 내용을 간단히 작성해 주세요.",
+                "rows": 3,
+                "maxlength": "100",
+                "placeholder": "주요 호소 문제를 100자 이내로 작성해 주세요.",
             }
         ),
     )
@@ -163,6 +165,14 @@ class CounselingApplyForm(forms.Form):
         value = normalize_counseling_types(self.cleaned_data.get("counseling_types"))
         if not value:
             raise forms.ValidationError("상담 희망 분야를 하나 이상 선택해 주세요.")
+        return value
+
+    def clean_reason(self):
+        value = (self.cleaned_data.get("reason") or "").strip()
+        if not value:
+            raise forms.ValidationError("주요 호소 문제를 작성해 주세요.")
+        if len(value) > 100:
+            raise forms.ValidationError("100자 이내로 작성해 주세요.")
         return value
 
 
