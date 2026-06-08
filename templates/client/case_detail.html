@@ -233,6 +233,18 @@
     const BLOCKED_DATE_ALERT =
         "상담가능 시간이 아닙니다. 파란색 날짜를 선택해주세요.";
 
+    function resetFormPreservingCsrf(form) {
+        if (!form) {
+            return;
+        }
+        const csrfInput = form.querySelector('input[name="csrfmiddlewaretoken"]');
+        const csrfValue = csrfInput ? csrfInput.value : "";
+        form.reset();
+        if (csrfInput && csrfValue) {
+            csrfInput.value = csrfValue;
+        }
+    }
+
     function slotUnavailableAlert(value) {
         let hint = "";
         if (window.ClientScheduleCalendar && value) {
@@ -396,7 +408,7 @@
             const sessionLabel = trigger.getAttribute("data-session-label") || (sessionNumber + "회기");
             if (target) target.textContent = sessionLabel;
             form.action = urlTemplate.replace("999", sessionNumber);
-            form.reset();
+            resetFormPreservingCsrf(form);
         });
     }
 
@@ -550,7 +562,7 @@
                 }
             }
             scheduleForm.action = scheduleTemplate.replace("999", sessionNumber);
-            scheduleForm.reset();
+            resetFormPreservingCsrf(scheduleForm);
             const preferredInput = document.getElementById("sessionSchedulePreferredDatetime");
             if (preferredInput && preferredInput._flatpickr) {
                 preferredInput._flatpickr.clear();
