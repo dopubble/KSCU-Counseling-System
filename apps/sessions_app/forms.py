@@ -1,11 +1,11 @@
 from django import forms
 from django.utils import timezone
 
-from apps.counseling.constants import COUNSELING_TYPE_CHOICES
+from apps.counseling.constants import COUNSELING_TYPE_FLAT_CHOICES, COUNSELING_TYPE_VALUES
 
 from .models import CounselingJournal
 
-SESSION_CATEGORY_CHOICES = COUNSELING_TYPE_CHOICES + [
+SESSION_CATEGORY_CHOICES = COUNSELING_TYPE_FLAT_CHOICES + [
     ("위기개입", "위기개입"),
     ("기타", "기타"),
 ]
@@ -91,9 +91,9 @@ class CounselingJournalForm(forms.ModelForm):
 
         if case and not self.instance.pk:
             app_type = case.application.counseling_type
-            if app_type and any(app_type == c[0] for c in SESSION_CATEGORY_CHOICES if c[0]):
+            if app_type and app_type in COUNSELING_TYPE_VALUES:
                 self.fields["session_category"].initial = app_type
-            else:
+            elif app_type:
                 self.fields["session_category"].initial = "기타"
             if not self.initial.get("session_datetime"):
                 self.fields["session_datetime"].initial = timezone.localtime()

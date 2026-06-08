@@ -3,7 +3,7 @@ import os
 from django import forms
 
 from apps.accounts.models import ClientProfile
-from apps.counseling.constants import COUNSELING_TYPE_CHOICES
+from apps.counseling.constants import COUNSELING_TYPE_CHOICES, COUNSELING_TYPE_VALUES
 
 
 
@@ -156,6 +156,8 @@ class CounselingApplyForm(forms.Form):
         value = self.cleaned_data.get("counseling_type")
         if not value:
             raise forms.ValidationError("상담 희망 분야를 선택해 주세요.")
+        if value not in COUNSELING_TYPE_VALUES:
+            raise forms.ValidationError("유효하지 않은 상담 희망 분야입니다.")
         return value
 
 
