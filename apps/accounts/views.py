@@ -1,13 +1,17 @@
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth import login, logout as auth_logout
+from django.contrib.auth import login, logout as auth_logout, update_session_auth_hash
 from django.contrib.auth.views import (
     LoginView,
+    PasswordChangeDoneView,
+    PasswordChangeView,
     PasswordResetCompleteView,
     PasswordResetConfirmView,
     PasswordResetDoneView,
     PasswordResetView,
+    redirect_to_login,
 )
+from django.core.exceptions import PermissionDenied
 from django.shortcuts import redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils.decorators import method_decorator
@@ -19,6 +23,7 @@ from .emailing import send_find_id_email
 from apps.accounts.decorators import role_required
 
 from .forms import (
+    CounselorProfileUpdateForm,
     EmailAuthenticationForm,
     ProfileUpdateForm,
     FindAccountIdForm,
@@ -29,7 +34,7 @@ from .forms import (
 from apps.counseling.services import get_client_home_dashboard
 from apps.reports.views import build_admin_dashboard_stats
 
-from .models import ClientProfile, User, UserRole, UserStatus
+from .models import ClientProfile, CounselorProfile, User, UserRole, UserStatus
 
 
 def _show_admin_home_widget(user: User) -> bool:
@@ -131,7 +136,7 @@ def pending(request):
 
 
 def _profile_immutable_fields_tampered(request, user, profile) -> bool:
-    """HTML/POST 조작으로 변경 불가 필드 수정 시도 여부."""
+    """HTML/POST 조작으로 변경 불가 필드 수정 시도 여부 (내담자)."""
     if "name" in request.POST and request.POST.get("name", "") != user.name:
         return True
     current_student_id = profile.student_id or ""
@@ -144,46 +149,135 @@ def _profile_immutable_fields_tampered(request, user, profile) -> bool:
     current_department = profile.department or ""
     if "department" in request.POST and request.POST.get("department", "") != current_department:
         return True
+    if "is_kcu_student_display" in request.POST:
+        expected = "예" if profile.is_kcu_student else "아니오"
+        if request.POST.get("is_kcu_student_display", "") != expected:
+            return True
     return False
 
 
-def _save_client_profile_contact(user, *, email: str, phone: str) -> None:
-    """이메일·연락처만 저장 (name·student_id는 갱신하지 않음)."""
+def _counselor_immutable_fields_tampered(request, user, profile) -> bool:
+    """HTML/POST 조작으로 변경 불가 필드 수정 시도 여부 (상담사)."""
+    if "name" in request.POST and request.POST.get("name", "") != user.name:
+        return True
+    if "role_display" in request.POST and request.POST.get("role_display", "") != user.get_role_display():
+        return True
+    if profile is None:
+        return False
+    posted_birth = request.POST.get("birth_date", "")
+    expected_birth = profile.birth_date.isoformat() if profile.birth_date else ""
+    if "birth_date" in request.POST and posted_birth != expected_birth:
+        return True
+    if "gender" in request.POST and request.POST.get("gender", "") != (profile.gender or ""):
+        return True
+    return False
+
+
+def _save_user_profile_contact(
+    user,
+    *,
+    email: str,
+    phone: str,
+    new_password: str | None = None,
+    request=None,
+) -> None:
+    """이메일·연락처·(선택) 비밀번호 저장."""
     user.email = email
     user.phone = phone or ""
-    user.save(update_fields=["email", "phone", "updated_at"])
+    update_fields = ["email", "phone", "updated_at"]
+    if new_password:
+        user.set_password(new_password)
+        update_fields.append("password")
+    user.save(update_fields=update_fields)
+    if new_password and request is not None:
+        update_session_auth_hash(request, user)
 
 
-@role_required(UserRole.CLIENT)
+def _get_counselor_profile(user):
+    try:
+        return user.counselor_profile
+    except CounselorProfile.DoesNotExist:
+        return None
+
+
+@role_required(UserRole.CLIENT, UserRole.COUNSELOR)
 def profile_update(request):
-    """내담자 회원정보 수정 (이메일·연락처만)."""
+    """내정보 수정 — 이메일·휴대폰·비밀번호 변경 (역할별 가입 정보는 조회만)."""
     user = request.user
-    profile, _ = ClientProfile.objects.get_or_create(user=user)
+    is_counselor = user.role == UserRole.COUNSELOR
+
+    if is_counselor:
+        profile = _get_counselor_profile(user)
+        form_class = CounselorProfileUpdateForm
+        dashboard_url = "counselor:dashboard"
+        tamper_message = "이름·생년월일·성별 등 가입 시 확정된 정보는 변경할 수 없습니다."
+    else:
+        profile, _ = ClientProfile.objects.get_or_create(user=user)
+        form_class = ProfileUpdateForm
+        dashboard_url = "client:dashboard"
+        tamper_message = "이름·학번·생년월일·소속 학과 등 가입 시 확정된 정보는 변경할 수 없습니다."
 
     if request.method == "POST":
-        if _profile_immutable_fields_tampered(request, user, profile):
-            messages.error(request, "이름·학번·생년월일·소속 학과는 변경할 수 없습니다.")
+        if is_counselor:
+            tampered = _counselor_immutable_fields_tampered(request, user, profile)
+        else:
+            tampered = _profile_immutable_fields_tampered(request, user, profile)
+        if tampered:
+            messages.error(request, tamper_message)
             return redirect("accounts:profile_update")
 
-        form = ProfileUpdateForm(request.POST, user=user)
+        form = form_class(request.POST, user=user)
         if form.is_valid():
-            _save_client_profile_contact(
+            _save_user_profile_contact(
                 user,
                 email=form.cleaned_data["email"],
                 phone=form.cleaned_data.get("phone", ""),
+                new_password=form.new_password,
+                request=request,
             )
-
-            messages.success(request, "회원정보가 저장되었습니다.")
-            return redirect("client:dashboard")
+            if form.new_password:
+                messages.success(request, "내정보와 비밀번호가 저장되었습니다.")
+            else:
+                messages.success(request, "내정보가 저장되었습니다.")
+            return redirect(dashboard_url)
         messages.error(request, "입력 내용을 확인해 주세요.")
     else:
-        form = ProfileUpdateForm(user=user)
+        form = form_class(user=user)
 
     return render(
         request,
         "accounts/profile_update.html",
-        {"form": form},
+        {
+            "form": form,
+            "is_counselor": is_counselor,
+            "dashboard_url_name": dashboard_url,
+        },
     )
+
+
+class AccountPasswordResetCompleteView(PasswordResetCompleteView):
+    template_name = "accounts/password_reset_complete.html"
+
+
+@method_decorator(never_cache, name="dispatch")
+class AccountPasswordChangeView(PasswordChangeView):
+    """로그인 후 비밀번호 변경 — 내정보 수정으로 통합."""
+
+    def dispatch(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return redirect_to_login(
+                request.get_full_path(),
+                login_url=reverse("accounts:login"),
+            )
+        if request.user.role in (UserRole.COUNSELOR, UserRole.CLIENT):
+            return redirect("accounts:profile_update")
+        raise PermissionDenied("접근 권한이 없습니다.")
+
+
+@method_decorator(never_cache, name="dispatch")
+class AccountPasswordChangeDoneView(PasswordChangeDoneView):
+    def dispatch(self, request, *args, **kwargs):
+        return redirect("accounts:profile_update")
 
 
 class AccountPasswordResetView(PasswordResetView):

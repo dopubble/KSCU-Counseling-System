@@ -155,6 +155,17 @@ def client_has_pending_application(client: User) -> bool:
     ).exists()
 
 
+def client_has_active_counseling(client: User) -> bool:
+    """담당 상담사가 배정된 진행 중 사례가 있으면 True."""
+    from apps.counseling.models import Case, CaseStatus
+
+    return Case.objects.filter(
+        client=client,
+        status=CaseStatus.ACTIVE,
+        counselor_id__isnull=False,
+    ).exists()
+
+
 def _profile_snapshot(user: User) -> dict:
     profile, _ = ClientProfile.objects.get_or_create(user=user)
     return {
@@ -259,6 +270,18 @@ def seed_application_rows(
                         row.email,
                         "skipped",
                         "이미 접수/매칭대기 신청이 있습니다.",
+                        row.line_no,
+                    )
+                )
+                continue
+
+            if skip_existing and client_has_active_counseling(client):
+                summary.skipped += 1
+                summary.results.append(
+                    SeedApplicationResult(
+                        row.email,
+                        "skipped",
+                        "이미 진행 중인 상담(상담사 배정 완료)이 있습니다.",
                         row.line_no,
                     )
                 )

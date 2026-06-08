@@ -6,6 +6,10 @@ from django.utils import timezone
 
 from apps.accounts.decorators import role_required
 from apps.accounts.models import UserRole
+from apps.counseling.application_queries import (
+    exclude_stale_pending_applications,
+    waiting_match_for_admin,
+)
 from apps.counseling.models import ApplicationStatus, Case, CaseStatus, CounselingApplication
 from apps.counseling.services import get_available_counselors, get_counselor_active_case_counts
 from apps.counseling.services import count_cancel_pending_appointments
@@ -22,8 +26,8 @@ def _month_start(now=None):
 
 
 def _waiting_match_queryset():
-    """접수(RECEIVED)·매칭대기(WAITING_MATCH) — 상담사 배정 전 신규 신청 포함"""
-    return CounselingApplication.objects.waiting_for_match().select_related("client")
+    """접수·매칭대기 — 이미 배정된 내담자의 중복 신청은 제외."""
+    return waiting_match_for_admin()
 
 
 def build_admin_dashboard_stats(now=None):
@@ -83,9 +87,7 @@ def counseling_management(request):
         active_tab = "waiting"
 
     waiting_applications = list(
-        _waiting_match_queryset()
-        .select_related("client", "case", "case__counselor")
-        .order_by("-created_at")
+        _waiting_match_queryset().order_by("-created_at")
     )
     active_cases = list(
         Case.objects.filter(
@@ -138,7 +140,7 @@ def case_list(request):
 def matching_list(request):
     """내담자·상담 신청 매칭 관리 (상담사 배정·변경)"""
     filter_key = request.GET.get("filter", "all")
-    queryset = (
+    queryset = exclude_stale_pending_applications(
         CounselingApplication.objects.select_related("client")
         .select_related("case", "case__counselor")
         .order_by("-created_at")

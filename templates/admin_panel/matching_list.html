@@ -68,7 +68,7 @@
                         <td class="fw-semibold">{{ app.client.name }}</td>
                         <td>{{ app.counseling_type }}</td>
                         <td>
-                            <span class="badge bg-{% if app.status == 'WAITING_MATCH' or app.status == 'RECEIVED' %}warning text-dark{% elif app.status == 'MATCHED' %}success{% else %}secondary{% endif %}">
+                            <span class="badge bg-{% if app.status == 'WAITING_MATCH' or app.status == 'RECEIVED' %}warning text-dark{% elif app.status == 'MATCHED' or app.status == 'IN_PROGRESS' %}success{% else %}secondary{% endif %}">
                                 {{ app.get_status_display }}
                             </span>
                         </td>

@@ -10,6 +10,16 @@ urlpatterns = [
     path("logout/", views.logout_view, name="logout"),
     path("pending/", views.pending, name="pending"),
     path("profile/", views.profile_update, name="profile_update"),
+    path(
+        "password-change/",
+        views.AccountPasswordChangeView.as_view(),
+        name="password_change",
+    ),
+    path(
+        "password-change/done/",
+        views.AccountPasswordChangeDoneView.as_view(),
+        name="password_change_done",
+    ),
     path("find-id/", views.find_id, name="find_id"),
     path(
         "password-reset/",

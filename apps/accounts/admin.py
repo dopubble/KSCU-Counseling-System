@@ -38,12 +38,17 @@ class CounselorProfileInline(admin.StackedInline):
     can_delete = False
     extra = 0
     fk_name = "user"
+    readonly_fields = ("created_at", "updated_at")
     fields = (
+        "birth_date",
+        "gender",
         "license_number",
         "specialties",
         "bio",
         "max_cases",
         "is_approved",
+        "created_at",
+        "updated_at",
     )
 
 
@@ -57,6 +62,7 @@ class UserAdmin(BaseUserAdmin):
     list_display = (
         "name",
         "email",
+        "phone",
         "role_badge",
         "status",
         "is_counselor_role",
@@ -160,7 +166,10 @@ class CounselorProfileAdmin(admin.ModelAdmin):
     list_display = (
         "user_name",
         "user_email",
+        "user_phone",
         "user_status",
+        "birth_date",
+        "gender",
         "license_number",
         "specialties_summary",
         "max_cases",
@@ -179,7 +188,17 @@ class CounselorProfileAdmin(admin.ModelAdmin):
         (None, {"fields": ("user",)}),
         (
             "상담사 정보",
-            {"fields": ("license_number", "specialties", "bio", "max_cases", "is_approved")},
+            {
+                "fields": (
+                    "birth_date",
+                    "gender",
+                    "license_number",
+                    "specialties",
+                    "bio",
+                    "max_cases",
+                    "is_approved",
+                ),
+            },
         ),
         ("일시", {"fields": ("created_at", "updated_at")}),
     )
@@ -191,6 +210,10 @@ class CounselorProfileAdmin(admin.ModelAdmin):
     @admin.display(description="이메일", ordering="user__email")
     def user_email(self, obj: CounselorProfile) -> str:
         return obj.user.email
+
+    @admin.display(description="휴대폰", ordering="user__phone")
+    def user_phone(self, obj: CounselorProfile) -> str:
+        return obj.user.phone or "—"
 
     @admin.display(description="계정 상태", ordering="user__status")
     def user_status(self, obj: CounselorProfile) -> str:

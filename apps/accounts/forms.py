@@ -2,10 +2,12 @@ from django import forms
 from django.contrib.auth import authenticate
 from django.contrib.auth.forms import (
     AuthenticationForm,
+    PasswordChangeForm,
     PasswordResetForm,
     SetPasswordForm,
     UserCreationForm,
 )
+from django.contrib.auth.password_validation import validate_password
 
 from .models import CounselorProfile, ClientProfile, User, UserRole, UserStatus
 
@@ -149,8 +151,73 @@ class KoreanSetPasswordForm(SetPasswordForm):
             field.widget.attrs.setdefault("class", "form-control")
 
 
-class ProfileUpdateForm(forms.Form):
-    """내담자 회원정보 수정 — 이메일·연락처만 저장 가능."""
+class KoreanPasswordChangeForm(PasswordChangeForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["old_password"].label = "현재 비밀번호"
+        self.fields["new_password1"].label = "새 비밀번호"
+        self.fields["new_password2"].label = "새 비밀번호 확인"
+        for field in self.fields.values():
+            field.widget.attrs.setdefault("class", "form-control")
+            if field.name == "old_password":
+                field.widget.attrs.setdefault("autocomplete", "current-password")
+            elif field.name.startswith("new_password"):
+                field.widget.attrs.setdefault("autocomplete", "new-password")
+
+
+class OptionalPasswordChangeFieldsMixin:
+    """내정보 수정 — 비밀번호는 입력한 경우에만 변경."""
+
+    old_password = forms.CharField(
+        label="현재 비밀번호",
+        required=False,
+        widget=forms.PasswordInput(
+            attrs={"class": "form-control", "autocomplete": "current-password"},
+        ),
+    )
+    new_password1 = forms.CharField(
+        label="새 비밀번호",
+        required=False,
+        widget=forms.PasswordInput(
+            attrs={"class": "form-control", "autocomplete": "new-password"},
+        ),
+        help_text="변경하지 않으려면 비워 두세요.",
+    )
+    new_password2 = forms.CharField(
+        label="새 비밀번호 확인",
+        required=False,
+        widget=forms.PasswordInput(
+            attrs={"class": "form-control", "autocomplete": "new-password"},
+        ),
+    )
+
+    def _validate_optional_password_change(self) -> str | None:
+        old = (self.cleaned_data.get("old_password") or "").strip()
+        new1 = (self.cleaned_data.get("new_password1") or "").strip()
+        new2 = (self.cleaned_data.get("new_password2") or "").strip()
+
+        if not any([old, new1, new2]):
+            return None
+
+        if not old:
+            self.add_error("old_password", "비밀번호를 변경하려면 현재 비밀번호를 입력해 주세요.")
+            return None
+        if not self.user.check_password(old):
+            self.add_error("old_password", "현재 비밀번호가 올바르지 않습니다.")
+            return None
+        if not new1:
+            self.add_error("new_password1", "새 비밀번호를 입력해 주세요.")
+            return None
+        if new1 != new2:
+            self.add_error("new_password2", "새 비밀번호가 일치하지 않습니다.")
+            return None
+
+        validate_password(new1, self.user)
+        return new1
+
+
+class ProfileUpdateForm(OptionalPasswordChangeFieldsMixin, forms.Form):
+    """내담자 내정보 수정 — 이메일·연락처·비밀번호 변경 가능."""
 
     name = forms.CharField(
         label="이름",
@@ -162,6 +229,14 @@ class ProfileUpdateForm(forms.Form):
                 "autocomplete": "name",
                 "readonly": "readonly",
             },
+        ),
+    )
+    is_kcu_student_display = forms.CharField(
+        label="숭실사이버대학교 학생 여부",
+        required=False,
+        disabled=True,
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "readonly": "readonly"},
         ),
     )
     student_id = forms.CharField(
@@ -200,7 +275,7 @@ class ProfileUpdateForm(forms.Form):
         ),
     )
     phone = forms.CharField(
-        label="연락처",
+        label="휴대폰 번호",
         max_length=20,
         required=False,
         widget=forms.TextInput(
@@ -227,6 +302,17 @@ class ProfileUpdateForm(forms.Form):
             self.fields["department"].initial = (
                 profile.department if profile is not None else ""
             )
+            if profile is not None:
+                self.fields["is_kcu_student_display"].initial = (
+                    "예" if profile.is_kcu_student else "아니오"
+                )
+
+    def clean(self):
+        cleaned = super().clean()
+        if self.errors:
+            return cleaned
+        self._new_password = self._validate_optional_password_change()
+        return cleaned
 
     def clean_email(self):
         email = User.objects.normalize_email(self.cleaned_data["email"].strip())
@@ -234,6 +320,99 @@ class ProfileUpdateForm(forms.Form):
         if exists:
             raise forms.ValidationError("이미 사용 중인 이메일입니다.")
         return email
+
+    @property
+    def new_password(self) -> str | None:
+        return getattr(self, "_new_password", None)
+
+
+class CounselorProfileUpdateForm(OptionalPasswordChangeFieldsMixin, forms.Form):
+    """상담사 내정보 수정 — 이메일·연락처·비밀번호 변경 가능."""
+
+    role_display = forms.CharField(
+        label="가입 유형",
+        disabled=True,
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "readonly": "readonly"},
+        ),
+    )
+    name = forms.CharField(
+        label="이름",
+        max_length=100,
+        disabled=True,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "autocomplete": "name",
+                "readonly": "readonly",
+            },
+        ),
+    )
+    birth_date = forms.DateField(
+        label="생년월일",
+        required=False,
+        disabled=True,
+        widget=forms.DateInput(
+            attrs={"class": "form-control", "type": "date", "readonly": "readonly"},
+        ),
+    )
+    gender = forms.CharField(
+        label="성별",
+        required=False,
+        disabled=True,
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "readonly": "readonly"},
+        ),
+    )
+    email = forms.EmailField(
+        label="이메일 (로그인 아이디)",
+        widget=forms.EmailInput(
+            attrs={"class": "form-control", "autocomplete": "email"},
+        ),
+    )
+    phone = forms.CharField(
+        label="휴대폰 번호",
+        max_length=20,
+        required=False,
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "autocomplete": "tel"},
+        ),
+    )
+
+    def __init__(self, *args, user=None, **kwargs):
+        self.user = user
+        super().__init__(*args, **kwargs)
+        if user is not None:
+            self.fields["role_display"].initial = user.get_role_display()
+            self.fields["name"].initial = user.name
+            self.fields["email"].initial = user.email
+            self.fields["phone"].initial = user.phone or ""
+            try:
+                profile = user.counselor_profile
+            except CounselorProfile.DoesNotExist:
+                profile = None
+            if profile is not None:
+                if profile.birth_date:
+                    self.fields["birth_date"].initial = profile.birth_date
+                self.fields["gender"].initial = profile.gender or ""
+
+    def clean(self):
+        cleaned = super().clean()
+        if self.errors:
+            return cleaned
+        self._new_password = self._validate_optional_password_change()
+        return cleaned
+
+    def clean_email(self):
+        email = User.objects.normalize_email(self.cleaned_data["email"].strip())
+        exists = User.objects.filter(email__iexact=email).exclude(pk=self.user.pk).exists()
+        if exists:
+            raise forms.ValidationError("이미 사용 중인 이메일입니다.")
+        return email
+
+    @property
+    def new_password(self) -> str | None:
+        return getattr(self, "_new_password", None)
 
 
 # 하위 호환

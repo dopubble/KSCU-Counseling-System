@@ -64,13 +64,14 @@
                             </a>
                             <ul class="dropdown-menu dropdown-menu-end shadow-sm"
                                 aria-labelledby="userProfileDropdown">
-                                {% if user.role == "CLIENT" %}
+                                {% if user.role == "CLIENT" or user.role == "COUNSELOR" %}
                                 <li>
                                     <a class="dropdown-item" href="{% url 'accounts:profile_update' %}">
-                                        <i class="bi bi-pencil-square me-2"></i>정보 수정
+                                        <i class="bi bi-pencil-square me-2"></i>내정보 수정
                                     </a>
                                 </li>
-                                {% elif user.role == "COUNSELOR" %}
+                                {% endif %}
+                                {% if user.role == "COUNSELOR" %}
                                 <li>
                                     <a class="dropdown-item" href="{% url 'counselor:dashboard' %}">
                                         <i class="bi bi-briefcase me-2"></i>상담사 홈
