@@ -216,3 +216,37 @@ EMAIL_ALIASES: dict[str, str] = {
     "dudtjd626zx@naver.com": "dudtjd6262@naver.com",
     "jjang_kor@hanmail.net": "jiang_kor@hanmail.net",
 }
+
+
+def find_complaint_seed_for_email(email: str) -> ClientComplaintSeed | None:
+    """이메일(별칭 포함)으로 시드 조회."""
+    lowered = email.strip().lower()
+    candidates = {lowered}
+    if lowered in EMAIL_ALIASES:
+        candidates.add(EMAIL_ALIASES[lowered].lower())
+    for alias, canonical in EMAIL_ALIASES.items():
+        if canonical.lower() == lowered:
+            candidates.add(alias.lower())
+    for seed in CLIENT_COMPLAINT_SEEDS:
+        if seed.email.lower() in candidates:
+            return seed
+    return None
+
+
+DEFAULT_REASON_MARKERS = ("관리자 일괄 접수", "내담자 사전 등록")
+
+
+def presenting_reason_for_application(application, *, client_email: str = "") -> str:
+    """상담 신청·시드 기준 주요 호소 문제 (기본 접수 문구는 시드로 대체)."""
+    reason = (application.reason or "").strip()
+    if reason and not any(marker in reason for marker in DEFAULT_REASON_MARKERS):
+        return reason
+    email = (client_email or "").strip()
+    if not email and hasattr(application, "client_id"):
+        client = getattr(application, "client", None)
+        if client is not None:
+            email = client.email or ""
+    seed = find_complaint_seed_for_email(email)
+    if seed:
+        return normalize_reason(seed.reason)
+    return reason or "—"

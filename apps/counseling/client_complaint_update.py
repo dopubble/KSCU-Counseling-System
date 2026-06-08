@@ -58,6 +58,33 @@ def _find_client_by_email(email: str) -> User | None:
     return None
 
 
+def _target_applications_for_client(client) -> list[CounselingApplication]:
+    """ACTIVE 사례에 연결된 신청을 우선 포함."""
+    apps: list[CounselingApplication] = []
+    seen: set = set()
+
+    active_case = (
+        Case.objects.filter(client=client, status=CaseStatus.ACTIVE)
+        .select_related("application")
+        .order_by("-opened_at")
+        .first()
+    )
+    if active_case and active_case.application_id:
+        app = active_case.application
+        if app.status != ApplicationStatus.CANCELLED:
+            apps.append(app)
+            seen.add(app.pk)
+
+    for app in CounselingApplication.objects.filter(client=client).exclude(
+        status=ApplicationStatus.CANCELLED
+    ).order_by("-created_at"):
+        if app.pk not in seen:
+            apps.append(app)
+            seen.add(app.pk)
+
+    return apps
+
+
 def update_client_complaints(
     *,
     dry_run: bool = True,
@@ -92,22 +119,7 @@ def update_client_complaints(
             )
             continue
 
-        applications = list(
-            CounselingApplication.objects.filter(client=client)
-            .exclude(status=ApplicationStatus.CANCELLED)
-            .order_by("-created_at")
-        )
-        if not applications:
-            active_case = (
-                Case.objects.filter(client=client, status=CaseStatus.ACTIVE)
-                .select_related("application")
-                .order_by("-opened_at")
-                .first()
-            )
-            if active_case and active_case.application_id:
-                app = active_case.application
-                if app.status != ApplicationStatus.CANCELLED:
-                    applications = [app]
+        applications = _target_applications_for_client(client)
         if not applications:
             if create_missing and not dry_run:
                 has_active_case = Case.objects.filter(
