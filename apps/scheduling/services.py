@@ -176,6 +176,7 @@ def reschedule_confirmed_appointment(
     appointment: Appointment,
     *,
     new_scheduled_at,
+    skip_availability: bool = False,
 ) -> tuple[Appointment, str | None]:
     """
     확정 예약 일시 변경 — 슬롯·중복 검사 후 DB 저장.
@@ -185,14 +186,15 @@ def reschedule_confirmed_appointment(
         raise AppointmentServiceError("확정된 예약만 일정을 변경할 수 있습니다.")
 
     new_scheduled_at = normalize_client_preferred_datetime(new_scheduled_at)
-    available, message = is_counselor_slot_available(
-        appointment.counselor_id,
-        new_scheduled_at,
-        duration_minutes=appointment.duration_minutes,
-        require_full_duration=True,
-    )
-    if not available:
-        raise AppointmentServiceError(message)
+    if not skip_availability:
+        available, message = is_counselor_slot_available(
+            appointment.counselor_id,
+            new_scheduled_at,
+            duration_minutes=appointment.duration_minutes,
+            require_full_duration=True,
+        )
+        if not available:
+            raise AppointmentServiceError(message)
 
     if _counselor_slot_taken(
         appointment.counselor_id,
