@@ -192,7 +192,7 @@
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ko.js"></script>
-<script src="{% static 'js/client_schedule_calendar.js' %}?v=4"></script>
+<script src="{% static 'js/client_schedule_calendar.js' %}?v=5"></script>
 <script>
 (function () {
     const modal = document.getElementById("cancelRequestModal");
@@ -335,15 +335,12 @@
         const onBlockedSelect = function () {
             alert(BLOCKED_DATE_ALERT);
         };
-        const onInvalidSlot = function (dateStr) {
-            slotUnavailableAlert(dateStr);
-        };
         document.querySelectorAll(".client-schedule-datetime-input, #appointment-request [name='scheduled_at']").forEach(function (input) {
             ClientScheduleCalendar.initPicker(
                 input,
                 counselorAvailabilityRules,
                 counselorBlockedDates,
-                { onBlockedSelect: onBlockedSelect, onInvalidSlot: onInvalidSlot }
+                { onBlockedSelect: onBlockedSelect }
             );
             bindBlockedDateGuard(input);
         });

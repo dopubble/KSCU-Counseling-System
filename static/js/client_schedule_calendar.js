@@ -637,24 +637,6 @@
                         rejectUnavailableSelection(selectedDates, dateStr, instance, rules, blockedDates, options);
                         return;
                     }
-                    if (
-                        !isCounselorSlotStartAvailable(
-                            dateStr,
-                            rules,
-                            blockedDates,
-                            selectedDates[0]
-                        )
-                    ) {
-                        rejectInvalidSlotSelection(
-                            selectedDates,
-                            dateStr,
-                            instance,
-                            rules,
-                            blockedDates,
-                            options
-                        );
-                        return;
-                    }
                     if (instance.input) {
                         instance.input.value = formatDatetimeForServer(
                             dateStr,
