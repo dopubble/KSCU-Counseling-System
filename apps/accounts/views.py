@@ -20,7 +20,7 @@ from django.views.decorators.http import require_http_methods
 
 from .auth_utils import get_safe_next_url
 from .emailing import send_find_id_email
-from apps.accounts.decorators import role_required
+from apps.accounts.decorators import role_required, user_can_access_counselor_area
 
 from .forms import (
     CounselorProfileUpdateForm,
@@ -76,6 +76,8 @@ class UserLoginView(LoginView):
             return reverse_lazy("counselor:dashboard")
         if user.role == UserRole.CLIENT:
             return reverse_lazy("client:dashboard")
+        if user_can_access_counselor_area(user):
+            return reverse_lazy("counselor:dashboard")
         return reverse_lazy("home")
 
 
@@ -133,6 +135,10 @@ def pending(request):
     if request.user.is_authenticated and request.user.status == UserStatus.ACTIVE:
         return redirect("home")
     return render(request, "accounts/pending.html")
+
+
+def permission_denied_view(request, exception=None):
+    return render(request, "403.html", status=403)
 
 
 def _profile_immutable_fields_tampered(request, user, profile) -> bool:

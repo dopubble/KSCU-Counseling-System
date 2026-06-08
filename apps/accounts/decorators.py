@@ -44,7 +44,7 @@ def user_can_access_counselor_area(user):
         return False
     if user.is_superuser:
         return True
-    if user.role == UserRole.COUNSELOR:
+    if user.role in (UserRole.COUNSELOR, UserRole.ADMIN):
         return True
     if _has_counselor_profile(user):
         return True
@@ -55,7 +55,7 @@ def counselor_required(view_func):
     """
     상담사 전용 뷰 접근 제어.
     - 미로그인: 로그인 페이지로 리다이렉트
-    - COUNSELOR 역할, CounselorProfile 보유, is_superuser 허용
+    - COUNSELOR·ADMIN·CounselorProfile 보유·is_superuser 허용
     """
 
     @wraps(view_func)
@@ -69,12 +69,10 @@ def counselor_required(view_func):
         if request.user.is_superuser:
             return view_func(request, *args, **kwargs)
 
-        if request.user.role == UserRole.COUNSELOR:
-            if request.user.status != UserStatus.ACTIVE:
-                return redirect("accounts:pending")
-            return view_func(request, *args, **kwargs)
+        if request.user.status != UserStatus.ACTIVE:
+            return redirect("accounts:pending")
 
-        if _has_counselor_profile(request.user):
+        if user_can_access_counselor_area(request.user):
             return view_func(request, *args, **kwargs)
 
         raise PermissionDenied("상담사 전용 페이지입니다.")

@@ -1,6 +1,8 @@
 import os
 import uuid
 
+from datetime import timedelta
+
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
@@ -315,7 +317,7 @@ class CounselorAssignmentSubmission(models.Model):
         """재업로드(덮어쓰기) 여부."""
         if not self.created_at or not self.updated_at:
             return False
-        return self.updated_at - self.created_at > timezone.timedelta(seconds=1)
+        return self.updated_at - self.created_at > timedelta(seconds=1)
 
     def can_delete_by(self, user) -> bool:
         if not user.is_authenticated:

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}접근 권한 없음{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-7 text-center py-5">
+        <i class="bi bi-shield-exclamation display-1 text-warning" aria-hidden="true"></i>
+        <h1 class="h3 mt-3">접근 권한이 없습니다 (403)</h1>
+        <p class="text-muted mb-4">
+            이 페이지를 볼 수 있는 권한이 없습니다.<br>
+            상담사 계정으로 로그인했는지, 관리자 승인(활성) 상태인지 확인해 주세요.
+        </p>
+        <div class="d-flex flex-wrap justify-content-center gap-2">
+            <a href="{% url 'home' %}" class="btn btn-outline-secondary">홈으로</a>
+            {% if user.is_authenticated %}
+                {% if user.role == "COUNSELOR" or user.role == "ADMIN" %}
+                <a href="{% url 'counselor:dashboard' %}" class="btn btn-primary">상담사 대시보드</a>
+                {% elif user.role == "CLIENT" %}
+                <a href="{% url 'client:dashboard' %}" class="btn btn-primary">내 상담실</a>
+                {% endif %}
+            {% else %}
+            <a href="{% url 'accounts:login' %}" class="btn btn-primary">로그인</a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

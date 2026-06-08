@@ -19,6 +19,8 @@ urlpatterns = [
     path("health/", include("apps.reports.urls_health")),
 ]
 
+handler403 = "apps.accounts.views.permission_denied_view"
+
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
     try:
