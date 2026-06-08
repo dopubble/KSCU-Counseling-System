@@ -3,28 +3,7 @@ import os
 from django import forms
 
 from apps.accounts.models import ClientProfile
-
-
-
-COUNSELING_TYPE_CHOICES = [
-
-    ("", "선택해 주세요"),
-
-    ("개인상담", "개인상담"),
-
-    ("학업상담", "학업상담"),
-
-    ("진로상담", "진로상담"),
-
-    ("대인관계", "대인관계"),
-
-    ("가족상담", "가족상담"),
-
-    ("심리·정서", "심리·정서"),
-
-    ("기타", "기타"),
-
-]
+from apps.counseling.constants import COUNSELING_TYPE_CHOICES
 
 
 

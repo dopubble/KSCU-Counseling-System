@@ -1,16 +1,11 @@
 from django import forms
 from django.utils import timezone
 
+from apps.counseling.constants import COUNSELING_TYPE_CHOICES
+
 from .models import CounselingJournal
 
-SESSION_CATEGORY_CHOICES = [
-    ("", "선택해 주세요"),
-    ("개인상담", "개인상담"),
-    ("학업상담", "학업상담"),
-    ("진로상담", "진로상담"),
-    ("대인관계", "대인관계"),
-    ("가족상담", "가족상담"),
-    ("심리·정서", "심리·정서"),
+SESSION_CATEGORY_CHOICES = COUNSELING_TYPE_CHOICES + [
     ("위기개입", "위기개입"),
     ("기타", "기타"),
 ]
