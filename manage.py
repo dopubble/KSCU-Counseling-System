@@ -6,12 +6,12 @@ from pathlib import Path
 
 
 def _load_env_early() -> None:
-    """settings import 전에 .env 를 먼저 로드 (python-dotenv)."""
+    """settings import 전 .env 로드 — 셸에서 준 DATABASE_URL 등은 덮어쓰지 않음."""
     env_file = Path(__file__).resolve().parent / ".env"
     try:
         from dotenv import load_dotenv
 
-        load_dotenv(env_file, override=True, encoding="utf-8")
+        load_dotenv(env_file, override=False, encoding="utf-8")
     except ImportError:
         pass
 

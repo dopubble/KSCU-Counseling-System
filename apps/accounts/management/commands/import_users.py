@@ -2,7 +2,9 @@
 
 from pathlib import Path
 
+from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
+from django.db import connection
 
 from apps.accounts.bulk_import import UserRole, import_user_rows, read_csv_rows
 
@@ -60,6 +62,8 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        self._ensure_database_ready()
+
         counselors_path = (options.get("counselors_csv") or "").strip()
         clients_path = (options.get("clients_csv") or "").strip()
         combined_path = (options.get("combined_csv") or "").strip()
@@ -111,6 +115,38 @@ class Command(BaseCommand):
 
         if summary.errors:
             raise CommandError(f"{summary.errors}건 오류가 발생했습니다.")
+
+    def _ensure_database_ready(self) -> None:
+        db = settings.DATABASES["default"]
+        engine = db.get("ENGINE", "")
+        host = (db.get("HOST") or "").lower()
+
+        if "sqlite" in engine:
+            raise CommandError(
+                "현재 로컬 SQLite(db.sqlite3)에 연결되어 있습니다.\n"
+                "PowerShell에서 Railway Public DATABASE_URL을 설정한 뒤 다시 실행하세요.\n"
+                "  $env:DATABASE_URL = \"postgresql://...@xxxx.rlwy.net:포트/railway\"\n"
+                "  $env:DJANGO_SETTINGS_MODULE = \"kscu_counseling.settings.production\"\n"
+                "확인: python manage.py account_stats"
+            )
+
+        if "internal" in host or host.endswith(".railway.internal"):
+            raise CommandError(
+                "DATABASE_URL에 postgres.railway.internal 이 들어 있습니다.\n"
+                "이 주소는 Railway 서버 안에서만 동작하며, 내 PC에서는 사용할 수 없습니다.\n\n"
+                "Railway → PostgreSQL → Connect(또는 Data) → "
+                "Public Network / TCP Proxy URL 을 복사하세요.\n"
+                "호스트 예: xxxxx.proxy.rlwy.net (rlwy.net 포함)\n\n"
+                "  $env:DATABASE_URL = \"복사한_Public_URL\""
+            )
+
+        try:
+            connection.ensure_connection()
+        except Exception as exc:
+            raise CommandError(
+                f"PostgreSQL 연결 실패: {exc}\n"
+                "Public DATABASE_URL·비밀번호·Public Networking 활성화 여부를 확인하세요."
+            ) from exc
 
     def _load_file(self, path_str: str, default_role: str):
         path = Path(path_str)

@@ -23,9 +23,9 @@ def _running_on_paas() -> bool:
     )
 
 
-# 로컬: override=True(.env 우선). PaaS: override=False(Railway Variables 우선)
+# 로컬·PaaS 공통: 이미 설정된 환경 변수(셸·Railway)가 .env보다 우선
 _DOTENV_LOADED = (
-    load_dotenv(_ENV_FILE, override=not _running_on_paas(), encoding="utf-8")
+    load_dotenv(_ENV_FILE, override=False, encoding="utf-8")
     if _ENV_FILE.is_file()
     else False
 )
@@ -234,17 +234,28 @@ _configure_email_backend()
 
 def _parse_database_url(url: str) -> dict:
     """Parse postgres://user:pass@host:port/dbname URL."""
-    from urllib.parse import urlparse
+    from urllib.parse import parse_qs, urlparse
 
     parsed = urlparse(url)
-    return {
+    db_name = parsed.path.lstrip("/").split("?")[0]
+    config: dict = {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": parsed.path.lstrip("/"),
+        "NAME": db_name,
         "USER": parsed.username,
         "PASSWORD": parsed.password,
         "HOST": parsed.hostname,
         "PORT": parsed.port or 5432,
     }
+    query = parse_qs(parsed.query)
+    options: dict = {}
+    if "sslmode" in query:
+        options["sslmode"] = query["sslmode"][0]
+    host = (parsed.hostname or "").lower()
+    if not options and ("railway" in host or "rlwy.net" in host):
+        options["sslmode"] = "require"
+    if options:
+        config["OPTIONS"] = options
+    return config
 
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
