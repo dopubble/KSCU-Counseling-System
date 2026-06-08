@@ -247,20 +247,15 @@ LEGACY_TRUNCATED_REASONS: frozenset[str] = frozenset(
 
 
 def presenting_reason_for_application(application, *, client_email: str = "") -> str:
-    """상담 신청·시드 기준 주요 호소 문제 (원문)."""
-    reason = clean_reason(application.reason or "")
+    """상담 신청·시드 기준 주요 호소 문제 (스프레드시트 원문)."""
     email = (client_email or "").strip()
-    if not email and hasattr(application, "client_id"):
+    if not email and application is not None and hasattr(application, "client_id"):
         client = getattr(application, "client", None)
         if client is not None:
             email = client.email or ""
     seed = find_complaint_seed_for_email(email)
     if seed:
-        seed_text = clean_reason(seed.reason)
-        if not reason:
-            return seed_text
-        if any(marker in reason for marker in DEFAULT_REASON_MARKERS):
-            return seed_text
-        if reason in LEGACY_TRUNCATED_REASONS:
-            return seed_text
-    return reason or "—"
+        return clean_reason(seed.reason)
+    if application is None:
+        return "—"
+    return clean_reason(application.reason or "") or "—"

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from django.db import transaction
+from django.utils import timezone
 
 from apps.accounts.models import User, UserRole
 from apps.counseling.client_complaint_seed import (
@@ -241,9 +242,18 @@ def update_client_complaints(
 
         try:
             with transaction.atomic():
+                now = timezone.now()
                 for app in targets:
                     app.reason = reason
+                    app.updated_at = now
                     app.save(update_fields=["reason", "updated_at"])
+                # 사례에 연결되지 않은 신청이 있어도 동일 내담자 전체 신청에 반영
+                CounselingApplication.objects.filter(
+                    client=client,
+                ).exclude(status=ApplicationStatus.CANCELLED).update(
+                    reason=reason,
+                    updated_at=now,
+                )
             summary.updated += len(targets)
             summary.results.append(
                 ComplaintUpdateResult(
