@@ -386,6 +386,13 @@
         dayElem.dataset.scheduleDayClickBound = "1";
         dayElem.addEventListener("click", function () {
             instance._scheduleUserPickedDay = true;
+            window.setTimeout(function () {
+                decorateFlatpickrDays(
+                    instance,
+                    instance._scheduleRules,
+                    instance._scheduleBlockedDates
+                );
+            }, 0);
         });
     }
 
@@ -643,6 +650,10 @@
                             selectedDates[0]
                         );
                     }
+                    decorateFlatpickrDays(instance, rules, blockedDates);
+                },
+                onValueUpdate: function (_selected, _str, instance) {
+                    decorateFlatpickrDays(instance, rules, blockedDates);
                 },
             },
             options && options.flatpickr ? options.flatpickr : {}
