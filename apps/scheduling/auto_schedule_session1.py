@@ -760,6 +760,7 @@ def shift_session1_confirmed_schedule(
     target_emails: frozenset[str] | None = None,
     dry_run: bool = True,
     skip_availability: bool = True,
+    only_if_before: date | None = None,
 ) -> list[Session1ShiftResult]:
     """확정된 1회기 예약 일시를 shift_days만큼 미루고 Zoom 일정 갱신."""
     from apps.scheduling.services import (
@@ -819,6 +820,20 @@ def shift_session1_confirmed_schedule(
             continue
 
         old_at = timezone.localtime(appointment.scheduled_at)
+        if only_if_before and old_at.date() >= only_if_before:
+            results.append(
+                Session1ShiftResult(
+                    seed.name,
+                    seed.email,
+                    (case.counselor.name if case.counselor else seed.counselor_name),
+                    old_at,
+                    old_at,
+                    "skipped",
+                    f"이미 {only_if_before.isoformat()} 이후 일정",
+                )
+            )
+            continue
+
         new_at = old_at + timedelta(days=shift_days)
 
         if dry_run:
