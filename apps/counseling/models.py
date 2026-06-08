@@ -51,7 +51,7 @@ class CounselingApplication(models.Model):
         verbose_name="내담자",
     )
     counseling_types = models.JSONField("상담 유형", default=list, blank=True)
-    reason = models.TextField("상담 사유")
+    reason = models.TextField("주요 호소 문제")
     preferred_schedule = models.JSONField("희망 일정", default=dict, blank=True)
     status = models.CharField(
         "상태",
