@@ -150,3 +150,50 @@ if _on_railway:
         f"CSRF_TRUSTED_ORIGINS={CSRF_TRUSTED_ORIGINS}",
         file=sys.stderr,
     )
+
+# --- 업로드 파일(과제·첨부) 영구 저장 ---
+# 1) Railway Volume: MEDIA_ROOT=/data/media 등 마운트 경로 지정
+# 2) S3 호환 스토리지: AWS_* 환경 변수 설정
+from pathlib import Path
+
+_media_root = _env_str("MEDIA_ROOT")
+if _media_root:
+    MEDIA_ROOT = Path(_media_root)  # noqa: F405
+
+_aws_bucket = _env_str("AWS_STORAGE_BUCKET_NAME")
+_aws_key = _env_str("AWS_ACCESS_KEY_ID")
+_aws_secret = _env_str("AWS_SECRET_ACCESS_KEY")
+if _aws_bucket and _aws_key and _aws_secret:
+    AWS_ACCESS_KEY_ID = _aws_key
+    AWS_SECRET_ACCESS_KEY = _aws_secret
+    AWS_STORAGE_BUCKET_NAME = _aws_bucket
+    AWS_S3_REGION_NAME = _env_str("AWS_S3_REGION_NAME", "ap-northeast-2")
+    _s3_endpoint = _env_str("AWS_S3_ENDPOINT_URL")
+    if _s3_endpoint:
+        AWS_S3_ENDPOINT_URL = _s3_endpoint
+    AWS_S3_FILE_OVERWRITE = False
+    AWS_DEFAULT_ACL = None
+    AWS_QUERYSTRING_AUTH = False
+    AWS_S3_SIGNATURE_VERSION = "s3v4"
+
+    STORAGES = {  # noqa: F405
+        "default": {
+            "BACKEND": "storages.backends.s3.S3Storage",
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
+    if _on_railway:
+        print(
+            f"[kscu] media storage=S3 bucket={_aws_bucket}",
+            file=sys.stderr,
+        )
+elif _on_railway:
+    import sys
+
+    print(
+        f"[kscu] media storage=filesystem MEDIA_ROOT={MEDIA_ROOT}",  # noqa: F405
+        "— Railway Volume 또는 S3 설정을 권장합니다.",
+        file=sys.stderr,
+    )

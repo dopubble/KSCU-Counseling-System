@@ -211,10 +211,20 @@ STAFF_NOTIFY_EMAILS=
 
 | 항목 | 내용 |
 |------|------|
-| **media/** | Railway 디스크는 재배포 시 유실될 수 있음. 장기 운영 시 S3 등 객체 스토리지 검토 |
+| **media/** | Railway 디스크는 **재배포 시 유실**됩니다. 과제·첨부 파일 유지 방법: (1) Railway Volume 마운트 + `MEDIA_ROOT=/data/media` (2) S3 호환 스토리지(`AWS_STORAGE_BUCKET_NAME` 등). Volume/S3 적용 **이후** 과제를 다시 제출해야 합니다. |
 | **Private repo** | GitHub Private + Railway 연동은 유료 플랜 필요할 수 있음 |
 | **HTTPS** | `production.py`에 `SECURE_PROXY_SSL_HEADER` 설정됨 — HTTP로 직접 접속하지 말 것 |
 | **비밀값** | `.env`는 GitHub에 올리지 않음. Railway Variables만 사용 |
+
+### 9.1 과제·첨부 파일 영구 저장 (Railway Volume)
+
+1. Railway 대시보드 → **Web 서비스** → **Volumes** → **Add Volume**
+2. Mount Path: `/data/media`
+3. **Variables**에 `MEDIA_ROOT=/data/media` 추가
+4. 재배포 후 상담사가 **과제를 다시 제출** (이전 업로드 파일은 복구되지 않음)
+5. 이후 ZIP·개별 다운로드가 정상 동작
+
+S3(R2 등) 사용 시: `AWS_STORAGE_BUCKET_NAME`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` 설정 (선택: `AWS_S3_ENDPOINT_URL`, `AWS_S3_REGION_NAME`)
 
 ---
 

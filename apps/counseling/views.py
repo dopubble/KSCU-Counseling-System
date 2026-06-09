@@ -763,13 +763,21 @@ def _session_material_file_response(material):
 
 
 def _assignment_file_response(assignment):
-    if not assignment.file:
+    if not assignment.file or not assignment.file.name:
         raise Http404("File not found")
-    return FileResponse(
-        assignment.file.open("rb"),
-        as_attachment=True,
-        filename=assignment.get_filename(),
+    from apps.documents.cohort_zip import read_assignment_file_bytes
+
+    data = read_assignment_file_bytes(assignment)
+    if data is None:
+        raise Http404("File not found")
+    response = HttpResponse(data, content_type="application/octet-stream")
+    filename = assignment.get_filename()
+    ascii_name = filename.encode("ascii", "ignore").decode() or "assignment"
+    response["Content-Disposition"] = (
+        f'attachment; filename="{ascii_name}"; '
+        f"filename*=UTF-8''{quote(filename)}"
     )
+    return response
 
 
 def user_can_submit_assignment(user, case) -> bool:
@@ -2102,7 +2110,7 @@ def counselor_assignment_upload(request, case_pk, session_number):
         return redirect("counselor:case_detail", pk=case.pk)
 
     file_obj = form.cleaned_data["file"]
-    _, created = upsert_counselor_assignment(
+    record, created = upsert_counselor_assignment(
         case=case,
         counselor=request.user,
         session_number=session_number,
@@ -2110,6 +2118,14 @@ def counselor_assignment_upload(request, case_pk, session_number):
         note=(form.cleaned_data.get("note") or "").strip(),
         file=file_obj,
     )
+    from django.core.files.storage import default_storage
+
+    if not record.file or not default_storage.exists(record.file.name):
+        messages.error(
+            request,
+            "파일이 서버에 저장되지 않았습니다. 잠시 후 다시 제출해 주세요.",
+        )
+        return redirect("counselor:case_detail", pk=case.pk)
     if created:
         messages.success(
             request, f"{session_number}회기 과제가 제출되었습니다."
@@ -2162,7 +2178,9 @@ def counselor_cohort_assignments_zip(request, case_pk):
     if not entries:
         messages.error(
             request,
-            "다운로드할 과제 파일을 읽을 수 없습니다. 파일이 서버에 없을 수 있습니다.",
+            "과제 파일을 서버에서 찾을 수 없습니다. "
+            "운영 서버 재배포 후에는 과제를 다시 제출해야 할 수 있습니다. "
+            "개별 다운로드(파일 아이콘)도 되지 않으면 해당 회기 과제를 다시 올려 주세요.",
         )
         return redirect(fallback)
 

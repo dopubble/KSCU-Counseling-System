@@ -10,3 +10,4 @@ redis>=5.0,<6.0
 requests>=2.31,<3.0
 PyJWT>=2.8,<3.0
 pyzipper>=0.3.6,<1.0
+django-storages[s3]>=1.14,<2.0
