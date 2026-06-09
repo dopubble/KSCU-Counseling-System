@@ -1,95 +1,278 @@
-{# 상담사 과제 제출 — 게시판 위젯과 동일한 UI, 회차별 최종본 #}
+{# 회기별 직접 첨부 + 동기 기수 과제 모아보기 #}
 <div class="card client-dashboard-card border-0 mb-4" id="counselorAssignments">
-    <div class="card-header client-portal-card-header border-0 d-flex align-items-center justify-content-between gap-2">
-        <div class="d-flex align-items-center gap-2 min-w-0">
-            <span class="fw-semibold text-nowrap"><i class="bi bi-journal-check me-1" aria-hidden="true"></i>과제 제출</span>
-            <span class="badge text-bg-light flex-shrink-0">{{ counselor_assignments|length }}건</span>
+    <div class="card-header client-portal-card-header border-0 pb-0">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+            <div class="d-flex align-items-center gap-2 min-w-0">
+                <span class="fw-semibold text-nowrap">
+                    <i class="bi bi-journal-check me-1" aria-hidden="true"></i>수련 과제
+                </span>
+                {% if counselor_cohort %}
+                <span class="badge text-bg-light flex-shrink-0">{{ counselor_cohort }}기</span>
+                {% endif %}
+            </div>
         </div>
-        {% if can_submit_assignment %}
-        <button type="button"
-                class="btn btn-sm btn-primary flex-shrink-0"
-                data-bs-toggle="modal"
-                data-bs-target="#assignmentUploadModal">
-            <i class="bi bi-paperclip me-1" aria-hidden="true"></i>과제 첨부
-        </button>
-        {% endif %}
+        <ul class="nav nav-tabs card-header-tabs assignment-tabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active"
+                        id="assignmentSessionsTab"
+                        data-bs-toggle="tab"
+                        data-bs-target="#assignmentSessionsPane"
+                        type="button"
+                        role="tab"
+                        aria-controls="assignmentSessionsPane"
+                        aria-selected="true">
+                    회기별 제출
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link"
+                        id="assignmentCohortTab"
+                        data-bs-toggle="tab"
+                        data-bs-target="#assignmentCohortPane"
+                        type="button"
+                        role="tab"
+                        aria-controls="assignmentCohortPane"
+                        aria-selected="false">
+                    우리 기수 과제 모아보기
+                </button>
+            </li>
+        </ul>
     </div>
     <div class="card-body p-0">
-        {% if counselor_assignments %}
-        <div class="accordion accordion-flush board-post-accordion" id="assignmentPostAccordion">
-            {% for assignment in counselor_assignments %}
-            <div class="accordion-item board-post-item">
-                <h2 class="accordion-header" id="assignmentHeading{{ assignment.pk }}">
-                    <button class="accordion-button collapsed board-post-accordion-btn"
-                            type="button"
-                            data-bs-toggle="collapse"
-                            data-bs-target="#assignmentCollapse{{ assignment.pk }}"
-                            aria-expanded="false"
-                            aria-controls="assignmentCollapse{{ assignment.pk }}">
-                        <span class="board-post-title-wrap min-w-0">
-                            <span class="badge text-bg-primary me-2 flex-shrink-0">{{ assignment.session_label }}</span>
-                            <span class="board-post-title text-truncate">{{ assignment.title }}</span>
-                            <span class="badge text-bg-light board-post-file-badge ms-2 flex-shrink-0">
-                                <i class="bi bi-paperclip" aria-hidden="true"></i> 첨부
-                            </span>
-                        </span>
-                    </button>
-                </h2>
-                <div id="assignmentCollapse{{ assignment.pk }}"
-                     class="accordion-collapse collapse"
-                     aria-labelledby="assignmentHeading{{ assignment.pk }}"
-                     data-bs-parent="#assignmentPostAccordion">
-                    <div class="accordion-body board-post-body">
-                        <div class="d-flex flex-wrap align-items-center gap-2 small text-muted mb-3">
-                            <span class="badge text-bg-success">최신본</span>
-                            {% if assignment.was_revised %}
-                            <span class="badge text-bg-secondary">재제출</span>
-                            {% endif %}
-                            <span class="board-post-meta-sep" aria-hidden="true">·</span>
-                            <span>최종 제출 {{ assignment.updated_at|date:"Y-m-d H:i" }}</span>
-                            {% if assignment.was_revised %}
-                            <span class="board-post-meta-sep" aria-hidden="true">·</span>
-                            <span class="text-muted">최초 {{ assignment.created_at|date:"Y-m-d H:i" }}</span>
-                            {% endif %}
-                        </div>
+        <div class="tab-content">
+            {# ── 회기별 직접 첨부 ── #}
+            <div class="tab-pane fade show active"
+                 id="assignmentSessionsPane"
+                 role="tabpanel"
+                 aria-labelledby="assignmentSessionsTab">
+                <p class="small text-muted px-3 pt-3 mb-0">
+                    각 회기 블록에서 PDF 또는 HWP 파일을 직접 첨부하세요. 같은 회기에 다시 올리면 기존 파일이 덮어씌워집니다.
+                </p>
+                <div class="accordion accordion-flush assignment-session-accordion" id="assignmentSessionAccordion">
+                    {% for slot in assignment_session_slots %}
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="assignmentSessionHeading{{ slot.session_number }}">
+                            <button class="accordion-button {% if not forloop.first %}collapsed{% endif %}"
+                                    type="button"
+                                    data-bs-toggle="collapse"
+                                    data-bs-target="#assignmentSessionCollapse{{ slot.session_number }}"
+                                    aria-expanded="{% if forloop.first %}true{% else %}false{% endif %}"
+                                    aria-controls="assignmentSessionCollapse{{ slot.session_number }}">
+                                <span class="badge text-bg-primary me-2">{{ slot.session_label }}</span>
+                                {% if slot.assignment %}
+                                <span class="text-truncate small">{{ slot.assignment.get_filename }}</span>
+                                <span class="badge text-bg-success ms-2 flex-shrink-0">제출됨</span>
+                                {% else %}
+                                <span class="text-muted small">미제출</span>
+                                {% endif %}
+                            </button>
+                        </h2>
+                        <div id="assignmentSessionCollapse{{ slot.session_number }}"
+                             class="accordion-collapse collapse {% if forloop.first %}show{% endif %}"
+                             aria-labelledby="assignmentSessionHeading{{ slot.session_number }}"
+                             data-bs-parent="#assignmentSessionAccordion">
+                            <div class="accordion-body">
+                                {% if slot.assignment %}
+                                <div class="d-flex flex-wrap align-items-center gap-2 mb-3 p-3 rounded bg-light border">
+                                    <i class="bi bi-file-earmark-check text-success fs-5" aria-hidden="true"></i>
+                                    <div class="flex-grow-1 min-w-0">
+                                        <div class="fw-semibold text-truncate">
+                                            {{ slot.assignment.get_filename }}
+                                            <span class="text-primary fw-normal">[수정하기]</span>
+                                        </div>
+                                        <div class="small text-muted">
+                                            최종 제출 {{ slot.assignment.updated_at|date:"Y-m-d H:i" }}
+                                            {% if slot.assignment.was_revised %}
+                                            · 재제출
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    <a href="{% url 'counselor:assignment_file' case.pk slot.assignment.pk %}"
+                                       class="btn btn-sm btn-outline-primary flex-shrink-0"
+                                       download>
+                                        <i class="bi bi-download" aria-hidden="true"></i>
+                                    </a>
+                                    {% if can_submit_assignment or is_admin_view %}
+                                    <form method="post"
+                                          action="{% url 'counselor:assignment_delete' case.pk slot.assignment.pk %}"
+                                          class="mb-0 flex-shrink-0"
+                                          onsubmit="return confirm('{{ slot.session_label }} 과제를 삭제하시겠습니까?');">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                                            <i class="bi bi-trash" aria-hidden="true"></i>
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                </div>
+                                {% endif %}
 
-                        {% if assignment.note %}
-                        <div class="board-post-content client-pre-wrap">{{ assignment.note|linebreaksbr }}</div>
-                        {% endif %}
-
-                        <div class="board-post-attachment{% if assignment.note %} mt-3{% endif %}">
-                            <a href="{% url 'counselor:assignment_file' case.pk assignment.pk %}"
-                               class="btn btn-sm btn-outline-primary"
-                               download>
-                                <i class="bi bi-download me-1" aria-hidden="true"></i>{{ assignment.get_filename }}
-                            </a>
+                                {% if can_submit_assignment %}
+                                <form method="post"
+                                      action="{% url 'counselor:assignment_upload' case.pk slot.session_number %}"
+                                      enctype="multipart/form-data"
+                                      class="assignment-upload-form">
+                                    {% csrf_token %}
+                                    <label class="form-label fw-semibold small mb-2">
+                                        {% if slot.assignment %}새 파일로 {% endif %}수련 과제 제출
+                                    </label>
+                                    <div class="assignment-dropzone border border-2 border-dashed rounded-3 p-4 text-center mb-2"
+                                         data-dropzone-for="assignmentFile{{ slot.session_number }}">
+                                        <i class="bi bi-cloud-arrow-up fs-3 text-muted d-block mb-2" aria-hidden="true"></i>
+                                        <p class="small text-muted mb-2">
+                                            파일을 드래그하거나 클릭하여 선택<br>
+                                            <span class="text-muted">PDF, HWP · 최대 10MB</span>
+                                        </p>
+                                        <input type="file"
+                                               name="file"
+                                               id="assignmentFile{{ slot.session_number }}"
+                                               class="form-control form-control-sm assignment-file-input"
+                                               accept=".pdf,.hwp"
+                                               required>
+                                    </div>
+                                    <div class="mb-2">
+                                        <textarea name="note"
+                                                  class="form-control form-control-sm"
+                                                  rows="2"
+                                                  placeholder="메모 (선택)">{% if slot.assignment %}{{ slot.assignment.note }}{% endif %}</textarea>
+                                    </div>
+                                    <button type="submit" class="btn btn-sm btn-primary w-100">
+                                        <i class="bi bi-upload me-1" aria-hidden="true"></i>
+                                        {% if slot.assignment %}덮어쓰기 제출{% else %}제출{% endif %}
+                                    </button>
+                                </form>
+                                {% elif not slot.assignment %}
+                                <p class="text-muted small mb-0">아직 제출된 과제가 없습니다.</p>
+                                {% endif %}
+                            </div>
                         </div>
-
-                        {% if can_submit_assignment and assignment.submitted_by_id == request.user.id or is_admin_view %}
-                        <div class="board-post-manage d-flex flex-wrap align-items-center gap-2 mt-3 pt-3 border-top">
-                            <form method="post"
-                                  action="{% url 'counselor:assignment_delete' case.pk assignment.pk %}"
-                                  class="mb-0"
-                                  onsubmit="return confirm('{{ assignment.session_label }} 과제를 삭제하시겠습니까?');">
-                                {% csrf_token %}
-                                <button type="submit" class="btn btn-sm btn-outline-danger">
-                                    <i class="bi bi-trash me-1" aria-hidden="true"></i>삭제
-                                </button>
-                            </form>
-                        </div>
-                        {% endif %}
                     </div>
+                    {% endfor %}
                 </div>
             </div>
-            {% endfor %}
+
+            {# ── 동기 기수 과제 모아보기 ── #}
+            <div class="tab-pane fade"
+                 id="assignmentCohortPane"
+                 role="tabpanel"
+                 aria-labelledby="assignmentCohortTab">
+                <div class="p-3 border-bottom bg-light">
+                    {% if counselor_cohort %}
+                    <form method="get" class="row g-2 align-items-end">
+                        <div class="col-auto">
+                            <label for="cohortSessionSelect" class="form-label small fw-semibold mb-1">회차</label>
+                            <select name="cohort_session"
+                                    id="cohortSessionSelect"
+                                    class="form-select form-select-sm"
+                                    onchange="this.form.submit()">
+                                {% for n in assignment_session_choices %}
+                                <option value="{{ n }}" {% if n == cohort_view_session %}selected{% endif %}>{{ n }}회기</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-auto">
+                            <span class="badge text-bg-secondary">{{ counselor_cohort }}기 동기</span>
+                        </div>
+                        <div class="col-auto ms-auto">
+                            {% if cohort_peer_assignments %}
+                            <a href="{% url 'counselor:cohort_assignments_zip' case.pk %}?session={{ cohort_view_session }}"
+                               class="btn btn-sm btn-primary">
+                                <i class="bi bi-file-zip me-1" aria-hidden="true"></i>ZIP 일괄 다운로드
+                            </a>
+                            {% endif %}
+                        </div>
+                    </form>
+                    <p class="small text-muted mb-0 mt-2">
+                        {{ counselor_cohort }}기 동료들의 {{ cohort_view_session }}회기 최종 과제입니다. 타 기수 자료는 표시되지 않습니다.
+                    </p>
+                    {% else %}
+                    <p class="text-muted small mb-0">
+                        기수 정보가 등록되지 않았습니다. 관리자에게 기수 배정을 요청해 주세요.
+                    </p>
+                    {% endif %}
+                </div>
+
+                {% if counselor_cohort %}
+                    {% if cohort_peer_assignments %}
+                    <div class="table-responsive table-container">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th scope="col">상담사</th>
+                                    <th scope="col">사례번호</th>
+                                    <th scope="col">내담자</th>
+                                    <th scope="col">최종 제출일</th>
+                                    <th scope="col">파일</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for peer in cohort_peer_assignments %}
+                                <tr>
+                                    <td class="fw-semibold">{{ peer.submitted_by.name }}</td>
+                                    <td class="font-monospace small">{{ peer.case.case_number }}</td>
+                                    <td>{{ peer.case.client.name }}</td>
+                                    <td class="small text-nowrap">{{ peer.updated_at|date:"Y-m-d H:i" }}</td>
+                                    <td>
+                                        <a href="{% url 'counselor:cohort_assignment_file' peer.pk %}"
+                                           class="btn btn-sm btn-outline-primary"
+                                           download>
+                                            <i class="bi bi-download me-1" aria-hidden="true"></i>{{ peer.get_filename }}
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4 px-3">
+                        <p class="text-muted mb-0">{{ cohort_view_session }}회기에 제출된 동기 과제가 없습니다.</p>
+                    </div>
+                    {% endif %}
+                {% endif %}
+            </div>
         </div>
-        {% else %}
-        <div class="text-center py-4 px-3">
-            <p class="text-muted mb-0">등록된 과제가 없습니다.</p>
-            {% if can_submit_assignment %}
-            <p class="small text-muted mb-0 mt-2">회차를 선택한 뒤 PDF 또는 HWP 파일을 첨부해 주세요.</p>
-            {% endif %}
-        </div>
-        {% endif %}
     </div>
 </div>
+
+<script>
+(function () {
+    document.querySelectorAll('.assignment-dropzone').forEach(function (zone) {
+        var inputId = zone.getAttribute('data-dropzone-for');
+        var input = document.getElementById(inputId);
+        if (!input) return;
+
+        zone.addEventListener('click', function (e) {
+            if (e.target !== input) input.click();
+        });
+
+        zone.addEventListener('dragover', function (e) {
+            e.preventDefault();
+            zone.classList.add('border-primary', 'bg-white');
+        });
+        zone.addEventListener('dragleave', function () {
+            zone.classList.remove('border-primary', 'bg-white');
+        });
+        zone.addEventListener('drop', function (e) {
+            e.preventDefault();
+            zone.classList.remove('border-primary', 'bg-white');
+            if (e.dataTransfer.files.length) {
+                input.files = e.dataTransfer.files;
+            }
+        });
+        input.addEventListener('change', function () {
+            if (input.files.length) {
+                zone.querySelector('p').innerHTML =
+                    '<strong class="text-primary">' + input.files[0].name + '</strong><br>' +
+                    '<span class="text-muted">PDF, HWP · 최대 10MB</span>';
+            }
+        });
+    });
+
+    {% if request.GET.cohort_session %}
+    var cohortTab = document.getElementById('assignmentCohortTab');
+    if (cohortTab) {
+        bootstrap.Tab.getOrCreateInstance(cohortTab).show();
+    }
+    {% endif %}
+})();
+</script>

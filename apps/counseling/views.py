@@ -1,5 +1,7 @@
+import io
 import logging
 import os
+import zipfile
 from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
@@ -77,7 +79,13 @@ from apps.scheduling.services import (
 )
 from apps.scheduling.utils import ZoomAPIError, ZoomNotConfiguredError, is_zoom_configured
 from apps.documents.models import CounselorAssignmentSubmission, SessionMaterial
-from apps.documents.assignment_service import upsert_counselor_assignment
+from apps.documents.assignment_service import (
+    build_assignment_session_slots,
+    default_assignment_title,
+    get_counselor_cohort,
+    require_counselor_cohort,
+    upsert_counselor_assignment,
+)
 
 from .cancellation_policy import (
     AppointmentOperationError,
@@ -778,6 +786,22 @@ def get_case_counselor_assignments(case):
     )
 
 
+def get_cohort_peer_assignments(cohort: int, session_number: int):
+    """동일 기수·회차의 최종 과제 목록 (타 기수 접근 불가)."""
+    return (
+        CounselorAssignmentSubmission.objects.filter(
+            cohort=cohort,
+            session_number=session_number,
+        )
+        .select_related(
+            "case",
+            "case__client",
+            "submitted_by",
+        )
+        .order_by("submitted_by__name", "case__case_number")
+    )
+
+
 def _delete_session_material(request, case, session_number, material_pk, *, redirect_to):
     material = _get_session_material_for_case(case, session_number, material_pk)
     if material.uploaded_by_id != request.user.id:
@@ -1472,6 +1496,20 @@ def counselor_case_detail(request, pk):
         .first()
     )
 
+    cohort_view_session = max(case.total_sessions, 1)
+    try:
+        cohort_view_session = int(request.GET.get("cohort_session", cohort_view_session))
+    except (TypeError, ValueError):
+        pass
+    cohort_view_session = max(1, min(cohort_view_session, max(case.total_sessions, 1)))
+
+    counselor_cohort = get_counselor_cohort(request.user)
+    cohort_peer_assignments = (
+        get_cohort_peer_assignments(counselor_cohort, cohort_view_session)
+        if counselor_cohort is not None
+        else CounselorAssignmentSubmission.objects.none()
+    )
+
     return render(
         request,
         "counselor/case_detail.html",
@@ -1501,12 +1539,18 @@ def counselor_case_detail(request, pk):
                 case
             ),
             "counselor_assignments": get_case_counselor_assignments(case),
+            "assignment_session_slots": build_assignment_session_slots(
+                case, get_case_counselor_assignments(case)
+            ),
             "can_submit_assignment": user_can_submit_assignment(request.user, case),
+            "counselor_cohort": counselor_cohort,
             "is_admin_view": request.user.is_superuser
             or request.user.role == UserRole.ADMIN,
             "assignment_session_choices": list(
                 range(1, max(case.total_sessions, 1) + 1)
             ),
+            "cohort_view_session": cohort_view_session,
+            "cohort_peer_assignments": cohort_peer_assignments,
         },
     )
 
@@ -1934,13 +1978,26 @@ def counselor_shared_material_delete(request, case_pk, material_pk):
 
 @counselor_required
 @require_POST
-def counselor_assignment_upload(request, case_pk):
-    """상담사 과제 제출 (HWP/PDF)."""
+def counselor_assignment_upload(request, case_pk, session_number):
+    """회기별 상담사 과제 제출 (HWP/PDF) — 회차는 URL로 고정."""
     case = _get_counselor_case(request, case_pk)
     if not user_can_submit_assignment(request.user, case):
         raise PermissionDenied("과제 제출 권한이 없습니다.")
 
-    form = CounselorAssignmentUploadForm(request.POST, request.FILES, case=case)
+    total = max(case.total_sessions, 1)
+    if session_number < 1 or session_number > total:
+        messages.error(request, "유효하지 않은 회차입니다.")
+        return redirect("counselor:case_detail", pk=case.pk)
+
+    try:
+        require_counselor_cohort(request.user)
+    except ValidationError as exc:
+        messages.error(request, exc.messages[0] if exc.messages else str(exc))
+        return redirect("counselor:case_detail", pk=case.pk)
+
+    form = CounselorAssignmentUploadForm(
+        request.POST, request.FILES, session_number=session_number
+    )
     if not form.is_valid():
         for field, errors in form.errors.items():
             if errors:
@@ -1950,22 +2007,81 @@ def counselor_assignment_upload(request, case_pk):
             messages.error(request, "입력 내용을 확인해 주세요.")
         return redirect("counselor:case_detail", pk=case.pk)
 
+    file_obj = form.cleaned_data["file"]
     _, created = upsert_counselor_assignment(
         case=case,
         counselor=request.user,
-        session_number=form.cleaned_data["session_number"],
-        title=form.cleaned_data["title"].strip(),
+        session_number=session_number,
+        title=default_assignment_title(session_number, file_obj.name),
         note=(form.cleaned_data.get("note") or "").strip(),
-        file=form.cleaned_data["file"],
+        file=file_obj,
     )
     if created:
-        messages.success(request, "과제가 제출되었습니다. 관리자가 확인할 수 있습니다.")
+        messages.success(
+            request, f"{session_number}회기 과제가 제출되었습니다."
+        )
     else:
         messages.success(
             request,
-            f"{form.cleaned_data['session_number']}회기 과제가 최신 파일로 갱신되었습니다.",
+            f"{session_number}회기 과제가 최신 파일로 갱신되었습니다.",
         )
     return redirect("counselor:case_detail", pk=case.pk)
+
+
+@counselor_required
+def counselor_cohort_assignments_zip(request, case_pk):
+    """동기 기수 과제 ZIP 일괄 다운로드 — 본인 기수만."""
+    case = _get_counselor_case(request, case_pk)
+    cohort = get_counselor_cohort(request.user)
+    if cohort is None:
+        raise PermissionDenied("기수 정보가 없습니다.")
+
+    try:
+        session_number = int(request.GET.get("session", "0"))
+    except (TypeError, ValueError):
+        session_number = 0
+    total = max(case.total_sessions, 1)
+    if session_number < 1 or session_number > total:
+        raise Http404("Invalid session")
+
+    assignments = list(get_cohort_peer_assignments(cohort, session_number))
+    if not assignments:
+        messages.info(request, f"{session_number}회기에 제출된 동기 과제가 없습니다.")
+        return redirect(f"{reverse('counselor:case_detail', kwargs={'pk': case.pk})}?cohort_session={session_number}#counselorAssignments")
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for assignment in assignments:
+            if not assignment.file:
+                continue
+            arcname = (
+                f"{assignment.submitted_by.name}_"
+                f"{assignment.case.case_number}_"
+                f"{assignment.session_number}회기_"
+                f"{assignment.get_filename()}"
+            )
+            with assignment.file.open("rb") as fh:
+                zf.writestr(arcname, fh.read())
+
+    buffer.seek(0)
+    filename = f"cohort{cohort}_{session_number}회기_과제.zip"
+    response = HttpResponse(buffer.getvalue(), content_type="application/zip")
+    response["Content-Disposition"] = f'attachment; filename="{quote(filename)}"'
+    return response
+
+
+@role_required(UserRole.COUNSELOR, UserRole.ADMIN)
+def counselor_cohort_assignment_file(request, assignment_pk):
+    """동기 과제 개별 다운로드 — 본인 기수만."""
+    assignment = get_object_or_404(
+        CounselorAssignmentSubmission.objects.select_related("case", "submitted_by"),
+        pk=assignment_pk,
+    )
+    if request.user.role == UserRole.COUNSELOR:
+        cohort = get_counselor_cohort(request.user)
+        if cohort is None or assignment.cohort != cohort:
+            raise PermissionDenied("다른 기수 과제에는 접근할 수 없습니다.")
+    return _assignment_file_response(assignment)
 
 
 @role_required(UserRole.COUNSELOR, UserRole.ADMIN)

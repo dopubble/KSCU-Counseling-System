@@ -1,6 +1,7 @@
 import uuid
 
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
@@ -99,6 +100,12 @@ class CounselorProfile(models.Model):
     specialties = models.JSONField("전문분야", default=list, blank=True)
     bio = models.TextField("소개", blank=True)
     max_cases = models.PositiveIntegerField("최대 동시 사례 수", default=10)
+    cohort = models.PositiveIntegerField(
+        "기수",
+        null=True,
+        blank=True,
+        help_text="수련 기수(예: 100). 관리자 승인 시 필수 입력.",
+    )
     is_approved = models.BooleanField("승인 여부", default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -109,6 +116,11 @@ class CounselorProfile(models.Model):
 
     def __str__(self):
         return f"상담사: {self.user.name}"
+
+    def clean(self):
+        super().clean()
+        if self.is_approved and self.cohort is None:
+            raise ValidationError({"cohort": "상담사 승인 시 기수를 입력해야 합니다."})
 
 
 class ClientProfile(models.Model):

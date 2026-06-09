@@ -1,18 +1,39 @@
 {% extends "base.html" %}
 {% load ui_tags %}
 
-{% block title %}상담사 과제 제출{% endblock %}
+{% block title %}과제 검수{% endblock %}
 
 {% block content %}
-{% page_header show_heading=False c1_label="대시보드" c1_url_name="admin_panel:dashboard" c1_icon="bi-speedometer2" c2_label="상담사 과제 제출" %}
+{% page_header show_heading=False c1_label="대시보드" c1_url_name="admin_panel:dashboard" c1_icon="bi-speedometer2" c2_label="과제 검수" %}
 <div class="site-page-heading mt-4">
-    <h2 class="site-page-title mb-0">
-        상담사 과제 제출
-        <span class="badge bg-primary align-middle">{{ assignments_count }}</span>
-    </h2>
-    <p class="text-muted small mt-2 mb-0">
-        사례·회차별 최종본만 표시됩니다. 동일 회차 재업로드 시 기존 행이 갱신됩니다.
-    </p>
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+        <div>
+            <h2 class="site-page-title mb-0">
+                과제 검수
+                <span class="badge bg-primary align-middle">{{ assignments_count }}</span>
+            </h2>
+            <p class="text-muted small mt-2 mb-0">
+                기수별 사례·회차 최종본만 표시됩니다. 동일 회차 재업로드 시 기존 행이 갱신됩니다.
+            </p>
+        </div>
+        <div class="d-flex flex-wrap align-items-end gap-2">
+            <form method="get" class="d-flex flex-wrap align-items-end gap-2 mb-0">
+                <div>
+                    <label for="cohortFilter" class="form-label small fw-semibold mb-1">기수</label>
+                    <select name="cohort" id="cohortFilter" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <option value="all" {% if selected_cohort is None %}selected{% endif %}>전체</option>
+                        {% for c in cohorts %}
+                        <option value="{{ c }}" {% if selected_cohort == c %}selected{% endif %}>{{ c }}기</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </form>
+            <a href="{% url 'admin_panel:counselor_assignment_list' %}?cohort={% if selected_cohort %}{{ selected_cohort }}{% else %}all{% endif %}&export=csv"
+               class="btn btn-sm btn-outline-success">
+                <i class="bi bi-file-earmark-spreadsheet me-1" aria-hidden="true"></i>CSV 내보내기
+            </a>
+        </div>
+    </div>
 </div>
 
 {% if assignments %}
@@ -25,6 +46,7 @@
                         <th scope="col">사례번호</th>
                         <th scope="col">내담자</th>
                         <th scope="col">상담사</th>
+                        <th scope="col">기수</th>
                         <th scope="col">회차</th>
                         <th scope="col">최종 제출일</th>
                         <th scope="col">파일 다운로드</th>
@@ -38,6 +60,11 @@
                         <td>{{ assignment.case.client.name }}</td>
                         <td>{{ assignment.submitted_by.name }}</td>
                         <td>
+                            {% if assignment.cohort %}
+                            <span class="badge text-bg-secondary">{{ assignment.cohort }}기</span>
+                            {% else %}—{% endif %}
+                        </td>
+                        <td>
                             <span class="badge text-bg-primary">{{ assignment.session_label }}</span>
                         </td>
                         <td class="text-nowrap">
@@ -48,9 +75,6 @@
                                 {% endif %}
                             </div>
                             <div class="small mt-1">{{ assignment.updated_at|date:"Y-m-d H:i" }}</div>
-                            {% if assignment.was_revised %}
-                            <div class="small text-muted">최초 {{ assignment.created_at|date:"Y-m-d H:i" }}</div>
-                            {% endif %}
                         </td>
                         <td>
                             <a href="{% url 'admin_panel:assignment_file' assignment.pk %}"
@@ -58,9 +82,6 @@
                                download>
                                 <i class="bi bi-download me-1" aria-hidden="true"></i>{{ assignment.get_filename }}
                             </a>
-                            <div class="small text-muted mt-1 text-truncate" style="max-width: 12rem;">
-                                {{ assignment.title }}
-                            </div>
                         </td>
                         <td class="text-end text-nowrap">
                             <a href="{% url 'counselor:case_detail' assignment.case.pk %}#counselorAssignments"

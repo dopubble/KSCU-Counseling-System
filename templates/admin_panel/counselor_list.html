@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% load ui_tags %}
+
+{% block title %}상담사 명단{% endblock %}
+
+{% block content %}
+{% page_header show_heading=False c1_label="대시보드" c1_url_name="admin_panel:dashboard" c1_icon="bi-speedometer2" c2_label="상담사 명단" %}
+<div class="site-page-heading mt-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+        <div>
+            <h2 class="site-page-title mb-0">
+                상담사 명단
+                <span class="badge bg-primary align-middle">{{ counselors_count }}</span>
+            </h2>
+            <p class="text-muted small mt-2 mb-0">기수별 수련생(상담사) 명단을 조회하고 엑셀(CSV)로 내보냅니다.</p>
+        </div>
+        <div class="d-flex flex-wrap align-items-end gap-2">
+            <form method="get" class="d-flex flex-wrap align-items-end gap-2 mb-0">
+                <div>
+                    <label for="cohortFilter" class="form-label small fw-semibold mb-1">기수</label>
+                    <select name="cohort" id="cohortFilter" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <option value="all" {% if selected_cohort is None %}selected{% endif %}>전체</option>
+                        {% for c in cohorts %}
+                        <option value="{{ c }}" {% if selected_cohort == c %}selected{% endif %}>{{ c }}기</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </form>
+            <a href="{% url 'admin_panel:counselor_list' %}?cohort={% if selected_cohort %}{{ selected_cohort }}{% else %}all{% endif %}&export=csv"
+               class="btn btn-sm btn-outline-success">
+                <i class="bi bi-file-earmark-spreadsheet me-1" aria-hidden="true"></i>CSV 내보내기
+            </a>
+        </div>
+    </div>
+</div>
+
+{% if counselors %}
+<div class="card shadow-sm border-0 section-spacing">
+    <div class="card-body p-0">
+        <div class="table-responsive table-container">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">이름</th>
+                        <th scope="col">이메일</th>
+                        <th scope="col">휴대폰</th>
+                        <th scope="col">기수</th>
+                        <th scope="col">승인</th>
+                        <th scope="col">계정 상태</th>
+                        <th scope="col">가입일</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for profile in counselors %}
+                    <tr>
+                        <td class="fw-semibold">{{ profile.user.name }}</td>
+                        <td>{{ profile.user.email }}</td>
+                        <td>{{ profile.user.phone|default:"—" }}</td>
+                        <td>
+                            {% if profile.cohort %}
+                            <span class="badge text-bg-secondary">{{ profile.cohort }}기</span>
+                            {% else %}
+                            <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if profile.is_approved %}
+                            <span class="badge text-bg-success">승인</span>
+                            {% else %}
+                            <span class="badge text-bg-warning text-dark">대기</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ profile.user.get_status_display }}</td>
+                        <td class="small text-nowrap">{{ profile.user.created_at|date:"Y-m-d" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% else %}
+<p class="text-muted section-spacing">조건에 맞는 상담사가 없습니다.</p>
+{% endif %}
+{% endblock %}

@@ -16,6 +16,7 @@ urlpatterns = [
     path("cases/", views.case_list, name="case_list"),
     path("statistics/", views.statistics, name="statistics"),
     path("cancel-pending/", views.cancel_pending_list, name="cancel_pending_list"),
+    path("counselors/", views.counselor_list, name="counselor_list"),
     path(
         "counselor-assignments/",
         views.counselor_assignment_list,

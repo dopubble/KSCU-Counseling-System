@@ -286,6 +286,13 @@ class CounselorAssignmentSubmission(models.Model):
         related_name="counselor_assignment_submissions",
         verbose_name="제출 상담사",
     )
+    cohort = models.PositiveIntegerField(
+        "기수",
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="제출 시 상담사 기수가 자동 저장됩니다.",
+    )
     created_at = models.DateTimeField("최초 제출일", auto_now_add=True)
     updated_at = models.DateTimeField("최종 제출일", auto_now=True)
 
@@ -325,3 +332,10 @@ class CounselorAssignmentSubmission(models.Model):
         if user.is_superuser or user.role == UserRole.ADMIN:
             return True
         return self.submitted_by_id == user.pk
+
+    def save(self, *args, **kwargs):
+        if self.cohort is None and self.submitted_by_id:
+            profile = getattr(self.submitted_by, "counselor_profile", None)
+            if profile and profile.cohort is not None:
+                self.cohort = profile.cohort
+        super().save(*args, **kwargs)

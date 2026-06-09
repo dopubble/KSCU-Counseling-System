@@ -501,7 +501,7 @@ class BoardPostForm(forms.Form):
 
 
 class CounselorAssignmentUploadForm(forms.Form):
-    """상담사 과제 제출 — HWP/PDF만 허용, 회차 필수."""
+    """상담사 과제 제출 — 회차는 URL로 고정, HWP/PDF만 허용."""
 
     ALLOWED_EXTENSIONS = {".pdf", ".hwp"}
     MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
@@ -509,25 +509,13 @@ class CounselorAssignmentUploadForm(forms.Form):
     INVALID_TYPE_MESSAGE = "허용되지 않는 파일 형식입니다. PDF 또는 HWP만 가능합니다."
     MAX_SIZE_MESSAGE = "파일 크기는 10MB 이하여야 합니다."
 
-    session_number = forms.ChoiceField(
-        label="회차",
-        choices=[],
-        widget=forms.Select(attrs={"class": "form-select"}),
-    )
-    title = forms.CharField(
-        label="과제명",
-        max_length=200,
-        widget=forms.TextInput(
-            attrs={"class": "form-control", "placeholder": "예: 과제 보고서"}
-        ),
-    )
     note = forms.CharField(
         label="메모",
         required=False,
         widget=forms.Textarea(
             attrs={
-                "class": "form-control",
-                "rows": 3,
+                "class": "form-control form-control-sm",
+                "rows": 2,
                 "placeholder": "관리자에게 전달할 메모 (선택)",
             }
         ),
@@ -542,18 +530,9 @@ class CounselorAssignmentUploadForm(forms.Form):
         ),
     )
 
-    def __init__(self, *args, case=None, **kwargs):
+    def __init__(self, *args, session_number=None, **kwargs):
         super().__init__(*args, **kwargs)
-        total = max(getattr(case, "total_sessions", 0) or 0, 1)
-        self.fields["session_number"].choices = [
-            (str(n), f"{n}회기") for n in range(1, total + 1)
-        ]
-
-    def clean_session_number(self):
-        value = self.cleaned_data.get("session_number")
-        if not value:
-            raise forms.ValidationError("회차를 선택해 주세요.")
-        return int(value)
+        self.session_number = session_number
 
     def clean_file(self):
         file_obj = self.cleaned_data.get("file")

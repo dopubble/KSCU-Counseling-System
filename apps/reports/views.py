@@ -1,11 +1,11 @@
 from django.db.models import Count
-from django.http import FileResponse, Http404, JsonResponse
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
 from apps.accounts.decorators import role_required
-from apps.accounts.models import UserRole
+from apps.accounts.models import CounselorProfile, User, UserRole
 from apps.counseling.application_queries import (
     exclude_stale_pending_applications,
     waiting_match_for_admin,
@@ -15,6 +15,41 @@ from apps.counseling.services import get_available_counselors, get_counselor_act
 from apps.counseling.services import count_cancel_pending_appointments
 from apps.scheduling.models import Appointment, AppointmentStatus
 from apps.documents.models import CounselorAssignmentSubmission
+
+
+def _parse_cohort_param(raw) -> int | None:
+    if raw in (None, "", "all"):
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def get_available_cohorts():
+    """등록된 기수 목록 (내림차순)."""
+    return list(
+        CounselorProfile.objects.exclude(cohort__isnull=True)
+        .values_list("cohort", flat=True)
+        .distinct()
+        .order_by("-cohort")
+    )
+
+
+def _csv_response(filename: str, header: list[str], rows: list[list]) -> HttpResponse:
+    import csv
+    import io
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(header)
+    writer.writerows(rows)
+    response = HttpResponse(
+        "\ufeff" + buffer.getvalue(),
+        content_type="text/csv; charset=utf-8",
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
 
 
 def health_check(request):
@@ -210,8 +245,59 @@ def cancel_pending_list(request):
 
 
 @role_required(UserRole.ADMIN)
+def counselor_list(request):
+    """기수별 상담사 명단."""
+    cohorts = get_available_cohorts()
+    selected_cohort = _parse_cohort_param(request.GET.get("cohort"))
+
+    profiles = (
+        CounselorProfile.objects.select_related("user")
+        .filter(user__role=UserRole.COUNSELOR)
+        .order_by("cohort", "user__name")
+    )
+    if selected_cohort is not None:
+        profiles = profiles.filter(cohort=selected_cohort)
+
+    profiles = list(profiles)
+
+    if request.GET.get("export") == "csv":
+        rows = [
+            [
+                p.user.name,
+                p.user.email,
+                p.user.phone or "",
+                p.cohort or "",
+                "Y" if p.is_approved else "N",
+                p.user.get_status_display(),
+                p.user.created_at.strftime("%Y-%m-%d"),
+            ]
+            for p in profiles
+        ]
+        suffix = f"_{selected_cohort}기" if selected_cohort else "_전체"
+        return _csv_response(
+            f"상담사_명단{suffix}.csv",
+            ["이름", "이메일", "휴대폰", "기수", "승인", "계정상태", "가입일"],
+            rows,
+        )
+
+    return render(
+        request,
+        "admin_panel/counselor_list.html",
+        {
+            "counselors": profiles,
+            "counselors_count": len(profiles),
+            "cohorts": cohorts,
+            "selected_cohort": selected_cohort,
+        },
+    )
+
+
+@role_required(UserRole.ADMIN)
 def counselor_assignment_list(request):
-    """상담사 과제 제출 목록 — 사례·회차별 최종본."""
+    """기수별 과제 검수 대시보드 — 사례·회차별 최종본."""
+    cohorts = get_available_cohorts()
+    selected_cohort = _parse_cohort_param(request.GET.get("cohort"))
+
     assignments = (
         CounselorAssignmentSubmission.objects.select_related(
             "case",
@@ -219,14 +305,41 @@ def counselor_assignment_list(request):
             "case__counselor",
             "submitted_by",
         )
-        .order_by("case__case_number", "session_number")
+        .order_by("cohort", "case__case_number", "session_number")
     )
+    if selected_cohort is not None:
+        assignments = assignments.filter(cohort=selected_cohort)
+
+    assignments = list(assignments)
+
+    if request.GET.get("export") == "csv":
+        rows = [
+            [
+                a.case.case_number,
+                a.case.client.name,
+                a.submitted_by.name,
+                a.cohort or "",
+                a.session_number,
+                a.updated_at.strftime("%Y-%m-%d %H:%M"),
+                a.get_filename(),
+            ]
+            for a in assignments
+        ]
+        suffix = f"_{selected_cohort}기" if selected_cohort else "_전체"
+        return _csv_response(
+            f"과제_제출{suffix}.csv",
+            ["사례번호", "내담자", "상담사", "기수", "회차", "최종제출일", "파일명"],
+            rows,
+        )
+
     return render(
         request,
         "admin_panel/counselor_assignment_list.html",
         {
             "assignments": assignments,
-            "assignments_count": assignments.count(),
+            "assignments_count": len(assignments),
+            "cohorts": cohorts,
+            "selected_cohort": selected_cohort,
         },
     )
 

@@ -46,6 +46,7 @@ class CounselorProfileInline(admin.StackedInline):
         "specialties",
         "bio",
         "max_cases",
+        "cohort",
         "is_approved",
         "created_at",
         "updated_at",
@@ -173,16 +174,25 @@ class CounselorProfileAdmin(admin.ModelAdmin):
         "license_number",
         "specialties_summary",
         "max_cases",
+        "cohort",
         "is_approved",
         "created_at",
     )
-    list_filter = ("is_approved", "user__status")
+    list_filter = ("is_approved", "cohort", "user__status")
     search_fields = ("user__name", "user__email", "license_number", "bio")
     list_editable = ("is_approved",)
     ordering = ("user__name",)
     list_select_related = ("user",)
     readonly_fields = ("created_at", "updated_at")
     autocomplete_fields = ("user",)
+
+    def save_model(self, request, obj, form, change):
+        if obj.is_approved and obj.cohort is None:
+            from django.contrib import messages
+
+            messages.error(request, "상담사 승인 시 기수를 입력해야 합니다.")
+            return
+        super().save_model(request, obj, form, change)
 
     fieldsets = (
         (None, {"fields": ("user",)}),
@@ -196,6 +206,7 @@ class CounselorProfileAdmin(admin.ModelAdmin):
                     "specialties",
                     "bio",
                     "max_cases",
+                    "cohort",
                     "is_approved",
                 ),
             },

@@ -60,7 +60,7 @@ urlpatterns = [
         name="shared_material_delete",
     ),
     path(
-        "case/<uuid:case_pk>/assignments/upload/",
+        "case/<uuid:case_pk>/session/<int:session_number>/assignment/upload/",
         views.counselor_assignment_upload,
         name="assignment_upload",
     ),
@@ -73,6 +73,16 @@ urlpatterns = [
         "case/<uuid:case_pk>/assignments/<uuid:assignment_pk>/delete/",
         views.counselor_assignment_delete,
         name="assignment_delete",
+    ),
+    path(
+        "case/<uuid:case_pk>/cohort-assignments/zip/",
+        views.counselor_cohort_assignments_zip,
+        name="cohort_assignments_zip",
+    ),
+    path(
+        "cohort-assignments/<uuid:assignment_pk>/file/",
+        views.counselor_cohort_assignment_file,
+        name="cohort_assignment_file",
     ),
     path(
         "case/<uuid:case_pk>/session/<uuid:appointment_pk>/status/",

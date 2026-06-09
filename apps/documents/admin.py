@@ -40,10 +40,11 @@ class CounselorAssignmentSubmissionAdmin(admin.ModelAdmin):
         "session_number",
         "title",
         "submitted_by",
+        "cohort",
         "updated_at",
         "created_at",
     )
-    list_filter = ("session_number", "updated_at")
+    list_filter = ("session_number", "cohort", "updated_at")
     search_fields = (
         "title",
         "note",
