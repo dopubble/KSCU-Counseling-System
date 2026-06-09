@@ -104,12 +104,50 @@
             </div>
             <div class="modal-footer justify-content-between">
                 <p class="small text-muted mb-0">타 기수 자료는 표시되지 않습니다.</p>
-                <a href="#"
-                   id="cohortAssignmentsZipBtn"
-                   class="btn btn-sm btn-primary">
+                <button type="button"
+                        id="cohortAssignmentsZipBtn"
+                        class="btn btn-sm btn-primary"
+                        data-bs-toggle="modal"
+                        data-bs-target="#cohortAssignmentsZipModal">
                     <i class="bi bi-file-zip me-1" aria-hidden="true"></i>ZIP 일괄 다운로드
-                </a>
+                </button>
             </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="cohortAssignmentsZipModal" tabindex="-1" aria-labelledby="cohortAssignmentsZipModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="post" id="cohortAssignmentsZipForm" action="{% url 'counselor:cohort_assignments_zip' case.pk %}">
+                {% csrf_token %}
+                <input type="hidden" name="session" id="cohortAssignmentsZipSession" value="">
+                <input type="hidden" name="next" id="cohortAssignmentsZipNext" value="">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="cohortAssignmentsZipModalLabel">ZIP 일괄 다운로드</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">
+                        <span id="cohortAssignmentsZipTarget" class="fw-semibold"></span> 동기 과제를 ZIP으로 받습니다.
+                        압축 파일을 열 때 사용할 암호를 입력하세요. (4자 이상)
+                    </p>
+                    <label for="cohortAssignmentsZipPassword" class="form-label fw-semibold">ZIP 암호</label>
+                    <input type="password"
+                           class="form-control"
+                           id="cohortAssignmentsZipPassword"
+                           name="zip_password"
+                           required
+                           minlength="4"
+                           autocomplete="new-password">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-file-zip me-1" aria-hidden="true"></i>다운로드
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -117,7 +155,6 @@
 <script>
 (function () {
     var assignmentUploadTemplate = "{% url 'counselor:assignment_upload' case.pk 999 %}";
-    var cohortZipTemplate = "{% url 'counselor:cohort_assignments_zip' case.pk %}?session=999";
 
     function urlFor(template, sessionNumber) {
         return template.replace("999", String(sessionNumber));
@@ -149,6 +186,7 @@
 
     var cohortModal = document.getElementById("cohortAssignmentsModal");
     var zipBtn = document.getElementById("cohortAssignmentsZipBtn");
+    var zipModal = document.getElementById("cohortAssignmentsZipModal");
     if (cohortModal) {
         cohortModal.addEventListener("show.bs.modal", function (event) {
             var btn = event.relatedTarget;
@@ -163,8 +201,22 @@
                 );
             });
             if (zipBtn) {
-                zipBtn.href = urlFor(cohortZipTemplate, sessionNumber);
+                zipBtn.setAttribute("data-session-number", sessionNumber);
+                zipBtn.setAttribute("data-session-label", sessionLabel);
             }
+        });
+    }
+    if (zipModal) {
+        zipModal.addEventListener("show.bs.modal", function (event) {
+            var btn = event.relatedTarget;
+            if (!btn) return;
+            var sessionNumber = btn.getAttribute("data-session-number");
+            var sessionLabel = btn.getAttribute("data-session-label") || (sessionNumber + "회기");
+            document.getElementById("cohortAssignmentsZipSession").value = sessionNumber;
+            document.getElementById("cohortAssignmentsZipTarget").textContent = sessionLabel;
+            document.getElementById("cohortAssignmentsZipNext").value =
+                window.location.pathname + window.location.search;
+            document.getElementById("cohortAssignmentsZipPassword").value = "";
         });
     }
 })();

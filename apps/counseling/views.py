@@ -1,7 +1,5 @@
-import io
 import logging
 import os
-import zipfile
 from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
@@ -79,6 +77,11 @@ from apps.scheduling.services import (
 )
 from apps.scheduling.utils import ZoomAPIError, ZoomNotConfiguredError, is_zoom_configured
 from apps.documents.models import CounselorAssignmentSubmission, SessionMaterial
+from apps.documents.cohort_zip import (
+    assignment_zip_arcname,
+    build_password_protected_zip,
+    read_assignment_file_bytes,
+)
 from apps.documents.assignment_service import (
     default_assignment_title,
     get_counselor_cohort,
@@ -1416,14 +1419,30 @@ def user_can_download_termination_record_pdf(user, record):
     return record.case.counselor_id == user.id
 
 
-def _get_pdf_password_from_request(request, *, redirect_url: str):
-    """POST pdf_password — 4자 미만이면 None과 redirect 반환."""
-    pdf_password = (request.POST.get("pdf_password") or "").strip()
-    if len(pdf_password) < 4:
-        messages.error(request, "PDF 암호는 4자 이상 입력해 주세요.")
+def _get_download_password_from_request(
+    request,
+    *,
+    redirect_url: str,
+    label: str = "파일",
+):
+    """POST pdf_password / zip_password — 4자 미만이면 None과 redirect 반환."""
+    password = (
+        request.POST.get("zip_password")
+        or request.POST.get("pdf_password")
+        or ""
+    ).strip()
+    if len(password) < 4:
+        messages.error(request, f"{label} 암호는 4자 이상 입력해 주세요.")
         next_url = (request.POST.get("next") or redirect_url).strip()
         return None, redirect(next_url or redirect_url)
-    return pdf_password, None
+    return password, None
+
+
+def _get_pdf_password_from_request(request, *, redirect_url: str):
+    """POST pdf_password — 4자 미만이면 None과 redirect 반환."""
+    return _get_download_password_from_request(
+        request, redirect_url=redirect_url, label="PDF"
+    )
 
 
 def _pdf_file_response(pdf_bytes: bytes, *, filename: str, ascii_name: str) -> HttpResponse:
@@ -1433,6 +1452,16 @@ def _pdf_file_response(pdf_bytes: bytes, *, filename: str, ascii_name: str) -> H
         f"filename*=UTF-8''{quote(filename)}"
     )
     response["Content-Length"] = len(pdf_bytes)
+    return response
+
+
+def _zip_file_response(zip_bytes: bytes, *, filename: str, ascii_name: str) -> HttpResponse:
+    response = HttpResponse(zip_bytes, content_type="application/zip")
+    response["Content-Disposition"] = (
+        f'attachment; filename="{ascii_name}"; '
+        f"filename*=UTF-8''{quote(filename)}"
+    )
+    response["Content-Length"] = len(zip_bytes)
     return response
 
 
@@ -2094,45 +2123,53 @@ def counselor_assignment_upload(request, case_pk, session_number):
 
 
 @counselor_required
+@require_POST
 def counselor_cohort_assignments_zip(request, case_pk):
-    """동기 기수 과제 ZIP 일괄 다운로드 — 본인 기수만."""
+    """동기 기수 과제 ZIP 일괄 다운로드 — 본인 기수만, 사용자 입력 암호로 AES 암호화."""
     case = _get_counselor_case(request, case_pk)
+    fallback = reverse("counselor:case_detail", kwargs={"pk": case.pk})
+    zip_password, redirect_response = _get_download_password_from_request(
+        request, redirect_url=fallback, label="ZIP"
+    )
+    if redirect_response:
+        return redirect_response
+
     cohort = get_counselor_cohort(request.user)
     if cohort is None:
         raise PermissionDenied("기수 정보가 없습니다.")
 
     try:
-        session_number = int(request.GET.get("session", "0"))
+        session_number = int(request.POST.get("session", "0"))
     except (TypeError, ValueError):
         session_number = 0
-    total = max(case.total_sessions, 1)
+    total = max(case.total_sessions or 0, 1)
     if session_number < 1 or session_number > total:
-        raise Http404("Invalid session")
+        messages.error(request, "유효하지 않은 회차입니다.")
+        return redirect(fallback)
 
     assignments = list(get_cohort_peer_assignments(cohort, session_number))
     if not assignments:
         messages.info(request, f"{session_number}회기에 제출된 동기 과제가 없습니다.")
-        return redirect("counselor:case_detail", pk=case.pk)
+        return redirect(fallback)
 
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        for assignment in assignments:
-            if not assignment.file:
-                continue
-            arcname = (
-                f"{assignment.submitted_by.name}_"
-                f"{assignment.case.case_number}_"
-                f"{assignment.session_number}회기_"
-                f"{assignment.get_filename()}"
-            )
-            with assignment.file.open("rb") as fh:
-                zf.writestr(arcname, fh.read())
+    entries: list[tuple[str, bytes]] = []
+    for assignment in assignments:
+        data = read_assignment_file_bytes(assignment)
+        if data is None:
+            continue
+        entries.append((assignment_zip_arcname(assignment), data))
 
-    buffer.seek(0)
+    if not entries:
+        messages.error(
+            request,
+            "다운로드할 과제 파일을 읽을 수 없습니다. 파일이 서버에 없을 수 있습니다.",
+        )
+        return redirect(fallback)
+
+    zip_bytes = build_password_protected_zip(entries, zip_password)
     filename = f"cohort{cohort}_{session_number}회기_과제.zip"
-    response = HttpResponse(buffer.getvalue(), content_type="application/zip")
-    response["Content-Disposition"] = f'attachment; filename="{quote(filename)}"'
-    return response
+    ascii_name = f"cohort{cohort}_session{session_number}_assignments.zip"
+    return _zip_file_response(zip_bytes, filename=filename, ascii_name=ascii_name)
 
 
 @role_required(UserRole.COUNSELOR, UserRole.ADMIN)
