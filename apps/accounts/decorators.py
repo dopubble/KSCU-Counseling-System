@@ -5,7 +5,7 @@ from django.core.exceptions import PermissionDenied
 from django.shortcuts import redirect
 from django.urls import reverse
 
-from .models import CounselorProfile, UserRole, UserStatus
+from .models import UserRole, UserStatus
 
 
 def role_required(*roles):
@@ -30,32 +30,20 @@ def role_required(*roles):
     return decorator
 
 
-def _has_counselor_profile(user):
-    try:
-        user.counselor_profile
-        return True
-    except CounselorProfile.DoesNotExist:
-        return False
-
-
 def user_can_access_counselor_area(user):
-    """상담사 영역 접근 가능 여부"""
+    """상담사 영역 접근 가능 여부 — 역할 기준만 (고아 프로필 무시)."""
     if not user.is_authenticated:
         return False
     if user.is_superuser:
         return True
-    if user.role in (UserRole.COUNSELOR, UserRole.ADMIN):
-        return True
-    if _has_counselor_profile(user):
-        return True
-    return False
+    return user.role in (UserRole.COUNSELOR, UserRole.ADMIN)
 
 
 def counselor_required(view_func):
     """
     상담사 전용 뷰 접근 제어.
     - 미로그인: 로그인 페이지로 리다이렉트
-    - COUNSELOR·ADMIN·CounselorProfile 보유·is_superuser 허용
+    - COUNSELOR·ADMIN·is_superuser 허용
     """
 
     @wraps(view_func)

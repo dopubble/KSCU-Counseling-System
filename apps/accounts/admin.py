@@ -159,6 +159,12 @@ class UserAdmin(BaseUserAdmin):
         except CounselorProfile.DoesNotExist:
             return False
 
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        from apps.accounts.profile_sync import sync_user_role_profiles
+
+        sync_user_role_profiles(obj)
+
 
 @admin.register(CounselorProfile)
 class CounselorProfileAdmin(admin.ModelAdmin):
@@ -186,10 +192,19 @@ class CounselorProfileAdmin(admin.ModelAdmin):
     readonly_fields = ("created_at", "updated_at")
     autocomplete_fields = ("user",)
 
-    def save_model(self, request, obj, form, change):
-        if obj.is_approved and obj.cohort is None:
-            from django.contrib import messages
+    def get_queryset(self, request):
+        return super().get_queryset(request).filter(user__role=UserRole.COUNSELOR)
 
+    def save_model(self, request, obj, form, change):
+        from django.contrib import messages
+
+        if obj.user.role != UserRole.COUNSELOR:
+            messages.error(
+                request,
+                "상담사(COUNSELOR) 역할 계정에만 상담사 프로필을 연결할 수 있습니다.",
+            )
+            return
+        if obj.is_approved and obj.cohort is None:
             messages.error(request, "상담사 승인 시 기수를 입력해야 합니다.")
             return
         super().save_model(request, obj, form, change)

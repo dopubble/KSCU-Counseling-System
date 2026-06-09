@@ -88,6 +88,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     def save(self, *args, **kwargs):
         self.is_active = self.status == UserStatus.ACTIVE
         super().save(*args, **kwargs)
+        from apps.accounts.profile_sync import sync_user_role_profiles
+
+        sync_user_role_profiles(self)
 
 
 class CounselorProfile(models.Model):
@@ -119,6 +122,10 @@ class CounselorProfile(models.Model):
 
     def clean(self):
         super().clean()
+        if self.user_id and self.user.role != UserRole.COUNSELOR:
+            raise ValidationError(
+                {"user": "상담사(COUNSELOR) 역할 계정만 상담사 프로필을 가질 수 있습니다."}
+            )
         if self.is_approved and self.cohort is None:
             raise ValidationError({"cohort": "상담사 승인 시 기수를 입력해야 합니다."})
 

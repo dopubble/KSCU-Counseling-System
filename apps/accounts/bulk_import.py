@@ -314,6 +314,7 @@ def _upsert_row(
             ]
         )
     elif row.role == UserRole.CLIENT:
+        CounselorProfile.objects.filter(user=user).delete()
         is_kcu = _resolve_is_kcu_student(row)
         profile, _ = ClientProfile.objects.get_or_create(user=user)
         profile.student_id = row.student_id
