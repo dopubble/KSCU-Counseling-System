@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 def send_find_id_email(*, user) -> bool:
     """아이디(이메일) 안내 메일 발송. 실패 시 False."""
-    subject = "[KSCU 전문상담센터] 로그인 아이디 안내"
+    subject = "[숭실사이버대학교 평생교육원] 로그인 아이디 안내"
     message = (
         f"안녕하세요, {user.name}님.\n\n"
         f"요청하신 로그인 아이디(이메일)는 아래와 같습니다.\n\n"

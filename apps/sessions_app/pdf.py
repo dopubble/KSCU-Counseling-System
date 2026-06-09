@@ -186,7 +186,7 @@ def build_journal_pdf(
     )
 
     story = [
-        _para("숭실사이버대학교 평생교육원 전문상담센터", subtitle_style),
+        _para("숭실사이버대학교 평생교육원", subtitle_style),
         _para("상담일지", title_style),
         _para("본 문서는 상담 기록으로 대외비이며 무단 배포를 금합니다.", subtitle_style),
         Spacer(1, 4 * mm),

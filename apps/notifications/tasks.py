@@ -31,7 +31,7 @@ def send_appointment_reminder(appointment_id):
         f"안녕하세요, {appointment.client.name}님.\n\n"
         f"상담 예약이 {appointment.scheduled_at:%Y-%m-%d %H:%M}에 확정되었습니다.\n"
         f"담당 상담사: {appointment.counselor.name}\n\n"
-        f"숭실사이버대학교 평생교육원 전문상담센터"
+        f"숭실사이버대학교 평생교육원"
     )
     send_email_notification.delay(subject, message, [appointment.client.email])
 
