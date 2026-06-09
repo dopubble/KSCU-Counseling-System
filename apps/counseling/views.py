@@ -762,14 +762,23 @@ def _session_material_file_response(material):
     )
 
 
-def _assignment_file_response(assignment):
+def _assignment_file_response(request, assignment, *, fallback_url: str):
     if not assignment.file or not assignment.file.name:
-        raise Http404("File not found")
+        messages.error(
+            request,
+            "과제 파일이 서버에 없습니다. 「과제 제출」에서 다시 올려 주세요.",
+        )
+        return redirect(fallback_url)
     from apps.documents.cohort_zip import read_assignment_file_bytes
 
     data = read_assignment_file_bytes(assignment)
     if data is None:
-        raise Http404("File not found")
+        messages.error(
+            request,
+            "과제 파일이 서버에 없습니다. 운영 서버 재배포로 파일이 삭제됐을 수 있습니다. "
+            "「과제 제출」에서 다시 올려 주세요.",
+        )
+        return redirect(fallback_url)
     response = HttpResponse(data, content_type="application/octet-stream")
     filename = assignment.get_filename()
     ascii_name = filename.encode("ascii", "ignore").decode() or "assignment"
@@ -1597,6 +1606,9 @@ def counselor_case_detail(request, pk):
 
     case_assignments = list(get_case_counselor_assignments(case))
     assignments_by_session = {a.session_number: a for a in case_assignments}
+    assignments_missing_files = [
+        a for a in case_assignments if not a.file_is_available()
+    ]
     counselor_cohort = get_counselor_cohort(request.user)
     total_sessions = max(case.total_sessions, 1)
     cohort_peers_by_session = {}
@@ -1651,6 +1663,7 @@ def counselor_case_detail(request, pk):
             ),
             "can_submit_assignment": user_can_submit_assignment(request.user, case),
             "counselor_cohort": counselor_cohort,
+            "assignments_missing_files": assignments_missing_files,
             "is_admin_view": request.user.is_superuser
             or request.user.role == UserRole.ADMIN,
         },
@@ -2201,7 +2214,8 @@ def counselor_cohort_assignment_file(request, assignment_pk):
         cohort = get_counselor_cohort(request.user)
         if cohort is None or assignment.cohort != cohort:
             raise PermissionDenied("다른 기수 과제에는 접근할 수 없습니다.")
-    return _assignment_file_response(assignment)
+    fallback = reverse("counselor:case_detail", kwargs={"pk": assignment.case_id})
+    return _assignment_file_response(request, assignment, fallback_url=fallback)
 
 
 @role_required(UserRole.COUNSELOR, UserRole.ADMIN)
@@ -2213,7 +2227,8 @@ def counselor_assignment_file(request, case_pk, assignment_pk):
         pk=assignment_pk,
         case=case,
     )
-    return _assignment_file_response(assignment)
+    fallback = reverse("counselor:case_detail", kwargs={"pk": case.pk})
+    return _assignment_file_response(request, assignment, fallback_url=fallback)
 
 
 @role_required(UserRole.COUNSELOR, UserRole.ADMIN)

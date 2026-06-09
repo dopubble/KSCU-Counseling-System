@@ -62,7 +62,8 @@
                 {% for session in sessions %}
                 <div class="cohort-assignments-panel d-none"
                      id="cohortAssignmentsPanel{{ session.session_number }}"
-                     data-session-number="{{ session.session_number }}">
+                     data-session-number="{{ session.session_number }}"
+                     data-has-downloadable-files="{% if session.cohort_peers_downloadable %}1{% else %}0{% endif %}">
                     {% if session.cohort_peers %}
                     <div class="table-responsive">
                         <table class="table table-hover align-middle mb-0">
@@ -83,11 +84,15 @@
                                     <td>{{ peer.case.client.name }}</td>
                                     <td class="small text-nowrap">{{ peer.updated_at|date:"m-d H:i" }}</td>
                                     <td>
+                                        {% if peer.file_is_available %}
                                         <a href="{% url 'counselor:cohort_assignment_file' peer.pk %}"
                                            class="btn btn-sm btn-outline-primary py-0 px-2"
                                            download>
                                             <i class="bi bi-download" aria-hidden="true"></i>
                                         </a>
+                                        {% else %}
+                                        <span class="badge text-bg-warning">재제출 필요</span>
+                                        {% endif %}
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -111,6 +116,9 @@
                         data-bs-target="#cohortAssignmentsZipModal">
                     <i class="bi bi-file-zip me-1" aria-hidden="true"></i>ZIP 일괄 다운로드
                 </button>
+                <p id="cohortAssignmentsZipDisabledHint" class="small text-warning mb-0 d-none">
+                    다운로드 가능한 파일이 없습니다. 과제를 다시 제출해 주세요.
+                </p>
             </div>
         </div>
     </div>
@@ -186,6 +194,7 @@
 
     var cohortModal = document.getElementById("cohortAssignmentsModal");
     var zipBtn = document.getElementById("cohortAssignmentsZipBtn");
+    var zipHint = document.getElementById("cohortAssignmentsZipDisabledHint");
     var zipModal = document.getElementById("cohortAssignmentsZipModal");
     if (cohortModal) {
         cohortModal.addEventListener("show.bs.modal", function (event) {
@@ -194,15 +203,22 @@
             var sessionNumber = btn.getAttribute("data-session-number");
             var sessionLabel = btn.getAttribute("data-session-label") || (sessionNumber + "회기");
             document.getElementById("cohortAssignmentsSessionLabel").textContent = sessionLabel;
+            var activePanel = null;
             cohortModal.querySelectorAll(".cohort-assignments-panel").forEach(function (panel) {
-                panel.classList.toggle(
-                    "d-none",
-                    panel.getAttribute("data-session-number") !== String(sessionNumber)
-                );
+                var isActive = panel.getAttribute("data-session-number") === String(sessionNumber);
+                panel.classList.toggle("d-none", !isActive);
+                if (isActive) {
+                    activePanel = panel;
+                }
             });
+            var hasFiles = activePanel && activePanel.getAttribute("data-has-downloadable-files") === "1";
             if (zipBtn) {
+                zipBtn.classList.toggle("d-none", !hasFiles);
                 zipBtn.setAttribute("data-session-number", sessionNumber);
                 zipBtn.setAttribute("data-session-label", sessionLabel);
+            }
+            if (zipHint) {
+                zipHint.classList.toggle("d-none", hasFiles);
             }
         });
     }

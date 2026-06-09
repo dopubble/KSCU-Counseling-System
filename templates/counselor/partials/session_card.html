@@ -135,12 +135,29 @@
 
         {% if session.assignment %}
         <div class="session-assignment-status d-flex flex-wrap align-items-center gap-2 mt-2 mb-0">
+            {% if session.assignment.file_is_available %}
             <a href="{% url 'counselor:assignment_file' case.pk session.assignment.pk %}"
                class="small fw-semibold text-truncate text-decoration-none session-assignment-filename"
                download>
                 {{ session.assignment.get_filename }}
             </a>
             <span class="badge text-bg-success">제출됨</span>
+            {% else %}
+            <span class="small fw-semibold text-warning session-assignment-filename">
+                {{ session.assignment.get_filename }}
+            </span>
+            <span class="badge text-bg-warning">파일 없음 · 재제출</span>
+            <button type="button"
+                    class="btn btn-sm btn-outline-warning py-0 px-2"
+                    data-bs-toggle="modal"
+                    data-bs-target="#counselorAssignmentUploadModal"
+                    data-session-number="{{ session.session_number }}"
+                    data-session-label="{{ session.session_number }}회기"
+                    data-has-assignment="1"
+                    data-filename="{{ session.assignment.get_filename }}">
+                다시 제출
+            </button>
+            {% endif %}
             {% if can_submit_assignment or is_admin_view %}
             <form method="post"
                   action="{% url 'counselor:assignment_delete' case.pk session.assignment.pk %}"

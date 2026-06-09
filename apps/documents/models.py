@@ -315,6 +315,15 @@ class CounselorAssignmentSubmission(models.Model):
             return ""
         return os.path.basename(self.file.name.replace("\\", "/"))
 
+    def file_is_available(self) -> bool:
+        """스토리지에 실제 파일이 존재하는지 (재배포 후 유실 여부 확인)."""
+        if not self.file or not self.file.name:
+            return False
+        try:
+            return self.file.storage.exists(self.file.name)
+        except Exception:
+            return False
+
     @property
     def session_label(self) -> str:
         return f"{self.session_number}회기"

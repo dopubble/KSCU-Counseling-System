@@ -1433,6 +1433,10 @@ class CounselorSessionCardView:
     def termination_record_label(self) -> str:
         return self._card.termination_record_label
 
+    @property
+    def cohort_peers_downloadable(self) -> bool:
+        return any(peer.file_is_available() for peer in self.cohort_peers)
+
 
 def build_counselor_session_views(
     case: Case,

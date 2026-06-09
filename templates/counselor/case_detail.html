@@ -51,6 +51,20 @@
         </div>
         {% endif %}
 
+        {% if assignments_missing_files %}
+        <div class="alert alert-warning border-0 shadow-sm section-spacing mb-0 mt-3" role="alert">
+            <p class="fw-semibold mb-2">
+                <i class="bi bi-exclamation-triangle me-1" aria-hidden="true"></i>
+                제출 기록은 있으나 서버에 과제 파일이 없습니다
+            </p>
+            <p class="small mb-0">
+                운영 서버 재배포 시 업로드 파일이 삭제될 수 있습니다.
+                아래 해당 회기에서 <strong>「과제 제출」</strong>을 눌러 파일을 <strong>다시 올려</strong> 주세요.
+                (Railway Volume 또는 S3 설정 후 재제출하면 이후 배포에도 유지됩니다.)
+            </p>
+        </div>
+        {% endif %}
+
         {% if pending_session_requests %}
         <div id="counselorPendingAlert" class="alert alert-warning border-0 shadow-sm d-flex flex-wrap align-items-start gap-2 mb-0 mt-3 counselor-pending-alert" role="alert">
             <i class="bi bi-bell-fill fs-5 text-warning flex-shrink-0" aria-hidden="true"></i>
