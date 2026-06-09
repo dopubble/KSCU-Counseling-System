@@ -1436,14 +1436,42 @@ def _pdf_file_response(pdf_bytes: bytes, *, filename: str, ascii_name: str) -> H
     return response
 
 
-def _record_pdf_context(can_download: bool, download_url: str) -> dict:
-    if not can_download:
-        return {}
-    return {
-        "can_download_pdf": True,
-        "pdf_download_url": download_url,
-        "pdf_password_notice": PDF_PASSWORD_NOTICE,
+PDF_DOWNLOAD_DISABLED_MESSAGE = "기록 저장 후 다운로드할 수 있습니다."
+
+
+def _record_pdf_context(can_download: bool, download_url: str = "") -> dict:
+    context = {
+        "can_download_pdf": can_download,
+        "pdf_download_disabled_message": PDF_DOWNLOAD_DISABLED_MESSAGE,
     }
+    if can_download:
+        context["pdf_download_url"] = download_url
+        context["pdf_password_notice"] = PDF_PASSWORD_NOTICE
+    return context
+
+
+def _can_download_initial_record_pdf(request, record) -> bool:
+    return bool(
+        record
+        and not record.is_draft
+        and user_can_download_initial_record_pdf(request.user, record)
+    )
+
+
+def _can_download_journal_pdf(request, journal) -> bool:
+    return bool(
+        journal
+        and not journal.is_draft
+        and user_can_download_journal_pdf(request.user, journal)
+    )
+
+
+def _can_download_termination_record_pdf(request, record) -> bool:
+    return bool(
+        record
+        and not record.is_draft
+        and user_can_download_termination_record_pdf(request.user, record)
+    )
 
 
 def _get_case_journal(request, case_pk, session_number):
@@ -1470,18 +1498,21 @@ def _render_journal_form(request, case, form, *, is_edit=False, journal=None):
         "breadcrumb_label": "일지 수정" if is_edit else "일지 작성",
         "submit_label": "저장하기" if is_edit else "일지 저장",
     }
-    if journal and not journal.is_draft and user_can_download_journal_pdf(
-        request.user, journal
-    ):
-        context.update(
-            _record_pdf_context(
-                True,
-                reverse(
-                    "counselor:journal_pdf",
-                    kwargs={"pk": case.pk, "session_number": journal.session_number},
-                ),
+    can_download = _can_download_journal_pdf(request, journal)
+    context.update(
+        _record_pdf_context(
+            can_download,
+            reverse(
+                "counselor:journal_pdf",
+                kwargs={
+                    "pk": case.pk,
+                    "session_number": journal.session_number,
+                },
             )
+            if can_download
+            else "",
         )
+    )
     return render(request, "counselor/journal_form.html", context)
 
 
@@ -2339,7 +2370,7 @@ def journal_detail(request, pk, session_number):
             "journal_breadcrumb_label": f"{journal.session_number}회기 상담일지",
             "can_edit": user_can_edit_journal(request.user, journal),
             **_record_pdf_context(
-                user_can_download_journal_pdf(request.user, journal),
+                _can_download_journal_pdf(request, journal),
                 reverse(
                     "counselor:journal_pdf",
                     kwargs={"pk": case.pk, "session_number": journal.session_number},
@@ -2487,15 +2518,15 @@ def _render_initial_record_form(request, case, form, *, is_edit=False, record=No
         "breadcrumb_label": "초기상담 기록지",
         "submit_label": "저장하기",
     }
-    if record and not record.is_draft and user_can_download_initial_record_pdf(
-        request.user, record
-    ):
-        context.update(
-            _record_pdf_context(
-                True,
-                reverse("counselor:initial_record_pdf", kwargs={"pk": case.pk}),
-            )
+    can_download = _can_download_initial_record_pdf(request, record)
+    context.update(
+        _record_pdf_context(
+            can_download,
+            reverse("counselor:initial_record_pdf", kwargs={"pk": case.pk})
+            if can_download
+            else "",
         )
+    )
     return render(request, "counselor/initial_record_form.html", context)
 
 
@@ -2552,7 +2583,7 @@ def initial_record_detail(request, pk):
             "can_edit": record.counselor_id == request.user.pk
             or case.counselor_id == request.user.pk,
             **_record_pdf_context(
-                user_can_download_initial_record_pdf(request.user, record),
+                _can_download_initial_record_pdf(request, record),
                 reverse("counselor:initial_record_pdf", kwargs={"pk": case.pk}),
             ),
         },
@@ -2638,15 +2669,15 @@ def _render_termination_record_form(request, case, form, *, is_edit=False, recor
         "submit_label": "저장하기",
         "total_sessions": case.total_sessions,
     }
-    if record and not record.is_draft and user_can_download_termination_record_pdf(
-        request.user, record
-    ):
-        context.update(
-            _record_pdf_context(
-                True,
-                reverse("counselor:termination_record_pdf", kwargs={"pk": case.pk}),
-            )
+    can_download = _can_download_termination_record_pdf(request, record)
+    context.update(
+        _record_pdf_context(
+            can_download,
+            reverse("counselor:termination_record_pdf", kwargs={"pk": case.pk})
+            if can_download
+            else "",
         )
+    )
     return render(request, "counselor/termination_record_form.html", context)
 
 
@@ -2698,7 +2729,7 @@ def termination_record_detail(request, pk):
             "can_edit": record.counselor_id == request.user.pk
             or case.counselor_id == request.user.pk,
             **_record_pdf_context(
-                user_can_download_termination_record_pdf(request.user, record),
+                _can_download_termination_record_pdf(request, record),
                 reverse("counselor:termination_record_pdf", kwargs={"pk": case.pk}),
             ),
         },
