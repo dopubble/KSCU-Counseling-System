@@ -75,15 +75,18 @@ def build_password_protected_zip(
     entries: list[tuple[str, bytes]],
     password: str,
 ) -> bytes:
-    """AES 암호화 ZIP 바이트 반환."""
+    """Windows 탐색기 호환 ZipCrypto 암호화 ZIP 바이트 반환."""
     buffer = io.BytesIO()
     with pyzipper.AESZipFile(
         buffer,
         "w",
         compression=pyzipper.ZIP_DEFLATED,
-        encryption=pyzipper.WZ_AES,
+        encryption=pyzipper.ZIP_CRYPTO,
     ) as zf:
         zf.setpassword(password.encode("utf-8"))
         for arcname, data in entries:
-            zf.writestr(arcname, data)
+            info = pyzipper.ZipInfo(arcname)
+            info.compress_type = pyzipper.ZIP_DEFLATED
+            info.flag_bits |= 0x800  # UTF-8 파일명 (한글)
+            zf.writestr(info, data)
     return buffer.getvalue()
