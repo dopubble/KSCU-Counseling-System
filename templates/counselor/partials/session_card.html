@@ -85,38 +85,39 @@
     </div>
     {% endif %}
 
-    {% if session.show_counselor_materials_section or session.show_counselor_session_toolbar %}
+    {% if session.has_materials or session.assignment or session.show_counselor_session_toolbar %}
     <div class="client-session-card-body">
-        {% if session.show_counselor_materials_section %}
-        {% include "includes/session_materials_list.html" with session=session case=case portal="counselor" show_materials_section=True %}
+        {% if session.has_materials %}
+        {% include "includes/session_materials_list.html" with session=session case=case portal="counselor" %}
         {% endif %}
 
         {% if session.assignment %}
         <div class="session-assignment-status d-flex flex-wrap align-items-center gap-2 mt-2 mb-0 px-1">
-            <span class="small text-muted">수련 과제</span>
             <a href="{% url 'counselor:assignment_file' case.pk session.assignment.pk %}"
                class="small fw-semibold text-truncate text-decoration-none"
                download>
                 {{ session.assignment.get_filename }}
             </a>
             <span class="badge text-bg-success">제출됨</span>
+            {% if can_submit_assignment or is_admin_view %}
+            <form method="post"
+                  action="{% url 'counselor:assignment_delete' case.pk session.assignment.pk %}"
+                  class="mb-0 flex-shrink-0"
+                  onsubmit="return confirm('{{ session.session_number }}회기 과제를 삭제하시겠습니까?');">
+                {% csrf_token %}
+                <button type="submit"
+                        class="btn btn-sm btn-link text-danger p-0 session-assignment-delete-btn"
+                        aria-label="과제 삭제">
+                    <i class="bi bi-trash" aria-hidden="true"></i>
+                </button>
+            </form>
+            {% endif %}
             <span class="small text-muted">{{ session.assignment.updated_at|date:"Y-m-d H:i" }}</span>
         </div>
         {% endif %}
 
-        {% if session.show_counselor_session_toolbar %}
+        {% if session.show_counselor_session_toolbar and can_submit_assignment %}
         <div class="client-session-card-actions session-inline-actions d-flex flex-wrap align-items-center gap-2 mt-3">
-            {% if session.show_session_actions %}
-            <button type="button"
-                    class="btn btn-sm btn-outline-secondary client-session-action-btn"
-                    data-bs-toggle="modal"
-                    data-bs-target="#counselorMaterialUploadModal"
-                    data-session-number="{{ session.session_number }}"
-                    data-session-label="{{ session.session_number }}회기">
-                <i class="bi bi-paperclip me-1" aria-hidden="true"></i>자료 첨부
-            </button>
-            {% endif %}
-            {% if can_submit_assignment %}
             <button type="button"
                     class="btn btn-sm btn-outline-secondary client-session-action-btn"
                     data-bs-toggle="modal"
@@ -137,7 +138,6 @@
                 <i class="bi bi-people me-1" aria-hidden="true"></i>우리 기수 과제
             </button>
             {% endif %}
-            {% endif %}
         </div>
         {% endif %}
 
@@ -157,8 +157,6 @@
                 </select>
             </form>
         </div>
-        {% elif not session.appointment and not session.has_rejection_notice and not session.show_counselor_materials_section %}
-        <p class="text-muted small mb-0 px-3 py-2">아직 예약되지 않은 회기입니다.</p>
         {% endif %}
     </div>
     {% endif %}

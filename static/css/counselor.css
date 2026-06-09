@@ -18,6 +18,15 @@
     max-width: 100%;
 }
 
+.session-assignment-delete-btn {
+    line-height: 1;
+    vertical-align: middle;
+}
+
+.session-assignment-delete-btn:hover {
+    color: #bb2d3b !important;
+}
+
 .cohort-assignments-panel .table th,
 .cohort-assignments-panel .table td {
     font-size: 0.875rem;

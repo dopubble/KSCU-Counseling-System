@@ -129,7 +129,7 @@
     </header>
     {% if session.show_client_materials_section %}
     <div class="client-session-card-body">
-        {% include "includes/session_materials_list.html" with session=session case=case portal="client" show_materials_section=True %}
+        {% include "includes/session_materials_list.html" with session=session case=case portal="client" show_materials_section=True show_empty_message=True %}
         {% if session.show_session_actions %}
         <div class="client-session-card-actions d-flex flex-wrap gap-2 mt-3">
             <button type="button"

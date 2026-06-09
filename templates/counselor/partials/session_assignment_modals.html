@@ -1,45 +1,4 @@
-{# 회기별 과제 제출 · 동기 과제 모아보기 · 자료 첨부 모달 #}
-<div class="modal fade" id="counselorMaterialUploadModal" tabindex="-1" aria-labelledby="counselorMaterialUploadModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <form method="post" id="counselorMaterialUploadForm" action="" enctype="multipart/form-data">
-                {% csrf_token %}
-                <div class="modal-header">
-                    <h5 class="modal-title" id="counselorMaterialUploadModalLabel">자료 첨부</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="small text-muted mb-3">
-                        <span id="counselorMaterialUploadTarget" class="fw-semibold"></span> 상담을 위해 자료를 첨부합니다.
-                    </p>
-                    <div class="mb-3">
-                        <label for="counselorMaterialTitle" class="form-label fw-semibold">자료명 <span class="text-muted fw-normal">(선택)</span></label>
-                        <input type="text" name="title" id="counselorMaterialTitle" class="form-control" maxlength="200" placeholder="예: 심리검사 결과">
-                    </div>
-                    <div class="mb-0">
-                        <label for="counselorMaterialFile" class="form-label fw-semibold">파일</label>
-                        <input type="file"
-                               name="file"
-                               id="counselorMaterialFile"
-                               class="form-control"
-                               accept=".pdf,.hwp,.doc,.docx,.jpg,.jpeg"
-                               required>
-                        <p class="form-text small text-muted mb-0 mt-2">
-                            PDF, HWP, Word, JPG · 최대 10MB
-                        </p>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
-                    <button type="submit" class="btn btn-counselor text-white">
-                        <i class="bi bi-upload me-1" aria-hidden="true"></i>첨부하기
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
+{# 회기별 과제 제출 · 동기 과제 모아보기 모달 #}
 <div class="modal fade" id="counselorAssignmentUploadModal" tabindex="-1" aria-labelledby="counselorAssignmentUploadModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -157,26 +116,11 @@
 
 <script>
 (function () {
-    var materialUploadTemplate = "{% url 'counselor:session_material_upload' case.pk 999 %}";
     var assignmentUploadTemplate = "{% url 'counselor:assignment_upload' case.pk 999 %}";
     var cohortZipTemplate = "{% url 'counselor:cohort_assignments_zip' case.pk %}?session=999";
 
     function urlFor(template, sessionNumber) {
         return template.replace("999", String(sessionNumber));
-    }
-
-    var materialModal = document.getElementById("counselorMaterialUploadModal");
-    if (materialModal) {
-        materialModal.addEventListener("show.bs.modal", function (event) {
-            var btn = event.relatedTarget;
-            if (!btn) return;
-            var sessionNumber = btn.getAttribute("data-session-number");
-            var sessionLabel = btn.getAttribute("data-session-label") || (sessionNumber + "회기");
-            document.getElementById("counselorMaterialUploadTarget").textContent = sessionLabel;
-            document.getElementById("counselorMaterialUploadForm").action = urlFor(materialUploadTemplate, sessionNumber);
-            document.getElementById("counselorMaterialTitle").value = "";
-            document.getElementById("counselorMaterialFile").value = "";
-        });
     }
 
     var assignmentModal = document.getElementById("counselorAssignmentUploadModal");
