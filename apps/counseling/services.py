@@ -1362,18 +1362,34 @@ def build_case_session_cards(case: Case) -> list[CaseSessionCard]:
 class CounselorSessionCardView:
     """상담사 회기 카드 + 확정/반려용 PENDING Appointment 연결."""
 
-    __slots__ = ("_card", "action_appointment")
+    __slots__ = ("_card", "action_appointment", "assignment", "cohort_peers")
 
     def __init__(
         self,
         card: CaseSessionCard,
         action_appointment: Optional[Appointment] = None,
+        assignment=None,
+        cohort_peers=(),
     ):
         self._card = card
         self.action_appointment = action_appointment
+        self.assignment = assignment
+        self.cohort_peers = tuple(cohort_peers or ())
 
     def __getattr__(self, name: str):
         return getattr(self._card, name)
+
+    @property
+    def show_counselor_materials_section(self) -> bool:
+        """상담사 회기 카드 — 첨부 자료·액션 버튼 영역."""
+        if self.has_materials:
+            return True
+        return self.show_session_actions
+
+    @property
+    def show_counselor_session_toolbar(self) -> bool:
+        """자료/과제 버튼 행 — 모든 회기에 표시."""
+        return True
 
     @property
     def zoom_url(self) -> str:
@@ -1418,8 +1434,15 @@ class CounselorSessionCardView:
         return self._card.termination_record_label
 
 
-def build_counselor_session_views(case: Case) -> list[CounselorSessionCardView]:
+def build_counselor_session_views(
+    case: Case,
+    *,
+    assignments_by_session: dict | None = None,
+    cohort_peers_by_session: dict | None = None,
+) -> list[CounselorSessionCardView]:
     """상담사 사례 상세 — 회기 카드에 PENDING Appointment를 확실히 연결."""
+    assignments_by_session = assignments_by_session or {}
+    cohort_peers_by_session = cohort_peers_by_session or {}
     cards = build_case_session_cards(case)
     pending_apts = list(
         case.appointments.filter(status=AppointmentStatus.PENDING).order_by(
@@ -1464,7 +1487,14 @@ def build_counselor_session_views(case: Case) -> list[CounselorSessionCardView]:
             action_apt = repair_orphan_session_request(case, card)
             if action_apt:
                 pending_by_session[card.session_number] = action_apt
-        views.append(CounselorSessionCardView(card, action_apt))
+        views.append(
+            CounselorSessionCardView(
+                card,
+                action_apt,
+                assignment=assignments_by_session.get(card.session_number),
+                cohort_peers=cohort_peers_by_session.get(card.session_number, ()),
+            )
+        )
     return views
 
 

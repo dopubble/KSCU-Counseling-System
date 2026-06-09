@@ -1,3 +1,4 @@
+{# 상담사 회기 카드 — 자료·과제 버튼은 회기 블록 내부 한 줄에 배치 #}
 <article class="client-session-card mb-3"
          id="session-{{ session.session_number }}"
          data-session-number="{{ session.session_number }}"
@@ -84,31 +85,80 @@
     </div>
     {% endif %}
 
-    {% if session.has_materials or session.appointment or not session.appointment %}
+    {% if session.show_counselor_materials_section or session.show_counselor_session_toolbar %}
     <div class="client-session-card-body">
-        {% if session.has_materials %}
+        {% if session.show_counselor_materials_section %}
         {% include "includes/session_materials_list.html" with session=session case=case portal="counselor" show_materials_section=True %}
         {% endif %}
-        {% if session.appointment %}
-            {% if session.counselor_can_update_status %}
-            <div class="client-session-card-actions d-flex flex-wrap align-items-center gap-2{% if session.has_materials %} mt-3{% endif %}">
-                <span class="small text-muted">진행 상태</span>
-                <form method="post"
-                      action="{% url 'counselor:session_status_update' case.pk session.appointment.pk %}"
-                      class="client-session-status-form mb-0">
-                    {% csrf_token %}
-                    <select name="status"
-                            class="form-select form-select-sm client-session-status-select"
-                            aria-label="{{ session.session_number }}회기 진행 상태"
-                            onchange="this.form.submit()">
-                        <option value="CONFIRMED" {% if session.counselor_status_form_value == 'CONFIRMED' %}selected{% endif %}>진행중</option>
-                        <option value="COMPLETED" {% if session.counselor_status_form_value == 'COMPLETED' %}selected{% endif %}>완료</option>
-                    </select>
-                </form>
-            </div>
+
+        {% if session.assignment %}
+        <div class="session-assignment-status d-flex flex-wrap align-items-center gap-2 mt-2 mb-0 px-1">
+            <span class="small text-muted">수련 과제</span>
+            <a href="{% url 'counselor:assignment_file' case.pk session.assignment.pk %}"
+               class="small fw-semibold text-truncate text-decoration-none"
+               download>
+                {{ session.assignment.get_filename }}
+            </a>
+            <span class="badge text-bg-success">제출됨</span>
+            <span class="small text-muted">{{ session.assignment.updated_at|date:"Y-m-d H:i" }}</span>
+        </div>
+        {% endif %}
+
+        {% if session.show_counselor_session_toolbar %}
+        <div class="client-session-card-actions session-inline-actions d-flex flex-wrap align-items-center gap-2 mt-3">
+            {% if session.show_session_actions %}
+            <button type="button"
+                    class="btn btn-sm btn-outline-secondary client-session-action-btn"
+                    data-bs-toggle="modal"
+                    data-bs-target="#counselorMaterialUploadModal"
+                    data-session-number="{{ session.session_number }}"
+                    data-session-label="{{ session.session_number }}회기">
+                <i class="bi bi-paperclip me-1" aria-hidden="true"></i>자료 첨부
+            </button>
             {% endif %}
-        {% elif not session.has_rejection_notice and not session.has_materials %}
-            <p class="text-muted small mb-0 px-3 py-2">아직 예약되지 않은 회기입니다.</p>
+            {% if can_submit_assignment %}
+            <button type="button"
+                    class="btn btn-sm btn-outline-secondary client-session-action-btn"
+                    data-bs-toggle="modal"
+                    data-bs-target="#counselorAssignmentUploadModal"
+                    data-session-number="{{ session.session_number }}"
+                    data-session-label="{{ session.session_number }}회기"
+                    data-has-assignment="{% if session.assignment %}1{% else %}0{% endif %}"
+                    data-filename="{% if session.assignment %}{{ session.assignment.get_filename }}{% endif %}">
+                <i class="bi bi-journal-check me-1" aria-hidden="true"></i>과제 제출
+            </button>
+            {% if counselor_cohort %}
+            <button type="button"
+                    class="btn btn-sm btn-outline-secondary client-session-action-btn cohort-assignments-open-btn"
+                    data-bs-toggle="modal"
+                    data-bs-target="#cohortAssignmentsModal"
+                    data-session-number="{{ session.session_number }}"
+                    data-session-label="{{ session.session_number }}회기">
+                <i class="bi bi-people me-1" aria-hidden="true"></i>우리 기수 과제
+            </button>
+            {% endif %}
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% if session.appointment and session.counselor_can_update_status %}
+        <div class="client-session-card-actions d-flex flex-wrap align-items-center gap-2 mt-3 pt-3 border-top">
+            <span class="small text-muted">진행 상태</span>
+            <form method="post"
+                  action="{% url 'counselor:session_status_update' case.pk session.appointment.pk %}"
+                  class="client-session-status-form mb-0">
+                {% csrf_token %}
+                <select name="status"
+                        class="form-select form-select-sm client-session-status-select"
+                        aria-label="{{ session.session_number }}회기 진행 상태"
+                        onchange="this.form.submit()">
+                    <option value="CONFIRMED" {% if session.counselor_status_form_value == 'CONFIRMED' %}selected{% endif %}>진행중</option>
+                    <option value="COMPLETED" {% if session.counselor_status_form_value == 'COMPLETED' %}selected{% endif %}>완료</option>
+                </select>
+            </form>
+        </div>
+        {% elif not session.appointment and not session.has_rejection_notice and not session.show_counselor_materials_section %}
+        <p class="text-muted small mb-0 px-3 py-2">아직 예약되지 않은 회기입니다.</p>
         {% endif %}
     </div>
     {% endif %}

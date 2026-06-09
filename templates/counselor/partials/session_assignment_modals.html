@@ -1,0 +1,227 @@
+{# 회기별 과제 제출 · 동기 과제 모아보기 · 자료 첨부 모달 #}
+<div class="modal fade" id="counselorMaterialUploadModal" tabindex="-1" aria-labelledby="counselorMaterialUploadModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="post" id="counselorMaterialUploadForm" action="" enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title" id="counselorMaterialUploadModalLabel">자료 첨부</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">
+                        <span id="counselorMaterialUploadTarget" class="fw-semibold"></span> 상담을 위해 자료를 첨부합니다.
+                    </p>
+                    <div class="mb-3">
+                        <label for="counselorMaterialTitle" class="form-label fw-semibold">자료명 <span class="text-muted fw-normal">(선택)</span></label>
+                        <input type="text" name="title" id="counselorMaterialTitle" class="form-control" maxlength="200" placeholder="예: 심리검사 결과">
+                    </div>
+                    <div class="mb-0">
+                        <label for="counselorMaterialFile" class="form-label fw-semibold">파일</label>
+                        <input type="file"
+                               name="file"
+                               id="counselorMaterialFile"
+                               class="form-control"
+                               accept=".pdf,.hwp,.doc,.docx,.jpg,.jpeg"
+                               required>
+                        <p class="form-text small text-muted mb-0 mt-2">
+                            PDF, HWP, Word, JPG · 최대 10MB
+                        </p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-counselor text-white">
+                        <i class="bi bi-upload me-1" aria-hidden="true"></i>첨부하기
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="counselorAssignmentUploadModal" tabindex="-1" aria-labelledby="counselorAssignmentUploadModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="post" id="counselorAssignmentUploadForm" action="" enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title" id="counselorAssignmentUploadModalLabel">과제 제출</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-2">
+                        <span id="counselorAssignmentUploadTarget" class="fw-semibold"></span> 수련 과제를 제출합니다.
+                    </p>
+                    <p id="counselorAssignmentExistingNotice" class="small alert alert-light border py-2 px-3 mb-3 d-none"></p>
+                    <p class="small text-muted mb-3">
+                        PDF 또는 HWP만 가능 · 최대 10MB · 같은 회기에 다시 올리면 덮어씁니다.
+                    </p>
+                    <div class="mb-3">
+                        <label for="counselorAssignmentFile" class="form-label fw-semibold">파일</label>
+                        <input type="file"
+                               name="file"
+                               id="counselorAssignmentFile"
+                               class="form-control"
+                               accept=".pdf,.hwp"
+                               required>
+                    </div>
+                    <div class="mb-0">
+                        <label for="counselorAssignmentNote" class="form-label fw-semibold">메모 <span class="text-muted fw-normal">(선택)</span></label>
+                        <textarea name="note"
+                                  id="counselorAssignmentNote"
+                                  class="form-control"
+                                  rows="2"
+                                  placeholder="관리자에게 전달할 메모"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-counselor text-white">
+                        <i class="bi bi-upload me-1" aria-hidden="true"></i>제출하기
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="cohortAssignmentsModal" tabindex="-1" aria-labelledby="cohortAssignmentsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title mb-0" id="cohortAssignmentsModalLabel">우리 기수 과제</h5>
+                    <p class="small text-muted mb-0 mt-1">
+                        {% if counselor_cohort %}<span class="badge text-bg-secondary">{{ counselor_cohort }}기</span>{% endif %}
+                        <span id="cohortAssignmentsSessionLabel" class="ms-1"></span>
+                    </p>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+            </div>
+            <div class="modal-body p-0">
+                {% for session in sessions %}
+                <div class="cohort-assignments-panel d-none"
+                     id="cohortAssignmentsPanel{{ session.session_number }}"
+                     data-session-number="{{ session.session_number }}">
+                    {% if session.cohort_peers %}
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th scope="col">상담사</th>
+                                    <th scope="col">사례번호</th>
+                                    <th scope="col">내담자</th>
+                                    <th scope="col">제출일</th>
+                                    <th scope="col">파일</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for peer in session.cohort_peers %}
+                                <tr>
+                                    <td class="fw-semibold">{{ peer.submitted_by.name }}</td>
+                                    <td class="font-monospace small">{{ peer.case.case_number }}</td>
+                                    <td>{{ peer.case.client.name }}</td>
+                                    <td class="small text-nowrap">{{ peer.updated_at|date:"m-d H:i" }}</td>
+                                    <td>
+                                        <a href="{% url 'counselor:cohort_assignment_file' peer.pk %}"
+                                           class="btn btn-sm btn-outline-primary py-0 px-2"
+                                           download>
+                                            <i class="bi bi-download" aria-hidden="true"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4 px-3">
+                        <p class="text-muted mb-0 small">이 회기에 제출된 동기 과제가 없습니다.</p>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            <div class="modal-footer justify-content-between">
+                <p class="small text-muted mb-0">타 기수 자료는 표시되지 않습니다.</p>
+                <a href="#"
+                   id="cohortAssignmentsZipBtn"
+                   class="btn btn-sm btn-primary">
+                    <i class="bi bi-file-zip me-1" aria-hidden="true"></i>ZIP 일괄 다운로드
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    var materialUploadTemplate = "{% url 'counselor:session_material_upload' case.pk 999 %}";
+    var assignmentUploadTemplate = "{% url 'counselor:assignment_upload' case.pk 999 %}";
+    var cohortZipTemplate = "{% url 'counselor:cohort_assignments_zip' case.pk %}?session=999";
+
+    function urlFor(template, sessionNumber) {
+        return template.replace("999", String(sessionNumber));
+    }
+
+    var materialModal = document.getElementById("counselorMaterialUploadModal");
+    if (materialModal) {
+        materialModal.addEventListener("show.bs.modal", function (event) {
+            var btn = event.relatedTarget;
+            if (!btn) return;
+            var sessionNumber = btn.getAttribute("data-session-number");
+            var sessionLabel = btn.getAttribute("data-session-label") || (sessionNumber + "회기");
+            document.getElementById("counselorMaterialUploadTarget").textContent = sessionLabel;
+            document.getElementById("counselorMaterialUploadForm").action = urlFor(materialUploadTemplate, sessionNumber);
+            document.getElementById("counselorMaterialTitle").value = "";
+            document.getElementById("counselorMaterialFile").value = "";
+        });
+    }
+
+    var assignmentModal = document.getElementById("counselorAssignmentUploadModal");
+    if (assignmentModal) {
+        assignmentModal.addEventListener("show.bs.modal", function (event) {
+            var btn = event.relatedTarget;
+            if (!btn) return;
+            var sessionNumber = btn.getAttribute("data-session-number");
+            var sessionLabel = btn.getAttribute("data-session-label") || (sessionNumber + "회기");
+            var hasAssignment = btn.getAttribute("data-has-assignment") === "1";
+            var filename = btn.getAttribute("data-filename") || "";
+            document.getElementById("counselorAssignmentUploadTarget").textContent = sessionLabel;
+            document.getElementById("counselorAssignmentUploadForm").action = urlFor(assignmentUploadTemplate, sessionNumber);
+            var notice = document.getElementById("counselorAssignmentExistingNotice");
+            if (hasAssignment && filename) {
+                notice.textContent = "현재 제출: " + filename + " — 새 파일을 올리면 덮어씁니다.";
+                notice.classList.remove("d-none");
+            } else {
+                notice.classList.add("d-none");
+                notice.textContent = "";
+            }
+            document.getElementById("counselorAssignmentFile").value = "";
+            document.getElementById("counselorAssignmentNote").value = "";
+        });
+    }
+
+    var cohortModal = document.getElementById("cohortAssignmentsModal");
+    var zipBtn = document.getElementById("cohortAssignmentsZipBtn");
+    if (cohortModal) {
+        cohortModal.addEventListener("show.bs.modal", function (event) {
+            var btn = event.relatedTarget;
+            if (!btn) return;
+            var sessionNumber = btn.getAttribute("data-session-number");
+            var sessionLabel = btn.getAttribute("data-session-label") || (sessionNumber + "회기");
+            document.getElementById("cohortAssignmentsSessionLabel").textContent = sessionLabel;
+            cohortModal.querySelectorAll(".cohort-assignments-panel").forEach(function (panel) {
+                panel.classList.toggle(
+                    "d-none",
+                    panel.getAttribute("data-session-number") !== String(sessionNumber)
+                );
+            });
+            if (zipBtn) {
+                zipBtn.href = urlFor(cohortZipTemplate, sessionNumber);
+            }
+        });
+    }
+})();
+</script>

@@ -6,6 +6,23 @@
     --counselor-border: #e2e8f0;
 }
 
+.session-inline-actions {
+    gap: 0.5rem;
+}
+
+.session-inline-actions .client-session-action-btn {
+    white-space: nowrap;
+}
+
+.session-assignment-status {
+    max-width: 100%;
+}
+
+.cohort-assignments-panel .table th,
+.cohort-assignments-panel .table td {
+    font-size: 0.875rem;
+}
+
 .counselor-page {
     width: 100%;
     background: var(--counselor-bg);

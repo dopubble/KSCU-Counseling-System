@@ -80,7 +80,6 @@ from apps.scheduling.services import (
 from apps.scheduling.utils import ZoomAPIError, ZoomNotConfiguredError, is_zoom_configured
 from apps.documents.models import CounselorAssignmentSubmission, SessionMaterial
 from apps.documents.assignment_service import (
-    build_assignment_session_slots,
     default_assignment_title,
     get_counselor_cohort,
     require_counselor_cohort,
@@ -1485,7 +1484,23 @@ def counselor_case_detail(request, pk):
         student_id = schedule["student_id"]
 
     appointments = case.appointments.select_related("zoom_meeting").order_by("-scheduled_at")
-    sessions = build_counselor_session_views(case)
+
+    case_assignments = list(get_case_counselor_assignments(case))
+    assignments_by_session = {a.session_number: a for a in case_assignments}
+    counselor_cohort = get_counselor_cohort(request.user)
+    total_sessions = max(case.total_sessions, 1)
+    cohort_peers_by_session = {}
+    if counselor_cohort is not None:
+        for n in range(1, total_sessions + 1):
+            cohort_peers_by_session[n] = list(
+                get_cohort_peer_assignments(counselor_cohort, n)
+            )
+
+    sessions = build_counselor_session_views(
+        case,
+        assignments_by_session=assignments_by_session,
+        cohort_peers_by_session=cohort_peers_by_session,
+    )
     upcoming_appointment = (
         case.appointments.filter(
             scheduled_at__gte=timezone.now(),
@@ -1494,20 +1509,6 @@ def counselor_case_detail(request, pk):
         .select_related("zoom_meeting")
         .order_by("scheduled_at")
         .first()
-    )
-
-    cohort_view_session = max(case.total_sessions, 1)
-    try:
-        cohort_view_session = int(request.GET.get("cohort_session", cohort_view_session))
-    except (TypeError, ValueError):
-        pass
-    cohort_view_session = max(1, min(cohort_view_session, max(case.total_sessions, 1)))
-
-    counselor_cohort = get_counselor_cohort(request.user)
-    cohort_peer_assignments = (
-        get_cohort_peer_assignments(counselor_cohort, cohort_view_session)
-        if counselor_cohort is not None
-        else CounselorAssignmentSubmission.objects.none()
     )
 
     return render(
@@ -1538,19 +1539,10 @@ def counselor_case_detail(request, pk):
             "schedule_change_requests_for_case": get_schedule_change_requests_for_counselor(
                 case
             ),
-            "counselor_assignments": get_case_counselor_assignments(case),
-            "assignment_session_slots": build_assignment_session_slots(
-                case, get_case_counselor_assignments(case)
-            ),
             "can_submit_assignment": user_can_submit_assignment(request.user, case),
             "counselor_cohort": counselor_cohort,
             "is_admin_view": request.user.is_superuser
             or request.user.role == UserRole.ADMIN,
-            "assignment_session_choices": list(
-                range(1, max(case.total_sessions, 1) + 1)
-            ),
-            "cohort_view_session": cohort_view_session,
-            "cohort_peer_assignments": cohort_peer_assignments,
         },
     )
 
@@ -2047,7 +2039,7 @@ def counselor_cohort_assignments_zip(request, case_pk):
     assignments = list(get_cohort_peer_assignments(cohort, session_number))
     if not assignments:
         messages.info(request, f"{session_number}회기에 제출된 동기 과제가 없습니다.")
-        return redirect(f"{reverse('counselor:case_detail', kwargs={'pk': case.pk})}?cohort_session={session_number}#counselorAssignments")
+        return redirect("counselor:case_detail", pk=case.pk)
 
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -2149,6 +2141,42 @@ def counselor_update_session_status(request, case_pk, appointment_pk):
     appointment.save(update_fields=["status", "updated_at"])
     label = "진행중" if target == AppointmentStatus.CONFIRMED else "완료"
     messages.success(request, f"{appointment.scheduled_at:%Y-%m-%d %H:%M} 회기 상태가 「{label}」으로 변경되었습니다.")
+    return redirect("counselor:case_detail", pk=case.pk)
+
+
+@counselor_required
+@require_POST
+def counselor_session_material_upload(request, case_pk, session_number):
+    """회기별 자료 첨부 (상담사)."""
+    case = _get_counselor_case(request, case_pk)
+    card = _get_session_card(case, session_number)
+    if not card or not card.show_session_actions:
+        messages.error(request, "이 회기에는 자료를 첨부할 수 없습니다.")
+        return redirect("counselor:case_detail", pk=case.pk)
+
+    form = SessionMaterialUploadForm(request.POST, request.FILES)
+    if not form.is_valid():
+        file_errors = form.errors.get("file")
+        if file_errors:
+            messages.error(request, file_errors[0])
+        else:
+            messages.error(request, "파일을 확인해 주세요.")
+        return redirect("counselor:case_detail", pk=case.pk)
+
+    file_obj = form.cleaned_data["file"]
+    title = (form.cleaned_data.get("title") or "").strip() or os.path.basename(
+        file_obj.name.replace("\\", "/")
+    )
+
+    SessionMaterial.objects.create(
+        case=case,
+        session_number=session_number,
+        appointment=card.appointment,
+        file=file_obj,
+        title=title,
+        uploaded_by=request.user,
+    )
+    messages.success(request, f"{session_number}회기 자료가 첨부되었습니다.")
     return redirect("counselor:case_detail", pk=case.pk)
 
 

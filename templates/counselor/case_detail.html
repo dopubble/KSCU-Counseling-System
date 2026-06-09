@@ -150,8 +150,6 @@
                     </div>
                 </div>
 
-                {% include "includes/counselor_assignments_widget.html" %}
-
                 {% include "includes/shared_materials_widget.html" with portal="counselor" can_manage_board=can_manage_board %}
 
                 {% if pending_for_case %}
@@ -203,6 +201,7 @@
         </div>
 
         {% include "counselor/partials/board_post_create_modal.html" %}
+        {% include "counselor/partials/session_assignment_modals.html" %}
         {% include "counselor/partials/appointment_reject_modal.html" %}
         {% include "counselor/partials/cancel_reject_modal.html" %}
         {% include "counselor/partials/schedule_change_reject_modal.html" %}

@@ -90,6 +90,11 @@ urlpatterns = [
         name="session_status_update",
     ),
     path(
+        "case/<uuid:case_pk>/session/<int:session_number>/materials/upload/",
+        views.counselor_session_material_upload,
+        name="session_material_upload",
+    ),
+    path(
         "case/<uuid:case_pk>/session/<int:session_number>/materials/<uuid:material_pk>/file/",
         views.counselor_session_material_file,
         name="session_material_file",

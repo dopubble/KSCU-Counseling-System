@@ -84,7 +84,7 @@
                             </a>
                         </td>
                         <td class="text-end text-nowrap">
-                            <a href="{% url 'counselor:case_detail' assignment.case.pk %}#counselorAssignments"
+                            <a href="{% url 'counselor:case_detail' assignment.case.pk %}#session-{{ assignment.session_number }}"
                                class="btn btn-sm btn-outline-secondary">
                                 사례 보기
                             </a>
