@@ -26,18 +26,11 @@
                 </h1>
                 <p class="text-muted mb-0">
                     {{ total_sessions }}회기(마지막 회기) · 사례번호 {{ client_summary.case_number }}
-                    <span class="badge bg-warning-subtle text-warning-emphasis ms-2">상담사 전용</span>
+                    <span class="badge bg-warning-subtle text-warning-emphasis ms-2">상담사 전용 · 내담자 비공개</span>
                 </p>
             </div>
             <div class="text-md-end d-flex flex-wrap gap-2 justify-content-md-end">
-                {% if can_download_pdf %}
-                <div>
-                    <a href="{% url 'counselor:termination_record_pdf' case.pk %}" class="btn btn-outline-danger">
-                        <i class="bi bi-file-earmark-pdf me-1"></i>PDF 다운로드
-                    </a>
-                    <p class="small text-muted mb-0 mt-2">{{ pdf_password_notice }}</p>
-                </div>
-                {% endif %}
+                {% include "counselor/partials/record_pdf_download_controls.html" %}
                 {% if can_edit %}
                 <a href="{% url 'counselor:termination_record_edit' case.pk %}" class="btn btn-outline-primary align-self-start">
                     <i class="bi bi-pencil-square me-1"></i>수정
@@ -111,6 +104,7 @@
             <i class="bi bi-arrow-left me-1"></i>사례 상세로
         </a>
     </div>
+    {% include "counselor/partials/record_pdf_password_modal.html" %}
     </div>
 </div>
 {% endblock %}

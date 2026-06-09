@@ -1416,6 +1416,36 @@ def user_can_download_termination_record_pdf(user, record):
     return record.case.counselor_id == user.id
 
 
+def _get_pdf_password_from_request(request, *, redirect_url: str):
+    """POST pdf_password — 4자 미만이면 None과 redirect 반환."""
+    pdf_password = (request.POST.get("pdf_password") or "").strip()
+    if len(pdf_password) < 4:
+        messages.error(request, "PDF 암호는 4자 이상 입력해 주세요.")
+        next_url = (request.POST.get("next") or redirect_url).strip()
+        return None, redirect(next_url or redirect_url)
+    return pdf_password, None
+
+
+def _pdf_file_response(pdf_bytes: bytes, *, filename: str, ascii_name: str) -> HttpResponse:
+    response = HttpResponse(pdf_bytes, content_type="application/pdf")
+    response["Content-Disposition"] = (
+        f'attachment; filename="{ascii_name}"; '
+        f"filename*=UTF-8''{quote(filename)}"
+    )
+    response["Content-Length"] = len(pdf_bytes)
+    return response
+
+
+def _record_pdf_context(can_download: bool, download_url: str) -> dict:
+    if not can_download:
+        return {}
+    return {
+        "can_download_pdf": True,
+        "pdf_download_url": download_url,
+        "pdf_password_notice": PDF_PASSWORD_NOTICE,
+    }
+
+
 def _get_case_journal(request, case_pk, session_number):
     """사례·회기 번호로 일지 조회 (상담사 사례 접근 권한 포함)"""
     case = _get_counselor_case(request, case_pk)
@@ -1440,6 +1470,18 @@ def _render_journal_form(request, case, form, *, is_edit=False, journal=None):
         "breadcrumb_label": "일지 수정" if is_edit else "일지 작성",
         "submit_label": "저장하기" if is_edit else "일지 저장",
     }
+    if journal and not journal.is_draft and user_can_download_journal_pdf(
+        request.user, journal
+    ):
+        context.update(
+            _record_pdf_context(
+                True,
+                reverse(
+                    "counselor:journal_pdf",
+                    kwargs={"pk": case.pk, "session_number": journal.session_number},
+                ),
+            )
+        )
     return render(request, "counselor/journal_form.html", context)
 
 
@@ -2295,24 +2337,35 @@ def journal_detail(request, pk, session_number):
             "case": case,
             "client_summary": _case_client_summary(case),
             "journal_breadcrumb_label": f"{journal.session_number}회기 상담일지",
-            "can_download_pdf": user_can_download_journal_pdf(request.user, journal),
             "can_edit": user_can_edit_journal(request.user, journal),
-            "pdf_password_notice": PDF_PASSWORD_NOTICE,
+            **_record_pdf_context(
+                user_can_download_journal_pdf(request.user, journal),
+                reverse(
+                    "counselor:journal_pdf",
+                    kwargs={"pk": case.pk, "session_number": journal.session_number},
+                ),
+            ),
         },
     )
 
 
 @counselor_required
+@require_POST
 def journal_pdf(request, pk, session_number):
-    """상담일지 PDF 즉시 다운로드"""
+    """상담일지 PDF 다운로드 (사용자 입력 암호로 암호화)."""
     case, journal = _get_case_journal(request, pk, session_number)
+    fallback = reverse(
+        "counselor:journal_detail",
+        kwargs={"pk": case.pk, "session_number": session_number},
+    )
     if not user_can_download_journal_pdf(request.user, journal):
         raise PermissionDenied("PDF 다운로드 권한이 없습니다.")
-    pdf_password = (request.user.email or "").strip()
-    if not pdf_password:
-        raise PermissionDenied(
-            "PDF 암호화를 위해 계정 이메일이 필요합니다. 프로필에 이메일을 등록해 주세요."
-        )
+    pdf_password, redirect_response = _get_pdf_password_from_request(
+        request, redirect_url=fallback
+    )
+    if redirect_response:
+        return redirect_response
+
     client_summary = _case_client_summary(case)
     pdf_bytes = build_journal_pdf(
         journal,
@@ -2323,13 +2376,7 @@ def journal_pdf(request, pk, session_number):
     ascii_name = f"journal_{case.case_number}_{journal.session_number}.pdf".replace(
         "/", "-"
     )
-    response = HttpResponse(pdf_bytes, content_type="application/pdf")
-    response["Content-Disposition"] = (
-        f'attachment; filename="{ascii_name}"; '
-        f"filename*=UTF-8''{quote(filename)}"
-    )
-    response["Content-Length"] = len(pdf_bytes)
-    return response
+    return _pdf_file_response(pdf_bytes, filename=filename, ascii_name=ascii_name)
 
 
 @counselor_required
@@ -2430,20 +2477,26 @@ def _ensure_termination_record_allowed(case):
 
 
 def _render_initial_record_form(request, case, form, *, is_edit=False, record=None):
-    return render(
-        request,
-        "counselor/initial_record_form.html",
-        {
-            "case": case,
-            "form": form,
-            "client_summary": _initial_record_client_summary(case),
-            "is_edit": is_edit,
-            "record": record,
-            "page_title": "초기상담 기록지 수정" if is_edit else "초기상담 기록지 작성",
-            "breadcrumb_label": "초기상담 기록지",
-            "submit_label": "저장하기",
-        },
-    )
+    context = {
+        "case": case,
+        "form": form,
+        "client_summary": _initial_record_client_summary(case),
+        "is_edit": is_edit,
+        "record": record,
+        "page_title": "초기상담 기록지 수정" if is_edit else "초기상담 기록지 작성",
+        "breadcrumb_label": "초기상담 기록지",
+        "submit_label": "저장하기",
+    }
+    if record and not record.is_draft and user_can_download_initial_record_pdf(
+        request.user, record
+    ):
+        context.update(
+            _record_pdf_context(
+                True,
+                reverse("counselor:initial_record_pdf", kwargs={"pk": case.pk}),
+            )
+        )
+    return render(request, "counselor/initial_record_form.html", context)
 
 
 @counselor_required
@@ -2498,28 +2551,30 @@ def initial_record_detail(request, pk):
             "client_summary": _initial_record_client_summary(case),
             "can_edit": record.counselor_id == request.user.pk
             or case.counselor_id == request.user.pk,
-            "can_download_pdf": user_can_download_initial_record_pdf(
-                request.user, record
+            **_record_pdf_context(
+                user_can_download_initial_record_pdf(request.user, record),
+                reverse("counselor:initial_record_pdf", kwargs={"pk": case.pk}),
             ),
-            "pdf_password_notice": PDF_PASSWORD_NOTICE,
         },
     )
 
 
 @counselor_required
+@require_POST
 def initial_record_pdf(request, pk):
-    """초기상담 기록지 PDF 다운로드 (상담사 전용)."""
+    """초기상담 기록지 PDF 다운로드 (사용자 입력 암호로 암호화)."""
     case, record = _get_case_initial_record(request, pk)
+    fallback = reverse("counselor:initial_record_detail", kwargs={"pk": case.pk})
     if not record or record.is_draft:
         raise Http404("저장된 초기상담 기록지가 없습니다.")
     if not user_can_download_initial_record_pdf(request.user, record):
         raise PermissionDenied("PDF 다운로드 권한이 없습니다.")
 
-    pdf_password = (request.user.email or "").strip()
-    if not pdf_password:
-        raise PermissionDenied(
-            "PDF 암호화를 위해 계정 이메일이 필요합니다. 프로필에 이메일을 등록해 주세요."
-        )
+    pdf_password, redirect_response = _get_pdf_password_from_request(
+        request, redirect_url=fallback
+    )
+    if redirect_response:
+        return redirect_response
 
     client_summary = _initial_record_client_summary(case)
     pdf_bytes = build_initial_record_pdf(
@@ -2529,13 +2584,7 @@ def initial_record_pdf(request, pk):
     )
     filename = initial_record_pdf_filename(record)
     ascii_name = f"initial_record_{case.case_number}.pdf".replace("/", "-")
-    response = HttpResponse(pdf_bytes, content_type="application/pdf")
-    response["Content-Disposition"] = (
-        f'attachment; filename="{ascii_name}"; '
-        f"filename*=UTF-8''{quote(filename)}"
-    )
-    response["Content-Length"] = len(pdf_bytes)
-    return response
+    return _pdf_file_response(pdf_bytes, filename=filename, ascii_name=ascii_name)
 
 
 @counselor_required
@@ -2578,21 +2627,27 @@ def _termination_record_client_summary(case):
 
 
 def _render_termination_record_form(request, case, form, *, is_edit=False, record=None):
-    return render(
-        request,
-        "counselor/termination_record_form.html",
-        {
-            "case": case,
-            "form": form,
-            "client_summary": _termination_record_client_summary(case),
-            "is_edit": is_edit,
-            "record": record,
-            "page_title": "종결기록지 수정" if is_edit else "종결기록지 작성",
-            "breadcrumb_label": "종결기록지",
-            "submit_label": "저장하기",
-            "total_sessions": case.total_sessions,
-        },
-    )
+    context = {
+        "case": case,
+        "form": form,
+        "client_summary": _termination_record_client_summary(case),
+        "is_edit": is_edit,
+        "record": record,
+        "page_title": "종결기록지 수정" if is_edit else "종결기록지 작성",
+        "breadcrumb_label": "종결기록지",
+        "submit_label": "저장하기",
+        "total_sessions": case.total_sessions,
+    }
+    if record and not record.is_draft and user_can_download_termination_record_pdf(
+        request.user, record
+    ):
+        context.update(
+            _record_pdf_context(
+                True,
+                reverse("counselor:termination_record_pdf", kwargs={"pk": case.pk}),
+            )
+        )
+    return render(request, "counselor/termination_record_form.html", context)
 
 
 @counselor_required
@@ -2642,28 +2697,30 @@ def termination_record_detail(request, pk):
             "total_sessions": case.total_sessions,
             "can_edit": record.counselor_id == request.user.pk
             or case.counselor_id == request.user.pk,
-            "can_download_pdf": user_can_download_termination_record_pdf(
-                request.user, record
+            **_record_pdf_context(
+                user_can_download_termination_record_pdf(request.user, record),
+                reverse("counselor:termination_record_pdf", kwargs={"pk": case.pk}),
             ),
-            "pdf_password_notice": PDF_PASSWORD_NOTICE,
         },
     )
 
 
 @counselor_required
+@require_POST
 def termination_record_pdf(request, pk):
-    """종결기록지 PDF 다운로드 (상담사 전용)."""
+    """종결기록지 PDF 다운로드 (사용자 입력 암호로 암호화)."""
     case, record = _get_case_termination_record(request, pk)
+    fallback = reverse("counselor:termination_record_detail", kwargs={"pk": case.pk})
     if not record or record.is_draft:
         raise Http404("저장된 종결기록지가 없습니다.")
     if not user_can_download_termination_record_pdf(request.user, record):
         raise PermissionDenied("PDF 다운로드 권한이 없습니다.")
 
-    pdf_password = (request.user.email or "").strip()
-    if not pdf_password:
-        raise PermissionDenied(
-            "PDF 암호화를 위해 계정 이메일이 필요합니다. 프로필에 이메일을 등록해 주세요."
-        )
+    pdf_password, redirect_response = _get_pdf_password_from_request(
+        request, redirect_url=fallback
+    )
+    if redirect_response:
+        return redirect_response
 
     client_summary = _termination_record_client_summary(case)
     pdf_bytes = build_termination_record_pdf(
@@ -2673,13 +2730,7 @@ def termination_record_pdf(request, pk):
     )
     filename = termination_record_pdf_filename(record)
     ascii_name = f"termination_record_{case.case_number}.pdf".replace("/", "-")
-    response = HttpResponse(pdf_bytes, content_type="application/pdf")
-    response["Content-Disposition"] = (
-        f'attachment; filename="{ascii_name}"; '
-        f"filename*=UTF-8''{quote(filename)}"
-    )
-    response["Content-Length"] = len(pdf_bytes)
-    return response
+    return _pdf_file_response(pdf_bytes, filename=filename, ascii_name=ascii_name)
 
 
 @counselor_required

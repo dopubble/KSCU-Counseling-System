@@ -27,16 +27,11 @@
                 <p class="text-muted mb-0">
                     사례번호 <span class="font-monospace">{{ client_summary.case_number }}</span>
                     {% if journal.session_category %}· {{ journal.session_category }}{% endif %}
+                    <span class="badge bg-warning-subtle text-warning-emphasis ms-2">상담사 전용 · 내담자 비공개</span>
                 </p>
             </div>
-            {% if can_download_pdf %}
-            <div class="text-md-end">
-                <a href="{% url 'counselor:journal_pdf' case.pk journal.session_number %}" class="btn btn-outline-danger">
-                    <i class="bi bi-file-earmark-pdf me-1"></i>PDF 다운로드
-                </a>
-                <p class="small text-muted mb-0 mt-2">{{ pdf_password_notice }}</p>
-            </div>
-            {% endif %}
+            <div class="text-md-end d-flex flex-wrap gap-2 justify-content-md-end">
+                {% include "counselor/partials/record_pdf_download_controls.html" %}
         </div>
     </div>
 
@@ -105,6 +100,7 @@
             {% endif %}
         </div>
     </div>
+    {% include "counselor/partials/record_pdf_password_modal.html" %}
     </div>
 </div>
 {% endblock %}

@@ -21,7 +21,7 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 from .models import CounselingJournal, InitialCounselingRecord, TerminationCounselingRecord
 
 PDF_PASSWORD_NOTICE = (
-    "다운로드된 PDF 파일의 암호는 로그인 계정 이메일 주소입니다. (예: 0000@naver.com)"
+    "다운로드 시 입력한 암호로 PDF가 암호화됩니다. 파일을 열 때 동일한 암호를 입력하세요."
 )
 
 _FONT_NAME = "NotoSansKR"

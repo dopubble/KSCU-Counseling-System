@@ -1,0 +1,8 @@
+{% if can_download_pdf %}
+<div class="text-md-end">
+    <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#recordPdfDownloadModal" data-pdf-action="{{ pdf_download_url }}">
+        <i class="bi bi-file-earmark-pdf me-1"></i>PDF 다운로드
+    </button>
+    <p class="small text-muted mb-0 mt-2">{{ pdf_password_notice }}</p>
+</div>
+{% endif %}
