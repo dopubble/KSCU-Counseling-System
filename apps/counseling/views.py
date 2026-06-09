@@ -762,14 +762,26 @@ def _session_material_file_response(material):
     )
 
 
-def _assignment_file_response(request, assignment, *, fallback_url: str):
+def _assignment_protected_download_response(request, assignment, *, fallback_url: str):
+    """과제 개별 다운로드 — 사용자 입력 암호로 ZipCrypto ZIP(1개 파일) 반환."""
+    zip_password, redirect_response = _get_download_password_from_request(
+        request, redirect_url=fallback_url, label="ZIP"
+    )
+    if redirect_response:
+        return redirect_response
+
+    from apps.documents.cohort_zip import (
+        assignment_zip_arcname,
+        build_password_protected_zip,
+        read_assignment_file_bytes,
+    )
+
     if not assignment.file or not assignment.file.name:
         messages.error(
             request,
             "과제 파일이 서버에 없습니다. 「과제 제출」에서 다시 올려 주세요.",
         )
         return redirect(fallback_url)
-    from apps.documents.cohort_zip import read_assignment_file_bytes
 
     data = read_assignment_file_bytes(assignment)
     if data is None:
@@ -779,14 +791,14 @@ def _assignment_file_response(request, assignment, *, fallback_url: str):
             "「과제 제출」에서 다시 올려 주세요.",
         )
         return redirect(fallback_url)
-    response = HttpResponse(data, content_type="application/octet-stream")
-    filename = assignment.get_filename()
-    ascii_name = filename.encode("ascii", "ignore").decode() or "assignment"
-    response["Content-Disposition"] = (
-        f'attachment; filename="{ascii_name}"; '
-        f"filename*=UTF-8''{quote(filename)}"
-    )
-    return response
+
+    arcname = assignment_zip_arcname(assignment)
+    zip_bytes = build_password_protected_zip([(arcname, data)], zip_password)
+    original = assignment.get_filename() or "assignment"
+    stem = os.path.splitext(original)[0] or "assignment"
+    filename = f"{stem}.zip"
+    ascii_name = f"assignment_{assignment.pk}.zip"
+    return _zip_file_response(zip_bytes, filename=filename, ascii_name=ascii_name)
 
 
 def user_can_submit_assignment(user, case) -> bool:
@@ -2204,8 +2216,9 @@ def counselor_cohort_assignments_zip(request, case_pk):
 
 
 @role_required(UserRole.COUNSELOR, UserRole.ADMIN)
+@require_POST
 def counselor_cohort_assignment_file(request, assignment_pk):
-    """동기 과제 개별 다운로드 — 본인 기수만."""
+    """동기 과제 개별 다운로드 — 본인 기수만, 암호 ZIP."""
     assignment = get_object_or_404(
         CounselorAssignmentSubmission.objects.select_related("case", "submitted_by"),
         pk=assignment_pk,
@@ -2215,12 +2228,15 @@ def counselor_cohort_assignment_file(request, assignment_pk):
         if cohort is None or assignment.cohort != cohort:
             raise PermissionDenied("다른 기수 과제에는 접근할 수 없습니다.")
     fallback = reverse("counselor:case_detail", kwargs={"pk": assignment.case_id})
-    return _assignment_file_response(request, assignment, fallback_url=fallback)
+    return _assignment_protected_download_response(
+        request, assignment, fallback_url=fallback
+    )
 
 
 @role_required(UserRole.COUNSELOR, UserRole.ADMIN)
+@require_POST
 def counselor_assignment_file(request, case_pk, assignment_pk):
-    """과제 파일 다운로드 (담당 상담사·관리자)."""
+    """과제 파일 다운로드 (담당 상담사·관리자) — 암호 ZIP."""
     case = _get_board_manage_case(request, case_pk)
     assignment = get_object_or_404(
         CounselorAssignmentSubmission,
@@ -2228,7 +2244,9 @@ def counselor_assignment_file(request, case_pk, assignment_pk):
         case=case,
     )
     fallback = reverse("counselor:case_detail", kwargs={"pk": case.pk})
-    return _assignment_file_response(request, assignment, fallback_url=fallback)
+    return _assignment_protected_download_response(
+        request, assignment, fallback_url=fallback
+    )
 
 
 @role_required(UserRole.COUNSELOR, UserRole.ADMIN)

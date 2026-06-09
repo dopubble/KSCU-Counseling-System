@@ -136,11 +136,14 @@
         {% if session.assignment %}
         <div class="session-assignment-status d-flex flex-wrap align-items-center gap-2 mt-2 mb-0">
             {% if session.assignment.file_is_available %}
-            <a href="{% url 'counselor:assignment_file' case.pk session.assignment.pk %}"
-               class="small fw-semibold text-truncate text-decoration-none session-assignment-filename"
-               download>
+            <button type="button"
+                    class="small fw-semibold text-truncate btn btn-link p-0 text-start text-decoration-none session-assignment-filename assignment-file-download-btn"
+                    data-bs-toggle="modal"
+                    data-bs-target="#assignmentFileDownloadModal"
+                    data-download-action="{% url 'counselor:assignment_file' case.pk session.assignment.pk %}"
+                    data-download-label="{{ session.assignment.get_filename }}">
                 {{ session.assignment.get_filename }}
-            </a>
+            </button>
             <span class="badge text-bg-success">제출됨</span>
             {% else %}
             <span class="small fw-semibold text-warning session-assignment-filename">
