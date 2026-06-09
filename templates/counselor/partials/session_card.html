@@ -116,8 +116,24 @@
         </div>
         {% endif %}
 
-        {% if session.show_counselor_session_toolbar and can_submit_assignment %}
-        <div class="client-session-card-actions session-inline-actions d-flex flex-wrap align-items-center gap-2 mt-3">
+        {% if session.appointment and session.counselor_can_update_status or can_submit_assignment and session.show_counselor_session_toolbar %}
+        <div class="client-session-card-actions session-inline-actions session-status-actions d-flex flex-wrap align-items-center gap-2 mt-3">
+            {% if session.appointment and session.counselor_can_update_status %}
+            <span class="small text-muted flex-shrink-0">진행 상태</span>
+            <form method="post"
+                  action="{% url 'counselor:session_status_update' case.pk session.appointment.pk %}"
+                  class="client-session-status-form mb-0 flex-shrink-0">
+                {% csrf_token %}
+                <select name="status"
+                        class="form-select form-select-sm client-session-status-select"
+                        aria-label="{{ session.session_number }}회기 진행 상태"
+                        onchange="this.form.submit()">
+                    <option value="CONFIRMED" {% if session.counselor_status_form_value == 'CONFIRMED' %}selected{% endif %}>진행중</option>
+                    <option value="COMPLETED" {% if session.counselor_status_form_value == 'COMPLETED' %}selected{% endif %}>완료</option>
+                </select>
+            </form>
+            {% endif %}
+            {% if can_submit_assignment and session.show_counselor_session_toolbar %}
             <button type="button"
                     class="btn btn-sm btn-outline-secondary client-session-action-btn"
                     data-bs-toggle="modal"
@@ -138,24 +154,7 @@
                 <i class="bi bi-people me-1" aria-hidden="true"></i>우리 기수 과제
             </button>
             {% endif %}
-        </div>
-        {% endif %}
-
-        {% if session.appointment and session.counselor_can_update_status %}
-        <div class="client-session-card-actions d-flex flex-wrap align-items-center gap-2 mt-3 pt-3 border-top">
-            <span class="small text-muted">진행 상태</span>
-            <form method="post"
-                  action="{% url 'counselor:session_status_update' case.pk session.appointment.pk %}"
-                  class="client-session-status-form mb-0">
-                {% csrf_token %}
-                <select name="status"
-                        class="form-select form-select-sm client-session-status-select"
-                        aria-label="{{ session.session_number }}회기 진행 상태"
-                        onchange="this.form.submit()">
-                    <option value="CONFIRMED" {% if session.counselor_status_form_value == 'CONFIRMED' %}selected{% endif %}>진행중</option>
-                    <option value="COMPLETED" {% if session.counselor_status_form_value == 'COMPLETED' %}selected{% endif %}>완료</option>
-                </select>
-            </form>
+            {% endif %}
         </div>
         {% endif %}
     </div>

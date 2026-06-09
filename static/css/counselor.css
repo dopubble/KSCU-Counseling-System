@@ -6,8 +6,17 @@
     --counselor-border: #e2e8f0;
 }
 
+.session-status-actions {
+    row-gap: 0.5rem;
+    gap: 0.5rem;
+}
+
 .session-inline-actions {
     gap: 0.5rem;
+}
+
+.session-status-actions .client-session-status-select {
+    min-width: 6.5rem;
 }
 
 .session-inline-actions .client-session-action-btn {
