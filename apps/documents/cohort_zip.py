@@ -1,4 +1,4 @@
-"""과제 파일 읽기 — 스토리지·로컬 경로 fallback."""
+"""과제 파일 읽기 — 스토리지·로맨 경로 fallback."""
 
 from __future__ import annotations
 
@@ -75,13 +75,17 @@ def build_password_protected_zip(
     entries: list[tuple[str, bytes]],
     password: str,
 ) -> bytes:
-    """Windows 탐색기 호환 ZipCrypto 암호화 ZIP 바이트 반환."""
+    """WinZip AES 암호화 ZIP 바이트 반환 (pyzipper 0.4+)."""
+    if not password:
+        raise ValueError("password is required")
+
     buffer = io.BytesIO()
     with pyzipper.AESZipFile(
         buffer,
         "w",
         compression=pyzipper.ZIP_DEFLATED,
-        encryption=pyzipper.ZIP_CRYPTO,
+        encryption=pyzipper.WZ_AES,
+        encryption_kwargs={"nbits": 256},
     ) as zf:
         zf.setpassword(password.encode("utf-8"))
         for arcname, data in entries:

@@ -793,7 +793,12 @@ def _assignment_protected_download_response(request, assignment, *, fallback_url
         return redirect(fallback_url)
 
     arcname = assignment_zip_arcname(assignment)
-    zip_bytes = build_password_protected_zip([(arcname, data)], zip_password)
+    try:
+        zip_bytes = build_password_protected_zip([(arcname, data)], zip_password)
+    except Exception:
+        logger.exception("Failed to build password-protected ZIP for assignment %s", assignment.pk)
+        messages.error(request, "ZIP 파일 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.")
+        return redirect(fallback_url)
     original = assignment.get_filename() or "assignment"
     stem = os.path.splitext(original)[0] or "assignment"
     filename = f"{stem}.zip"
@@ -2209,7 +2214,13 @@ def counselor_cohort_assignments_zip(request, case_pk):
         )
         return redirect(fallback)
 
-    zip_bytes = build_password_protected_zip(entries, zip_password)
+    try:
+        zip_bytes = build_password_protected_zip(entries, zip_password)
+    except Exception:
+        logger.exception("Failed to build cohort assignment ZIP for case %s session %s", case.pk, session_number)
+        messages.error(request, "ZIP 파일 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.")
+        return redirect(fallback)
+
     filename = f"cohort{cohort}_{session_number}회기_과제.zip"
     ascii_name = f"cohort{cohort}_session{session_number}_assignments.zip"
     return _zip_file_response(zip_bytes, filename=filename, ascii_name=ascii_name)
