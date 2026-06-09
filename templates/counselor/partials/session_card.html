@@ -91,33 +91,8 @@
         {% include "includes/session_materials_list.html" with session=session case=case portal="counselor" %}
         {% endif %}
 
-        {% if session.assignment %}
-        <div class="session-assignment-status d-flex flex-wrap align-items-center gap-2 mt-2 mb-0 px-1">
-            <a href="{% url 'counselor:assignment_file' case.pk session.assignment.pk %}"
-               class="small fw-semibold text-truncate text-decoration-none"
-               download>
-                {{ session.assignment.get_filename }}
-            </a>
-            <span class="badge text-bg-success">제출됨</span>
-            {% if can_submit_assignment or is_admin_view %}
-            <form method="post"
-                  action="{% url 'counselor:assignment_delete' case.pk session.assignment.pk %}"
-                  class="mb-0 flex-shrink-0"
-                  onsubmit="return confirm('{{ session.session_number }}회기 과제를 삭제하시겠습니까?');">
-                {% csrf_token %}
-                <button type="submit"
-                        class="btn btn-sm btn-link text-danger p-0 session-assignment-delete-btn"
-                        aria-label="과제 삭제">
-                    <i class="bi bi-trash" aria-hidden="true"></i>
-                </button>
-            </form>
-            {% endif %}
-            <span class="small text-muted">{{ session.assignment.updated_at|date:"Y-m-d H:i" }}</span>
-        </div>
-        {% endif %}
-
         {% if session.appointment and session.counselor_can_update_status or can_submit_assignment and session.show_counselor_session_toolbar %}
-        <div class="client-session-card-actions session-inline-actions session-status-actions d-flex flex-wrap align-items-center gap-2 mt-3">
+        <div class="client-session-card-actions session-inline-actions session-status-actions d-flex flex-wrap align-items-center gap-2{% if session.has_materials %} mt-3{% else %} mt-1{% endif %}">
             {% if session.appointment and session.counselor_can_update_status %}
             <span class="small text-muted flex-shrink-0">진행 상태</span>
             <form method="post"
@@ -155,6 +130,31 @@
             </button>
             {% endif %}
             {% endif %}
+        </div>
+        {% endif %}
+
+        {% if session.assignment %}
+        <div class="session-assignment-status d-flex flex-wrap align-items-center gap-2 mt-2 mb-0">
+            <a href="{% url 'counselor:assignment_file' case.pk session.assignment.pk %}"
+               class="small fw-semibold text-truncate text-decoration-none session-assignment-filename"
+               download>
+                {{ session.assignment.get_filename }}
+            </a>
+            <span class="badge text-bg-success">제출됨</span>
+            {% if can_submit_assignment or is_admin_view %}
+            <form method="post"
+                  action="{% url 'counselor:assignment_delete' case.pk session.assignment.pk %}"
+                  class="mb-0 flex-shrink-0"
+                  onsubmit="return confirm('{{ session.session_number }}회기 과제를 삭제하시겠습니까?');">
+                {% csrf_token %}
+                <button type="submit"
+                        class="btn btn-sm btn-link text-danger p-0 session-assignment-delete-btn"
+                        aria-label="과제 삭제">
+                    <i class="bi bi-trash" aria-hidden="true"></i>
+                </button>
+            </form>
+            {% endif %}
+            <span class="small text-muted">{{ session.assignment.updated_at|date:"Y-m-d H:i" }}</span>
         </div>
         {% endif %}
     </div>

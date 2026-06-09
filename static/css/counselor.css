@@ -25,6 +25,19 @@
 
 .session-assignment-status {
     max-width: 100%;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    background-color: #f8fafc;
+    border: 1px solid #eef2f6;
+}
+
+.session-assignment-filename {
+    color: var(--counselor-primary, #2c5282);
+    max-width: min(100%, 18rem);
+}
+
+.session-assignment-filename:hover {
+    text-decoration: underline !important;
 }
 
 .session-assignment-delete-btn {
