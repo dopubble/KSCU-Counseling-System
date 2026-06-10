@@ -120,6 +120,29 @@
     color: #475569;
 }
 
+.client-case-info-table th {
+    width: 28%;
+}
+
+.client-case-name-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+}
+
+.client-counseling-method-label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #64748b;
+    white-space: nowrap;
+}
+
+.client-counseling-method-label--remote {
+    color: #1d4ed8;
+}
+
 .btn-counselor {
     background-color: var(--counselor-primary);
     border-color: var(--counselor-primary);

@@ -12,6 +12,28 @@ COUNSELING_TYPE_CHOICES = [(value, value) for value in COUNSELING_TYPE_VALUES]
 
 DEFAULT_COUNSELING_TYPES = ["진로상담"]
 
+# 비대면(Zoom) 상담 내담자 — Case.counseling_method 일괄 반영용
+REMOTE_CLIENT_NAMES = frozenset({
+    "서영진",
+    "고혜숙",
+    "안정민",
+    "이경숙",
+    "김수미",
+    "이현옥",
+    "정경화",
+    "구현정",
+    "정진아",
+    "박미영",
+    "홍연서",
+    "정한결",
+    "김효순",
+    "조선혜",
+    "조영은",
+    "임유정",
+    "오유진",
+    "조현경",
+})
+
 LEGACY_COUNSELING_TYPE_MAP = {
     "개인상담": "개인성격",
     "학업상담": "진로상담",

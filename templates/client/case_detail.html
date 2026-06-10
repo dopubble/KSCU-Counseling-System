@@ -34,6 +34,31 @@
             <div class="col-lg-5 case-detail-sidebar-col">
                 <div class="card client-dashboard-card border-0 mb-4">
                     <div class="card-header client-portal-card-header border-0">
+                        <i class="bi bi-person me-1"></i>내 상담 정보
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-container">
+                        <table class="table table-bordered mb-0 counselor-info-table client-case-info-table">
+                            <tbody>
+                                <tr>
+                                    <th>이름</th>
+                                    <td>
+                                        <div class="client-case-name-row">
+                                            <span class="fw-semibold">{{ case.client.name }}</span>
+                                            <span class="client-counseling-method-label{% if case.counseling_method == 'REMOTE' %} client-counseling-method-label--remote{% endif %}">
+                                                상담진행방식: {{ case.get_counseling_method_display }}
+                                            </span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card client-dashboard-card border-0 mb-4">
+                    <div class="card-header client-portal-card-header border-0">
                         <i class="bi bi-person-badge me-1"></i>담당 상담사
                     </div>
                     <div class="card-body">

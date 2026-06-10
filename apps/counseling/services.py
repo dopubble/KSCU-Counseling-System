@@ -24,7 +24,15 @@ from .cancellation_policy import (
     client_change_blocked,
     is_same_day_as_appointment,
 )
-from .models import ApplicationStatus, Case, CaseStatus, CounselingApplication, SessionScheduleChangeRequest
+from .constants import REMOTE_CLIENT_NAMES
+from .models import (
+    ApplicationStatus,
+    Case,
+    CaseStatus,
+    CounselingApplication,
+    CounselingMethod,
+    SessionScheduleChangeRequest,
+)
 
 
 def annotate_application_sequence(queryset: QuerySet) -> QuerySet:
@@ -580,6 +588,12 @@ def get_counselor_active_case_counts():
     return {row["counselor_id"]: row["count"] for row in rows}
 
 
+def _counseling_method_for_client(client) -> str:
+    if (getattr(client, "name", "") or "").strip() in REMOTE_CLIENT_NAMES:
+        return CounselingMethod.REMOTE
+    return CounselingMethod.IN_PERSON
+
+
 @transaction.atomic
 def assign_counselor(
     application: CounselingApplication,
@@ -607,6 +621,7 @@ def assign_counselor(
             "status": CaseStatus.ACTIVE,
             "total_sessions": total_sessions,
             "remaining_sessions": total_sessions,
+            "counseling_method": _counseling_method_for_client(application.client),
         },
     )
     if not created:

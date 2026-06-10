@@ -27,6 +27,11 @@ class RiskLevel(models.TextChoices):
     HIGH = "HIGH", "높음"
 
 
+class CounselingMethod(models.TextChoices):
+    IN_PERSON = "IN_PERSON", "대면"
+    REMOTE = "REMOTE", "비대면"
+
+
 class CounselingApplicationQuerySet(models.QuerySet):
     """상담 신청 조회 헬퍼"""
 
@@ -143,6 +148,12 @@ class Case(models.Model):
         max_length=2000,
         blank=True,
         help_text="상담 예약 시 Zoom API로 생성된 회의 URL(참가 링크)",
+    )
+    counseling_method = models.CharField(
+        "상담 진행 방식",
+        max_length=20,
+        choices=CounselingMethod.choices,
+        default=CounselingMethod.IN_PERSON,
     )
     total_sessions = models.PositiveIntegerField(
         "총 회기 수",

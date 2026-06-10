@@ -34,6 +34,7 @@ class CaseAdmin(admin.ModelAdmin):
         "case_number",
         "client",
         "counselor",
+        "counseling_method",
         "status",
         "remaining_sessions",
         "total_sessions",
@@ -42,7 +43,7 @@ class CaseAdmin(admin.ModelAdmin):
         "zoom_meeting_url",
         "opened_at",
     )
-    list_filter = ("status", "risk_level")
+    list_filter = ("status", "risk_level", "counseling_method")
     search_fields = ("case_number", "client__name", "counselor__name")
     readonly_fields = ("case_number", "opened_at")
 
