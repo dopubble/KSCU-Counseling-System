@@ -89,8 +89,7 @@ def build_password_protected_zip(
     ) as zf:
         zf.setpassword(password.encode("utf-8"))
         for arcname, data in entries:
-            info = pyzipper.ZipInfo(arcname)
-            info.compress_type = pyzipper.ZIP_DEFLATED
-            info.flag_bits |= 0x800  # UTF-8 파일명 (한글)
-            zf.writestr(info, data)
+            # pyzipper 0.4+: ZipInfo를 직접 writestr에 넘기면 AttributeError 발생.
+            # 문자열 arcname을 쓰면 한글 파일명 UTF-8 플래그가 자동 설정됨.
+            zf.writestr(arcname, data)
     return buffer.getvalue()
