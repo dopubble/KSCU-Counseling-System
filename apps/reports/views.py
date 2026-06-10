@@ -66,12 +66,20 @@ def _waiting_match_queryset():
     return waiting_match_for_admin()
 
 
-def build_admin_dashboard_stats(now=None):
+def build_admin_dashboard_stats(now=None, *, use_cache: bool = True):
     """관리자 대시보드·메인 홈 위젯용 통계."""
+    from apps.reports.cache_utils import safe_cache_get, safe_cache_set
+
+    cache_key = "kscu:admin_dashboard_stats"
+    if use_cache:
+        cached = safe_cache_get(cache_key)
+        if cached is not None:
+            return cached
+
     now = now or timezone.now()
     month_start = _month_start(now)
     waiting_qs = _waiting_match_queryset()
-    cancel_pending_count = count_cancel_pending_appointments()
+    cancel_pending_count = count_cancel_pending_appointments(use_cache=use_cache)
     stats = {
         "applications_this_month": CounselingApplication.objects.filter(
             created_at__gte=month_start
@@ -84,7 +92,10 @@ def build_admin_dashboard_stats(now=None):
         ).count(),
         "cancel_pending": cancel_pending_count,
     }
-    return stats, cancel_pending_count
+    result = (stats, cancel_pending_count)
+    if use_cache:
+        safe_cache_set(cache_key, result, 60)
+    return result
 
 
 @role_required(UserRole.ADMIN)
@@ -92,7 +103,7 @@ def admin_dashboard(request):
     now = timezone.now()
     waiting_qs = _waiting_match_queryset()
 
-    stats, cancel_pending_count = build_admin_dashboard_stats(now)
+    stats, cancel_pending_count = build_admin_dashboard_stats(now, use_cache=False)
 
     waiting_applications = waiting_qs.order_by("-created_at")[:10]
 

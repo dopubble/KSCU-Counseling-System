@@ -197,3 +197,23 @@ elif _on_railway:
         "— Railway Volume 또는 S3 설정을 권장합니다.",
         file=sys.stderr,
     )
+
+# --- DB 연결 유지 (요청마다 Postgres handshake 비용 감소) ---
+_default_db = DATABASES.get("default", {})  # noqa: F405
+if _default_db.get("ENGINE", "").endswith("postgresql"):
+    _default_db["CONN_MAX_AGE"] = _env_int("DB_CONN_MAX_AGE", 600)
+    _default_db["CONN_HEALTH_CHECKS"] = True
+
+# --- Redis 캐시 (REDIS_URL 있을 때) — 통계·알림 배지만, 세션은 DB 유지 ---
+_redis_url = _env_str("REDIS_URL")
+if _redis_url:
+    CACHES = {  # noqa: F405
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": _redis_url,
+        }
+    }
+    if _on_railway:
+        import sys
+
+        print("[kscu] cache=redis (sessions remain in database)", file=sys.stderr)

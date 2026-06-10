@@ -367,8 +367,18 @@ def get_schedule_change_requests_for_counselor(
     return sorted(pending, key=lambda req: (req.session_number, req.created_at))
 
 
-def count_cancel_pending_appointments() -> int:
-    return Appointment.objects.filter(status=AppointmentStatus.CANCEL_PENDING).count()
+def count_cancel_pending_appointments(*, use_cache: bool = True) -> int:
+    from apps.reports.cache_utils import safe_cache_get, safe_cache_set
+
+    cache_key = "kscu:cancel_pending_count"
+    if use_cache:
+        cached = safe_cache_get(cache_key)
+        if cached is not None:
+            return int(cached)
+    count = Appointment.objects.filter(status=AppointmentStatus.CANCEL_PENDING).count()
+    if use_cache:
+        safe_cache_set(cache_key, count, 60)
+    return count
 
 
 def application_has_confirmed_appointment(application: CounselingApplication) -> bool:
