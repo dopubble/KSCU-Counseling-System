@@ -131,7 +131,14 @@
                             <tbody>
                                 <tr>
                                     <th>이름</th>
-                                    <td>{{ case.client.name }}</td>
+                                    <td>
+                                        <div class="client-case-name-row">
+                                            <span class="fw-semibold">{{ case.client.name }}</span>
+                                            <span class="client-counseling-method-label{% if case.counseling_method == 'REMOTE' %} client-counseling-method-label--remote{% endif %}">
+                                                상담진행방식: {{ case.get_counseling_method_display }}
+                                            </span>
+                                        </div>
+                                    </td>
                                 </tr>
                                 <tr>
                                     <th>학번</th>
