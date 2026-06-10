@@ -316,13 +316,12 @@ class CounselorAssignmentSubmission(models.Model):
         return os.path.basename(self.file.name.replace("\\", "/"))
 
     def file_is_available(self) -> bool:
-        """스토리지에 실제 파일이 존재하는지 (재배포 후 유실 여부 확인)."""
-        if not self.file or not self.file.name:
-            return False
-        try:
-            return self.file.storage.exists(self.file.name)
-        except Exception:
-            return False
+        """다운로드 가능 여부 (목록·버튼 표시용).
+
+        storage.exists()는 S3/Volume마다 수백 ms 걸릴 수 있어 페이지 로드마다
+        호출하지 않습니다. 실제 파일 유무는 다운로드 시 read_assignment_file_bytes에서 검증합니다.
+        """
+        return bool(self.file and self.file.name)
 
     @property
     def session_label(self) -> str:

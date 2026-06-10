@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections import defaultdict
 
 from django.core.exceptions import ValidationError
 
@@ -24,6 +25,34 @@ def require_counselor_cohort(counselor) -> int:
             "기수 정보가 등록되지 않았습니다. 관리자에게 기수 배정을 요청해 주세요."
         )
     return cohort
+
+
+def get_cohort_peer_assignments_by_session(
+    cohort: int,
+    *,
+    max_session: int,
+) -> dict[int, list[CounselorAssignmentSubmission]]:
+    """동일 기수·1..max_session 회차 과제를 한 번의 쿼리로 조회."""
+    if max_session < 1:
+        return {}
+
+    by_session: dict[int, list[CounselorAssignmentSubmission]] = defaultdict(list)
+    peers = (
+        CounselorAssignmentSubmission.objects.filter(
+            cohort=cohort,
+            session_number__gte=1,
+            session_number__lte=max_session,
+        )
+        .select_related(
+            "case",
+            "case__client",
+            "submitted_by",
+        )
+        .order_by("session_number", "submitted_by__name", "case__case_number")
+    )
+    for peer in peers:
+        by_session[peer.session_number].append(peer)
+    return dict(by_session)
 
 
 def build_assignment_session_slots(case, assignments_qs=None):

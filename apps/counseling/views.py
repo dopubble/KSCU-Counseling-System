@@ -82,6 +82,7 @@ from apps.documents.cohort_zip import (
 )
 from apps.documents.assignment_service import (
     default_assignment_title,
+    get_cohort_peer_assignments_by_session,
     get_counselor_cohort,
     require_counselor_cohort,
     upsert_counselor_assignment,
@@ -103,6 +104,7 @@ from .services import (
     application_has_confirmed_appointment,
     build_apply_initial_from_application,
     build_case_session_cards,
+    build_case_session_cards_cached,
     build_counselor_session_views,
     sync_orphan_session_requests,
     client_can_edit_application,
@@ -740,7 +742,7 @@ def _get_session_card(case, session_number):
     return next(
         (
             c
-            for c in build_case_session_cards(case)
+            for c in build_case_session_cards_cached(case)
             if c.session_number == session_number
         ),
         None,
@@ -865,10 +867,10 @@ def client_case_detail(request, pk):
     """내담자 상담(사례) 상세 — 예약 신청"""
     case = _get_client_case(request, pk)
     application = case.application
-    sync_orphan_session_requests(case)
-    appointments_qs = Appointment.objects.filter(case=case).select_related("counselor")
-    session_cards = build_case_session_cards(case)
+    session_cards = build_case_session_cards_cached(case)
+    sync_orphan_session_requests(case, session_cards)
     sessions = session_cards
+    appointments_qs = Appointment.objects.filter(case=case).select_related("counselor")
     pending_appointments = (
         appointments_qs.filter(status=AppointmentStatus.PENDING)
         .order_by("session_number", "scheduled_at")
@@ -1619,7 +1621,8 @@ def counselor_case_detail(request, pk):
     application = case.application
     schedule = application.preferred_schedule or {}
 
-    sync_orphan_session_requests(case)
+    session_cards = build_case_session_cards_cached(case)
+    sync_orphan_session_requests(case, session_cards)
 
     client_profile = _get_client_profile(case.client)
     student_id = ""
@@ -1637,15 +1640,20 @@ def counselor_case_detail(request, pk):
     ]
     counselor_cohort = get_counselor_cohort(request.user)
     total_sessions = max(case.total_sessions, 1)
-    cohort_peers_by_session = {}
-    if counselor_cohort is not None:
-        for n in range(1, total_sessions + 1):
-            cohort_peers_by_session[n] = list(
-                get_cohort_peer_assignments(counselor_cohort, n)
-            )
+    cohort_peers_by_session = (
+        get_cohort_peer_assignments_by_session(
+            counselor_cohort,
+            max_session=total_sessions,
+        )
+        if counselor_cohort is not None
+        else {}
+    )
+    for n in range(1, total_sessions + 1):
+        cohort_peers_by_session.setdefault(n, [])
 
     sessions = build_counselor_session_views(
         case,
+        prebuilt_cards=session_cards,
         assignments_by_session=assignments_by_session,
         cohort_peers_by_session=cohort_peers_by_session,
     )
@@ -2156,9 +2164,7 @@ def counselor_assignment_upload(request, case_pk, session_number):
         note=(form.cleaned_data.get("note") or "").strip(),
         file=file_obj,
     )
-    from django.core.files.storage import default_storage
-
-    if not record.file or not default_storage.exists(record.file.name):
+    if not record.file or not record.file.name:
         messages.error(
             request,
             "파일이 서버에 저장되지 않았습니다. 잠시 후 다시 제출해 주세요.",

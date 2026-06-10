@@ -1449,19 +1449,30 @@ class CounselorSessionCardView:
 
     @property
     def cohort_peers_downloadable(self) -> bool:
-        return any(peer.file_is_available() for peer in self.cohort_peers)
+        return any(peer.file and peer.file.name for peer in self.cohort_peers)
+
+
+def build_case_session_cards_cached(case: Case) -> list[CaseSessionCard]:
+    """동일 요청·동일 Case 인스턴스에서 회기 카드 빌드를 한 번만 수행."""
+    cache_attr = "_kscu_session_cards_cache"
+    cached = getattr(case, cache_attr, None)
+    if cached is None:
+        cached = build_case_session_cards(case)
+        setattr(case, cache_attr, cached)
+    return cached
 
 
 def build_counselor_session_views(
     case: Case,
     *,
+    prebuilt_cards: list[CaseSessionCard] | None = None,
     assignments_by_session: dict | None = None,
     cohort_peers_by_session: dict | None = None,
 ) -> list[CounselorSessionCardView]:
     """상담사 사례 상세 — 회기 카드에 PENDING Appointment를 확실히 연결."""
     assignments_by_session = assignments_by_session or {}
     cohort_peers_by_session = cohort_peers_by_session or {}
-    cards = build_case_session_cards(case)
+    cards = prebuilt_cards or build_case_session_cards(case)
     pending_apts = list(
         case.appointments.filter(status=AppointmentStatus.PENDING).order_by(
             "session_number", "scheduled_at", "created_at"
@@ -1516,9 +1527,15 @@ def build_counselor_session_views(
     return views
 
 
-def sync_orphan_session_requests(case: Case) -> None:
+def sync_orphan_session_requests(
+    case: Case,
+    cards: list[CaseSessionCard] | None = None,
+) -> None:
     """일정 변경 요청만 있는 회기 → PENDING Appointment 동기화."""
-    for card in build_case_session_cards(case):
+    if not SessionScheduleChangeRequest.objects.filter(case=case).exists():
+        return
+    cards = cards or build_case_session_cards(case)
+    for card in cards:
         repair_orphan_session_request(case, card)
 
 
