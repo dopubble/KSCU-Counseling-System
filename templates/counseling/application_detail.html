@@ -48,6 +48,22 @@
                             <td>{{ application.client.phone|default:"—" }}</td>
                         </tr>
                         <tr>
+                            <th class="table-light">거주지역</th>
+                            <td>{{ application.residence_region|default:"—" }}</td>
+                        </tr>
+                        <tr>
+                            <th class="table-light">병원 진단명</th>
+                            <td style="white-space: pre-wrap;">{{ application.clinical_diagnosis|default:"—" }}</td>
+                        </tr>
+                        <tr>
+                            <th class="table-light">복용 중인 약</th>
+                            <td style="white-space: pre-wrap;">{{ application.current_medication|default:"—" }}</td>
+                        </tr>
+                        <tr>
+                            <th class="table-light">직업</th>
+                            <td>{{ application.occupation|default:"—" }}</td>
+                        </tr>
+                        <tr>
                             <th class="table-light">이메일</th>
                             <td>{{ application.client.email }}</td>
                         </tr>

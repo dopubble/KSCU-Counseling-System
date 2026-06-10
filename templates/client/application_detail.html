@@ -32,6 +32,14 @@
                             —
                         {% endif %}
                     </dd>
+                    <dt class="col-sm-3 text-muted">거주지역</dt>
+                    <dd class="col-sm-9">{{ application.residence_region|default:"—" }}</dd>
+                    <dt class="col-sm-3 text-muted">병원 진단명</dt>
+                    <dd class="col-sm-9">{{ application.clinical_diagnosis|default:"—" }}</dd>
+                    <dt class="col-sm-3 text-muted">복용 중인 약</dt>
+                    <dd class="col-sm-9">{{ application.current_medication|default:"—" }}</dd>
+                    <dt class="col-sm-3 text-muted">직업</dt>
+                    <dd class="col-sm-9">{{ application.occupation|default:"—" }}</dd>
                     <dt class="col-sm-3 text-muted">상담사</dt>
                     <dd class="col-sm-9"><span class="text-muted">배정 대기</span></dd>
                     {% if application.reason %}

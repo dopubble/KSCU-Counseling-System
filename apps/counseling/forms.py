@@ -57,6 +57,49 @@ class CounselingApplyForm(forms.Form):
             attrs={"class": "form-control", "placeholder": "010-0000-0000"}
         ),
     )
+    residence_region = forms.CharField(
+        label="거주지역",
+        max_length=200,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "예: 서울시, 강원도 / 해외: 캐나다",
+            }
+        ),
+        help_text="국내는 시·도 단위만, 해외 거주 시 국가명까지 입력해 주세요.",
+    )
+    clinical_diagnosis = forms.CharField(
+        label="병원 진단명",
+        max_length=500,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "예: 우울증, 공황장애",
+            }
+        ),
+    )
+    current_medication = forms.CharField(
+        label="현재 복용 중인 관련 약",
+        max_length=500,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "복용 중인 약이 없으면 '없음'",
+            }
+        ),
+        help_text="정신·심리 관련 복용 약이 없으면 '없음'이라고 적어 주세요.",
+    )
+    occupation = forms.CharField(
+        label="직업",
+        max_length=100,
+        required=False,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "직접 입력 (선택)",
+            }
+        ),
+    )
     counseling_types = forms.MultipleChoiceField(
         label="상담 희망 분야",
         choices=COUNSELING_TYPE_CHOICES,
@@ -174,6 +217,29 @@ class CounselingApplyForm(forms.Form):
         if len(value) > 100:
             raise forms.ValidationError("100자 이내로 작성해 주세요.")
         return value
+
+    def clean_residence_region(self):
+        value = (self.cleaned_data.get("residence_region") or "").strip()
+        if not value:
+            raise forms.ValidationError("거주지역을 입력해 주세요.")
+        return value
+
+    def clean_clinical_diagnosis(self):
+        value = (self.cleaned_data.get("clinical_diagnosis") or "").strip()
+        if not value:
+            raise forms.ValidationError("병원 진단명을 입력해 주세요.")
+        return value
+
+    def clean_current_medication(self):
+        value = (self.cleaned_data.get("current_medication") or "").strip()
+        if not value:
+            raise forms.ValidationError(
+                "현재 복용 중인 관련 약을 입력해 주세요. 없으면 '없음'이라고 적어 주세요."
+            )
+        return value
+
+    def clean_occupation(self):
+        return (self.cleaned_data.get("occupation") or "").strip()
 
 
 

@@ -5,9 +5,22 @@ from .models import Case, CounselingApplication, SessionScheduleChangeRequest
 
 @admin.register(CounselingApplication)
 class CounselingApplicationAdmin(admin.ModelAdmin):
-    list_display = ("client", "display_counseling_types", "status", "created_at")
+    list_display = (
+        "client",
+        "display_counseling_types",
+        "residence_region",
+        "status",
+        "created_at",
+    )
     list_filter = ("status",)
-    search_fields = ("client__name", "client__email", "reason")
+    search_fields = (
+        "client__name",
+        "client__email",
+        "reason",
+        "residence_region",
+        "clinical_diagnosis",
+        "occupation",
+    )
     readonly_fields = ("created_at", "updated_at")
 
     @admin.display(description="상담 유형")

@@ -130,6 +130,7 @@ CLIENT_PREFERENCE_SEEDS: list[ClientPreferenceSeed] = [
         "박슬아",
         "poopsc1018@gmail.com",
         "김소진",
+        # 원문: "수 목빼고 월화금 14~16시"
         [_slot([0, 1, 4], "14:00", "16:00")],
     ),
     ClientPreferenceSeed(
@@ -143,7 +144,8 @@ CLIENT_PREFERENCE_SEEDS: list[ClientPreferenceSeed] = [
         "iceloo@naver.com",
         "윤성희",
         [
-            _slot([1], "14:00", "16:00"),
+            # 원문: "화요일은14시 / 월수목금 13시까지 가능" — 종료 시간 기준
+            _slot([1], "09:00", "14:00"),
             _slot([0, 2, 3, 4], "09:00", "13:00"),
         ],
     ),
@@ -256,8 +258,8 @@ CLIENT_PREFERENCE_SEEDS: list[ClientPreferenceSeed] = [
         [
             _slot([0, 1, 2, 3], "09:00", "16:00"),
             _slot([4], "15:00", "17:00"),
-            _slot([0], "20:00", "21:00"),
-            _slot([3], "18:00", "20:00"),
+            _slot([0], "20:00", "21:00"),  # 월 20-21시
+            _slot([3], "18:00", "20:00"),  # 목 18-20시 (원문: 목요일 18-20시)
         ],
     ),
     ClientPreferenceSeed(

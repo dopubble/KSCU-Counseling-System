@@ -52,6 +52,30 @@ class CounselingApplication(models.Model):
     )
     counseling_types = models.JSONField("상담 유형", default=list, blank=True)
     reason = models.TextField("주요 호소 문제")
+    residence_region = models.CharField(
+        "거주지역",
+        max_length=200,
+        blank=True,
+        default="",
+        help_text="국내: 시·도 단위 / 해외: 국가명 포함",
+    )
+    clinical_diagnosis = models.TextField(
+        "병원 진단명",
+        blank=True,
+        default="",
+    )
+    current_medication = models.TextField(
+        "복용 중인 약",
+        blank=True,
+        default="",
+        help_text="관련 약물 없으면 '없음'",
+    )
+    occupation = models.CharField(
+        "직업",
+        max_length=100,
+        blank=True,
+        default="",
+    )
     preferred_schedule = models.JSONField("희망 일정", default=dict, blank=True)
     status = models.CharField(
         "상태",

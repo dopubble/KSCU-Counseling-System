@@ -154,7 +154,7 @@ def appointment_manage(request, pk):
                     scheduled_at=form.cleaned_data["scheduled_at"],
                     duration_minutes=form.cleaned_data["duration_minutes"],
                 )
-                messages.success(request, "희망 시간이 수정되었습니다. 내담자에게 안내해 주세요.")
+                messages.success(request, "희망 시간이 수정되었습니다. 내담자 이메일로 안내가 발송됩니다.")
                 return redirect("counselor:appointment_manage", pk=pk)
             except AppointmentServiceError as exc:
                 messages.error(request, str(exc))
@@ -170,6 +170,7 @@ def appointment_manage(request, pk):
                         appointment,
                         scheduled_at=form.cleaned_data["scheduled_at"],
                         duration_minutes=form.cleaned_data["duration_minutes"],
+                        notify_client=False,
                     )
                     appointment.refresh_from_db()
                     _appointment, zoom = confirm_appointment_with_zoom(appointment)

@@ -44,6 +44,7 @@ def create_appointment_request(
     duration_minutes: int | None = None,
     session_number: int | None = None,
     request_message: str = "",
+    notify: bool = True,
 ) -> Appointment:
     """내담자 예약 신청 (PENDING, Zoom 미생성). 시간(분)은 상담사 확정 시 조정."""
     if not case.counselor_id:
@@ -60,7 +61,7 @@ def create_appointment_request(
     if not available:
         raise AppointmentServiceError(message)
 
-    return Appointment.objects.create(
+    appointment = Appointment.objects.create(
         case=case,
         counselor=case.counselor,
         client=client,
@@ -70,6 +71,27 @@ def create_appointment_request(
         session_number=session_number,
         request_message=(request_message or "").strip(),
     )
+    if notify:
+        _notify_appointment_request(appointment)
+    return appointment
+
+
+def _notify_appointment_request(appointment: Appointment) -> None:
+    from apps.counseling.emailing import send_appointment_request_notification
+
+    send_appointment_request_notification(appointment)
+
+
+def _notify_appointment_confirmation(appointment: Appointment) -> None:
+    from apps.counseling.emailing import send_appointment_confirmation_notification
+
+    send_appointment_confirmation_notification(appointment)
+
+
+def _notify_appointment_pending_update(appointment: Appointment) -> None:
+    from apps.counseling.emailing import send_appointment_pending_update_notification
+
+    send_appointment_pending_update_notification(appointment)
 
 
 def ensure_pending_session_appointment(
@@ -79,6 +101,7 @@ def ensure_pending_session_appointment(
     session_number: int,
     scheduled_at,
     request_message: str = "",
+    notify: bool = True,
 ) -> Appointment:
     """회기별 PENDING Appointment — 없으면 생성, 있으면 일시·요청 내용 갱신."""
     message = (request_message or "").strip()
@@ -91,6 +114,8 @@ def ensure_pending_session_appointment(
         pending.scheduled_at = scheduled_at
         pending.request_message = message
         pending.save(update_fields=["scheduled_at", "request_message", "updated_at"])
+        if notify:
+            _notify_appointment_request(pending)
         return pending
     return create_appointment_request(
         case=case,
@@ -98,6 +123,7 @@ def ensure_pending_session_appointment(
         scheduled_at=scheduled_at,
         session_number=session_number,
         request_message=message,
+        notify=notify,
     )
 
 
@@ -106,6 +132,7 @@ def update_pending_appointment(
     *,
     scheduled_at,
     duration_minutes: int,
+    notify_client: bool = True,
 ) -> Appointment:
     """상담사: 대기 중 예약 시간 수정 (확정 전)"""
     if appointment.status != AppointmentStatus.PENDING:
@@ -113,11 +140,17 @@ def update_pending_appointment(
     appointment.scheduled_at = scheduled_at
     appointment.duration_minutes = duration_minutes
     appointment.save(update_fields=["scheduled_at", "duration_minutes", "updated_at"])
+    if notify_client:
+        _notify_appointment_pending_update(appointment)
     return appointment
 
 
 @transaction.atomic
-def confirm_appointment_with_zoom(appointment: Appointment) -> tuple[Appointment, ZoomMeeting]:
+def confirm_appointment_with_zoom(
+    appointment: Appointment,
+    *,
+    notify: bool = True,
+) -> tuple[Appointment, ZoomMeeting]:
     """
     상담사 예약 확정 시 Zoom 회의 생성 및 Case.zoom_meeting_url 저장.
     """
@@ -167,6 +200,9 @@ def confirm_appointment_with_zoom(appointment: Appointment) -> tuple[Appointment
     appointment.status = AppointmentStatus.CONFIRMED
     appointment.confirmed_at = timezone.now()
     appointment.save(update_fields=["status", "confirmed_at", "updated_at"])
+
+    if notify:
+        _notify_appointment_confirmation(appointment)
 
     return appointment, zoom_meeting
 
@@ -231,7 +267,12 @@ def reschedule_confirmed_appointment(
 
 
 @transaction.atomic
-def reject_appointment_request(appointment: Appointment, *, reason: str) -> Appointment:
+def reject_appointment_request(
+    appointment: Appointment,
+    *,
+    reason: str,
+    notify_client: bool = True,
+) -> Appointment:
     """상담사: 대기 중 예약 반려."""
     if appointment.status != AppointmentStatus.PENDING:
         raise AppointmentServiceError("대기 중인 예약만 반려할 수 있습니다.")
@@ -245,4 +286,8 @@ def reject_appointment_request(appointment: Appointment, *, reason: str) -> Appo
     appointment.save(
         update_fields=["status", "cancel_reason", "cancelled_at", "updated_at"]
     )
+    if notify_client:
+        from apps.counseling.emailing import send_appointment_rejection_notification
+
+        send_appointment_rejection_notification(appointment, reason=reason)
     return appointment

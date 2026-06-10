@@ -19,8 +19,6 @@ from apps.accounts.decorators import board_manager_required, counselor_required,
 from apps.accounts.models import ClientProfile, User, UserRole, UserStatus
 
 from .emailing import (
-    send_appointment_rejection_notification,
-    send_appointment_request_notification,
     send_cancel_approval_notification,
     send_cancel_rejection_notification,
     send_cancel_request_notification,
@@ -239,6 +237,10 @@ def _save_counseling_application(user, data):
         client=user,
         counseling_types=data["counseling_types"],
         reason=data["reason"],
+        residence_region=data["residence_region"],
+        clinical_diagnosis=data["clinical_diagnosis"],
+        current_medication=data["current_medication"],
+        occupation=data.get("occupation", ""),
         preferred_schedule=preferred_schedule,
         status=ApplicationStatus.WAITING_MATCH,
     )
@@ -270,6 +272,10 @@ def _update_counseling_application(user, application, data):
 
     application.counseling_types = data["counseling_types"]
     application.reason = data["reason"]
+    application.residence_region = data["residence_region"]
+    application.clinical_diagnosis = data["clinical_diagnosis"]
+    application.current_medication = data["current_medication"]
+    application.occupation = data.get("occupation", "")
     application.preferred_schedule = preferred_schedule
     if application.status == ApplicationStatus.CANCELLED:
         application.status = ApplicationStatus.WAITING_MATCH
@@ -277,6 +283,10 @@ def _update_counseling_application(user, application, data):
         update_fields=[
             "counseling_types",
             "reason",
+            "residence_region",
+            "clinical_diagnosis",
+            "current_medication",
+            "occupation",
             "preferred_schedule",
             "status",
             "updated_at",
@@ -1100,7 +1110,6 @@ def client_session_schedule_change(request, case_pk, session_number):
         case=case,
         session_number=session_number,
     ).delete()
-    send_appointment_request_notification(appointment)
     if had_pending:
         messages.success(
             request,
@@ -1829,7 +1838,6 @@ def counselor_session_appointment_reject(request, case_pk, appointment_pk):
             return err
         return redirect("counselor:case_detail", pk=case.pk)
 
-    send_appointment_rejection_notification(appointment, reason=reason)
     session_label = (
         f"{appointment.session_number}회기"
         if appointment.session_number

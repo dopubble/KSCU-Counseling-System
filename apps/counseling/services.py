@@ -424,6 +424,10 @@ def build_apply_initial_from_application(
         "phone": user.phone or "",
         "counseling_types": application.counseling_types or [],
         "reason": application.reason,
+        "residence_region": application.residence_region or "",
+        "clinical_diagnosis": application.clinical_diagnosis or "",
+        "current_medication": application.current_medication or "",
+        "occupation": application.occupation or "",
     }
 
     student_id = ps.get("student_id") or ""
@@ -1535,6 +1539,7 @@ def repair_orphan_session_request(
         scheduled_at=schedule_request.preferred_datetime,
         session_number=card.session_number,
         request_message=message,
+        notify=False,
     )
     SessionScheduleChangeRequest.objects.filter(
         case=case,

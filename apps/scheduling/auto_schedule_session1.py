@@ -717,9 +717,10 @@ def apply_session1_schedule(
                 session_number=1,
                 scheduled_at=slot,
                 request_message="내담자 희망 시간 기반 자동 1회기 배정 (Zoom 전역 비겹침)",
+                notify=False,
             )
             if with_zoom:
-                confirm_appointment_with_zoom(appointment)
+                confirm_appointment_with_zoom(appointment, notify=False)
             else:
                 appointment.status = AppointmentStatus.CONFIRMED
                 appointment.confirmed_at = timezone.now()

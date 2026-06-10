@@ -211,6 +211,10 @@ def create_application_for_client(
         client=client,
         counseling_types=types,
         reason=reason,
+        residence_region="관리자 일괄 접수",
+        clinical_diagnosis="—",
+        current_medication="없음",
+        occupation="",
         preferred_schedule=preferred_schedule,
         status=ApplicationStatus.WAITING_MATCH,
     )

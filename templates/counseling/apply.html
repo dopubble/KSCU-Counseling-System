@@ -103,6 +103,32 @@
                                 </div>
                             </div>
 
+                            <h2 class="h6 text-kscu fw-bold mb-3 pb-2 border-bottom">추가 정보</h2>
+                            <div class="row g-3 mb-4">
+                                <div class="col-12">
+                                    <label for="id_residence_region" class="form-label fw-semibold">{{ form.residence_region.label }} <span class="text-danger">*</span></label>
+                                    {{ form.residence_region }}
+                                    {% if form.residence_region.help_text %}<div class="form-text">{{ form.residence_region.help_text }}</div>{% endif %}
+                                    {% if form.residence_region.errors %}<div class="text-danger small mt-1">{{ form.residence_region.errors.0 }}</div>{% endif %}
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="id_clinical_diagnosis" class="form-label fw-semibold">{{ form.clinical_diagnosis.label }} <span class="text-danger">*</span></label>
+                                    {{ form.clinical_diagnosis }}
+                                    {% if form.clinical_diagnosis.errors %}<div class="text-danger small mt-1">{{ form.clinical_diagnosis.errors.0 }}</div>{% endif %}
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="id_current_medication" class="form-label fw-semibold">{{ form.current_medication.label }} <span class="text-danger">*</span></label>
+                                    {{ form.current_medication }}
+                                    {% if form.current_medication.help_text %}<div class="form-text">{{ form.current_medication.help_text }}</div>{% endif %}
+                                    {% if form.current_medication.errors %}<div class="text-danger small mt-1">{{ form.current_medication.errors.0 }}</div>{% endif %}
+                                </div>
+                                <div class="col-12">
+                                    <label for="id_occupation" class="form-label fw-semibold">{{ form.occupation.label }} <span class="text-muted fw-normal">(선택)</span></label>
+                                    {{ form.occupation }}
+                                    {% if form.occupation.errors %}<div class="text-danger small mt-1">{{ form.occupation.errors.0 }}</div>{% endif %}
+                                </div>
+                            </div>
+
                             <h2 class="h6 text-kscu fw-bold mb-3 pb-2 border-bottom">상담 내용</h2>
                             <div class="row g-3 mb-4">
                                 <div class="col-12">
