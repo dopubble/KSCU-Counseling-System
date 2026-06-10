@@ -10,4 +10,4 @@ SECRET_KEY = "nixpacks-build-placeholder-change-in-railway"
 cmds = ["python manage.py collectstatic --noinput"]
 
 [start]
-cmd = "gunicorn kscu_counseling.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120"
+cmd = "gunicorn kscu_counseling.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --worker-class gthread --threads 4 --timeout 120 --graceful-timeout 30 --keep-alive 5"

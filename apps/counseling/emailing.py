@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 
 from django.conf import settings
 from django.core.mail import send_mail
@@ -10,6 +11,10 @@ from django.core.mail import send_mail
 from apps.accounts.models import User, UserRole
 
 logger = logging.getLogger(__name__)
+
+
+def _email_async_enabled() -> bool:
+    return getattr(settings, "EMAIL_ASYNC", True)
 
 
 def _staff_recipient_emails(*, counselor=None) -> list[str]:
@@ -371,6 +376,20 @@ def send_appointment_rejection_notification(appointment, *, reason: str) -> bool
 
 
 def _send(subject: str, message: str, recipients: list[str]) -> bool:
+    """운영 알림 — 기본 비동기(백그라운드)로 HTTP 응답을 막지 않음."""
+    if not recipients:
+        return False
+    if _email_async_enabled():
+        threading.Thread(
+            target=_send_sync,
+            args=(subject, message, list(recipients)),
+            daemon=True,
+        ).start()
+        return True
+    return _send_sync(subject, message, recipients)
+
+
+def _send_sync(subject: str, message: str, recipients: list[str]) -> bool:
     try:
         send_mail(
             subject,

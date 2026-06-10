@@ -32,7 +32,10 @@ if EMAIL_HOST_USER and EMAIL_HOST_PASSWORD:  # noqa: F405
 else:
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
-EMAIL_TIMEOUT = _env_int("EMAIL_TIMEOUT", 10)
+EMAIL_TIMEOUT = _env_int("EMAIL_TIMEOUT", 5)
+
+# 알림 메일은 HTTP 요청을 막지 않도록 백그라운드 발송 (Gunicorn worker 고갈 방지)
+EMAIL_ASYNC = _env_str("EMAIL_ASYNC", "True").lower() in ("true", "1", "yes")
 
 
 def _sanitize_allowed_host(value: str) -> str:
@@ -201,7 +204,7 @@ elif _on_railway:
 # --- DB 연결 유지 (요청마다 Postgres handshake 비용 감소) ---
 _default_db = DATABASES.get("default", {})  # noqa: F405
 if _default_db.get("ENGINE", "").endswith("postgresql"):
-    _default_db["CONN_MAX_AGE"] = _env_int("DB_CONN_MAX_AGE", 600)
+    _default_db["CONN_MAX_AGE"] = _env_int("DB_CONN_MAX_AGE", 60)
     _default_db["CONN_HEALTH_CHECKS"] = True
 
 # --- Redis 캐시 (REDIS_URL 있을 때) — 통계·알림 배지만, 세션은 DB 유지 ---
