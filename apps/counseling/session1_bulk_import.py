@@ -19,6 +19,7 @@ from apps.counseling.models import (
     Case,
     CaseStatus,
     CounselingApplication,
+    CounselingMethod,
     SessionScheduleChangeRequest,
 )
 from apps.counseling.services import _counseling_method_for_client
@@ -36,6 +37,7 @@ class Session1MatchRow:
     client_name: str
     first_session: datetime
     line_no: int = 0
+    counseling_method: str | None = None
 
 
 @dataclass
@@ -94,17 +96,32 @@ def load_session1_matches(path: Path) -> list[Session1MatchRow]:
                 f"{line_no}번째 first_session 형식 오류: {first_session_raw!r} (YYYY-MM-DD HH:MM)"
             ) from exc
         first_session = timezone.make_aware(naive, timezone.get_current_timezone())
+        counseling_method = _parse_counseling_method(item.get("counseling_method"))
         rows.append(
             Session1MatchRow(
                 counselor_name=counselor,
                 client_name=client,
                 first_session=first_session,
                 line_no=line_no,
+                counseling_method=counseling_method,
             )
         )
 
     _validate_match_rows(rows)
     return rows
+
+
+def _parse_counseling_method(raw) -> str | None:
+    text = (raw or "").strip().upper()
+    if not text:
+        return None
+    if text in {"REMOTE", "ONLINE", "비대면"}:
+        return CounselingMethod.REMOTE
+    if text in {"IN_PERSON", "OFFLINE", "대면"}:
+        return CounselingMethod.IN_PERSON
+    raise ValueError(
+        f"counseling_method 값 오류: {raw!r} (REMOTE/IN_PERSON 또는 비대면/대면)"
+    )
 
 
 def _validate_match_rows(rows: list[Session1MatchRow]) -> None:
@@ -303,7 +320,7 @@ def _import_one_row(
 
     case.total_sessions = total_sessions
     case.remaining_sessions = total_sessions
-    case.counseling_method = _counseling_method_for_client(client)
+    case.counseling_method = row.counseling_method or _counseling_method_for_client(client)
     case.status = CaseStatus.ACTIVE
     case.closed_at = None
     case.save(
@@ -328,7 +345,8 @@ def _import_one_row(
         request_message="관리자 일괄 1회기 매칭 주입",
     )
 
-    if with_zoom:
+    use_zoom = with_zoom and case.counseling_method == CounselingMethod.REMOTE
+    if use_zoom:
         confirm_appointment_with_zoom(appointment, notify=False)
     else:
         appointment.status = AppointmentStatus.CONFIRMED

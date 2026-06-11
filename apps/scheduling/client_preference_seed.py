@@ -24,7 +24,6 @@ EXCLUDED_CLIENT_EMAILS = frozenset(
         "arsui90@naver.com",
         "dudtjd626zx@naver.com",
         "kkaldoong@hanmail.net",
-        "jjang_kor@hanmail.net",
     }
 )
 
@@ -62,7 +61,7 @@ CLIENT_PREFERENCE_SEEDS: list[ClientPreferenceSeed] = [
     ClientPreferenceSeed(
         "임유정",
         "k5jini@naver.com",
-        "이영실",
+        "한진이",
         [_slot([0], "14:00", "16:00")],
     ),
     ClientPreferenceSeed(
@@ -74,7 +73,7 @@ CLIENT_PREFERENCE_SEEDS: list[ClientPreferenceSeed] = [
     ClientPreferenceSeed(
         "조선혜",
         "jshvictory65@naver.com",
-        "권은혜",
+        "최윤희",
         [_slot([3, 4], "10:00", "13:00")],
     ),
     ClientPreferenceSeed(
@@ -152,9 +151,8 @@ CLIENT_PREFERENCE_SEEDS: list[ClientPreferenceSeed] = [
     ClientPreferenceSeed(
         "구현정",
         "kookoo162@daum.net",
-        "신영화",
-        skip=True,
-        skip_reason="캐나다·한국 시차 조율 필요 - 자동 매칭 불가",
+        "심재화",
+        [_slot(list(range(7)), "10:00", "16:00")],
     ),
     ClientPreferenceSeed(
         "이경숙",
@@ -301,6 +299,14 @@ CLIENT_PREFERENCE_SEEDS: list[ClientPreferenceSeed] = [
             _slot([0], "08:00", "12:00"),
             _slot([2, 3], "13:00", "17:00"),
             _slot([6], "19:00", "21:00"),
+        ],
+    ),
+    ClientPreferenceSeed(
+        "장경화",
+        "jiang_kor@hanmail.net",
+        "천옥희",
+        [
+            _slot([0, 1, 2, 3, 4], "12:00", "18:00"),
         ],
     ),
 ]

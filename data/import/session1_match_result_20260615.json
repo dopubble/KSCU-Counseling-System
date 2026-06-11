@@ -120,14 +120,15 @@
     "weekday": "수"
   },
   {
-    "counselor": "성소미",
+    "counselor": "한경희",
     "client": "이지현",
     "email": "zee79@naver.com",
-    "datetime": "2026-06-19 12:00",
+    "datetime": "2026-06-17 12:00",
     "status": "확정",
+    "counseling_method": "IN_PERSON",
     "counselor_overseas": false,
     "client_overseas": false,
-    "weekday": "금"
+    "weekday": "수"
   },
   {
     "counselor": "김소진",
@@ -190,14 +191,15 @@
     "weekday": "수"
   },
   {
-    "counselor": "성소미",
+    "counselor": "한진이",
     "client": "임유정",
     "email": "k5jini@naver.com",
-    "datetime": "2026-06-15 15:00",
+    "datetime": "2026-06-23 14:00",
     "status": "확정",
+    "counseling_method": "REMOTE",
     "counselor_overseas": false,
     "client_overseas": false,
-    "weekday": "월"
+    "weekday": "화"
   },
   {
     "counselor": "심재화",
@@ -290,11 +292,12 @@
     "weekday": "목"
   },
   {
-    "counselor": "전효영",
+    "counselor": "천옥희",
     "client": "장경화",
     "email": "jiang_kor@hanmail.net",
-    "datetime": "2026-06-15 10:00",
+    "datetime": "2026-06-22 11:00",
     "status": "확정",
+    "counseling_method": "IN_PERSON",
     "counselor_overseas": false,
     "client_overseas": false,
     "weekday": "월"
@@ -310,14 +313,15 @@
     "weekday": "목"
   },
   {
-    "counselor": "전효영",
+    "counselor": "최윤희",
     "client": "조선혜",
     "email": "jshvictory65@naver.com",
-    "datetime": "2026-06-18 12:00",
+    "datetime": "2026-06-23 14:00",
     "status": "확정",
+    "counseling_method": "REMOTE",
     "counselor_overseas": false,
     "client_overseas": false,
-    "weekday": "목"
+    "weekday": "화"
   },
   {
     "counselor": "한진이",
@@ -330,12 +334,13 @@
     "weekday": "수"
   },
   {
-    "counselor": "신영화",
+    "counselor": "심재화",
     "client": "구현정",
     "email": "kookoo162@daum.net",
-    "datetime": "2026-06-24 10:00",
-    "status": "확정(해외-해외)",
-    "counselor_overseas": true,
+    "datetime": "2026-07-01 10:00",
+    "status": "확정(해외-내담자)",
+    "counseling_method": "REMOTE",
+    "counselor_overseas": false,
     "client_overseas": true,
     "weekday": "수"
   },
@@ -358,5 +363,16 @@
     "counselor_overseas": false,
     "client_overseas": false,
     "weekday": "수"
+  },
+  {
+    "counselor": "윤성희",
+    "client": "조현경",
+    "email": "",
+    "datetime": "2026-06-30 19:00",
+    "status": "확정",
+    "counseling_method": "REMOTE",
+    "counselor_overseas": false,
+    "client_overseas": false,
+    "weekday": "화"
   }
 ]
