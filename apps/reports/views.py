@@ -7,7 +7,7 @@ from django.utils import timezone
 from apps.accounts.decorators import role_required
 from apps.accounts.models import CounselorProfile, User, UserRole
 from apps.counseling.application_queries import (
-    exclude_stale_pending_applications,
+    annotate_pending_application_flags,
     waiting_match_for_admin,
 )
 from apps.counseling.models import ApplicationStatus, Case, CaseStatus, CounselingApplication
@@ -187,7 +187,7 @@ def case_list(request):
 def matching_list(request):
     """내담자·상담 신청 매칭 관리 (상담사 배정·변경)"""
     filter_key = request.GET.get("filter", "all")
-    queryset = exclude_stale_pending_applications(
+    queryset = annotate_pending_application_flags(
         CounselingApplication.objects.select_related("client")
         .select_related("case", "case__counselor")
         .order_by("-created_at")

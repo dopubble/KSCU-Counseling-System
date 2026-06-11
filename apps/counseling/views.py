@@ -96,6 +96,10 @@ from .cancellation_policy import (
     client_change_blocked,
     policy_messages,
 )
+from .application_queries import (
+    client_has_open_pending_application,
+    client_has_other_active_case,
+)
 from .models import ApplicationStatus, Case, CaseStatus, CounselingApplication, SessionScheduleChangeRequest
 from .services import (
     annotate_application_confirmed_at,
@@ -349,6 +353,13 @@ def apply(request):
                 request.session.pop(SESSION_APPLY_EDIT_ID, None)
                 messages.success(request, "상담 신청 내용이 저장되었습니다.")
             else:
+                if client_has_open_pending_application(request.user):
+                    messages.warning(
+                        request,
+                        "이미 매칭 대기 중인 상담 신청이 있습니다. "
+                        "신청 목록에서 확인하거나 기존 신청을 수정해 주세요.",
+                    )
+                    return redirect("client:application_list")
                 application = _save_counseling_application(request.user, data)
                 messages.success(
                     request,
@@ -420,6 +431,9 @@ def application_detail(request, pk):
         ApplicationStatus.RECEIVED,
         ApplicationStatus.WAITING_MATCH,
     )
+    has_other_active_case = client_has_other_active_case(application)
+    if has_other_active_case and can_assign_new:
+        can_assign_new = False
     can_change_counselor = existing_case is not None
     show_match_form = can_assign_new or can_change_counselor
 
@@ -506,6 +520,7 @@ def application_detail(request, pk):
             "can_assign_new": can_assign_new,
             "can_change_counselor": can_change_counselor,
             "show_match_form": show_match_form,
+            "has_other_active_case": has_other_active_case,
             "counselors_count": counselors.count(),
             "active_case_counts": active_case_counts,
         },

@@ -65,7 +65,12 @@
                 <tbody>
                     {% for app in applications %}
                     <tr>
-                        <td class="fw-semibold">{{ app.client.name }}</td>
+                        <td class="fw-semibold">
+                            {{ app.client.name }}
+                            {% if app.has_other_active_case %}
+                            <span class="badge bg-secondary ms-1" title="다른 신청으로 진행 중인 사례가 있습니다">중복 신청</span>
+                            {% endif %}
+                        </td>
                         <td>{{ app.counseling_type }}</td>
                         <td>
                             <span class="badge bg-{% if app.status == 'WAITING_MATCH' or app.status == 'RECEIVED' %}warning text-dark{% elif app.status == 'MATCHED' or app.status == 'IN_PROGRESS' %}success{% else %}secondary{% endif %}">

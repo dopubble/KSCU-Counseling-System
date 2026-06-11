@@ -17,6 +17,15 @@
     </div>
 </div>
 
+{% if has_other_active_case %}
+<div class="alert alert-warning border-0 shadow-sm section-spacing mb-0" role="alert">
+    <i class="bi bi-exclamation-triangle me-1"></i>
+    이 내담자는 <strong>다른 신청으로 이미 진행 중인 상담 사례</strong>가 있습니다.
+    중복 신청이므로 새로 상담사를 배정하기 전에 진행 중인 사례를 확인해 주세요.
+    필요하면 내담자의 기존 신청을 취소 처리하거나, 종결 후 재신청을 안내해 주세요.
+</div>
+{% endif %}
+
 <div class="row g-4 section-spacing">
     <div class="col-lg-7">
         <div class="card border-0 shadow-sm mb-4">

@@ -67,7 +67,12 @@
                         <tbody>
                             {% for app in waiting_applications %}
                             <tr>
-                                <td class="fw-semibold text-primary">{{ app.client.name }}</td>
+                                <td class="fw-semibold text-primary">
+                                    {{ app.client.name }}
+                                    {% if app.has_other_active_case %}
+                                    <span class="badge bg-secondary ms-1" title="다른 신청으로 진행 중인 사례가 있습니다">중복 신청</span>
+                                    {% endif %}
+                                </td>
                                 <td>
                                     {% if app.preferred_schedule.student_id %}
                                         {{ app.preferred_schedule.student_id }}
