@@ -85,12 +85,14 @@
                                     <td class="small text-nowrap">{{ peer.updated_at|date:"m-d H:i" }}</td>
                                     <td>
                                         {% if peer.file_is_available %}
-                                        <a href="{% url 'counselor:cohort_assignment_file' peer.pk %}"
-                                           class="btn btn-sm btn-outline-primary py-0 px-2"
-                                           title="{{ peer.get_filename }}"
-                                           download>
+                                        <button type="button"
+                                                class="btn btn-sm btn-outline-primary py-0 px-2 assignment-file-download-btn"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#assignmentFileDownloadModal"
+                                                data-download-action="{% url 'counselor:cohort_assignment_file' peer.pk %}"
+                                                data-download-label="{{ peer.get_filename }}">
                                             <i class="bi bi-download" aria-hidden="true"></i>
-                                        </a>
+                                        </button>
                                         {% else %}
                                         <span class="badge text-bg-warning">재제출 필요</span>
                                         {% endif %}
@@ -137,15 +139,60 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="text-muted small mb-0">
+                    <p class="text-muted small mb-3">
                         <span id="cohortAssignmentsZipTarget" class="fw-semibold"></span> 동기 과제를 ZIP으로 받습니다.
-                        Windows 탐색기·7-Zip 등에서 바로 압축을 풀 수 있습니다.
+                        압축을 풀 때 사용할 암호를 입력하세요. (4자 이상)
+                        Windows 탐색기에서도 압축 해제할 수 있습니다.
                     </p>
+                    <label for="cohortAssignmentsZipPassword" class="form-label fw-semibold">ZIP 암호</label>
+                    <input type="password"
+                           class="form-control"
+                           id="cohortAssignmentsZipPassword"
+                           name="zip_password"
+                           required
+                           minlength="4"
+                           autocomplete="new-password">
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
                     <button type="submit" class="btn btn-primary">
                         <i class="bi bi-file-zip me-1" aria-hidden="true"></i>다운로드
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="assignmentFileDownloadModal" tabindex="-1" aria-labelledby="assignmentFileDownloadModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="post" id="assignmentFileDownloadForm" action="">
+                {% csrf_token %}
+                <input type="hidden" name="next" id="assignmentFileDownloadNext" value="">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="assignmentFileDownloadModalLabel">과제 다운로드</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">
+                        <span id="assignmentFileDownloadLabel" class="fw-semibold"></span> 파일을 암호 ZIP으로 받습니다.
+                        압축을 풀 때 사용할 암호를 입력하세요. (4자 이상)
+                        Windows 탐색기에서도 압축 해제할 수 있습니다.
+                    </p>
+                    <label for="assignmentFileDownloadPassword" class="form-label fw-semibold">ZIP 암호</label>
+                    <input type="password"
+                           class="form-control"
+                           id="assignmentFileDownloadPassword"
+                           name="zip_password"
+                           required
+                           minlength="4"
+                           autocomplete="new-password">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-download me-1" aria-hidden="true"></i>다운로드
                     </button>
                 </div>
             </form>
@@ -225,6 +272,22 @@
             document.getElementById("cohortAssignmentsZipTarget").textContent = sessionLabel;
             document.getElementById("cohortAssignmentsZipNext").value =
                 window.location.pathname + window.location.search;
+            document.getElementById("cohortAssignmentsZipPassword").value = "";
+        });
+    }
+
+    var fileDownloadModal = document.getElementById("assignmentFileDownloadModal");
+    if (fileDownloadModal) {
+        fileDownloadModal.addEventListener("show.bs.modal", function (event) {
+            var btn = event.relatedTarget;
+            if (!btn) return;
+            document.getElementById("assignmentFileDownloadForm").action =
+                btn.getAttribute("data-download-action");
+            document.getElementById("assignmentFileDownloadLabel").textContent =
+                btn.getAttribute("data-download-label") || "과제 파일";
+            document.getElementById("assignmentFileDownloadNext").value =
+                window.location.pathname + window.location.search;
+            document.getElementById("assignmentFileDownloadPassword").value = "";
         });
     }
 })();

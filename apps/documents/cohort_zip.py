@@ -6,7 +6,9 @@ import io
 import logging
 import os
 import re
-import zipfile
+
+import pyzipper
+from rustyzipper import EncryptionMethod, compress_bytes
 
 from django.core.files.storage import default_storage
 
@@ -16,7 +18,6 @@ logger = logging.getLogger(__name__)
 
 _INVALID_ZIP_PATH = re.compile(r'[<>:"|?*\x00\\/]')
 _MIN_ZIP_BYTES = 22
-_ZIP_UTF8_FLAG = 0x800
 
 
 def _ensure_filename_extension(filename: str, storage_name: str) -> str:
@@ -85,11 +86,6 @@ def read_assignment_file_bytes(assignment: CounselorAssignmentSubmission) -> byt
     return None
 
 
-def assignment_file_exists(assignment: CounselorAssignmentSubmission) -> bool:
-    """다운로드 전 파일 존재 여부 (스토리지·로컬 경로)."""
-    return read_assignment_file_bytes(assignment) is not None
-
-
 def _dedupe_arcnames(entries: list[tuple[str, bytes]]) -> list[tuple[str, bytes]]:
     seen: dict[str, int] = {}
     unique: list[tuple[str, bytes]] = []
@@ -127,13 +123,18 @@ def collect_assignment_zip_entries(
     return _dedupe_arcnames(entries), missing
 
 
-def _verify_assignment_zip(zip_bytes: bytes, expected_names: list[str]) -> None:
-    """생성된 ZIP이 열리고 기대 파일명·내용이 있는지 검증."""
+def _verify_password_protected_zip(
+    zip_bytes: bytes,
+    password: str,
+    expected_names: list[str],
+) -> None:
+    """ZipCrypto ZIP 검증 — Windows 탐색기 호환 형식."""
     if len(zip_bytes) <= _MIN_ZIP_BYTES:
         raise ValueError("ZIP payload is too small")
 
     verify_buf = io.BytesIO(zip_bytes)
-    with zipfile.ZipFile(verify_buf, "r") as zf:
+    with pyzipper.ZipFile(verify_buf, "r") as zf:
+        zf.setpassword(password.encode("utf-8"))
         names = zf.namelist()
         if not names:
             raise ValueError("ZIP contains no entries")
@@ -147,22 +148,24 @@ def _verify_assignment_zip(zip_bytes: bytes, expected_names: list[str]) -> None:
                 raise ValueError(f"ZIP entry is empty: {arcname}")
 
 
-def build_cohort_assignment_zip(entries: list[tuple[str, bytes]]) -> bytes:
-    """동기 과제 일괄 ZIP — 표준 Deflate + UTF-8 파일명 (Windows 탐색기 호환)."""
+def build_password_protected_zip(
+    entries: list[tuple[str, bytes]],
+    password: str,
+) -> bytes:
+    """ZipCrypto 암호 ZIP — Windows 탐색기에서 압축 해제 가능."""
+    if not password:
+        raise ValueError("password is required")
+
     valid_entries = _dedupe_arcnames(entries)
     if not valid_entries:
         raise ValueError("no valid entries for ZIP")
 
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for arcname, data in valid_entries:
-            info = zipfile.ZipInfo(arcname)
-            info.compress_type = zipfile.ZIP_DEFLATED
-            info.flag_bits |= _ZIP_UTF8_FLAG
-            zf.writestr(info, data)
-
-    buffer.seek(0)
-    zip_bytes = buffer.getvalue()
+    zip_bytes = compress_bytes(
+        valid_entries,
+        password=password,
+        encryption=EncryptionMethod.ZIPCRYPTO,
+        suppress_warning=True,
+    )
     expected_names = [name for name, _ in valid_entries]
-    _verify_assignment_zip(zip_bytes, expected_names)
+    _verify_password_protected_zip(zip_bytes, password, expected_names)
     return zip_bytes
