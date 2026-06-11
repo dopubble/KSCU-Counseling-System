@@ -6,8 +6,7 @@ import io
 import logging
 import os
 import re
-
-import pyzipper
+import zipfile
 
 from django.core.files.storage import default_storage
 
@@ -17,15 +16,29 @@ logger = logging.getLogger(__name__)
 
 _INVALID_ZIP_PATH = re.compile(r'[<>:"|?*\x00\\/]')
 _MIN_ZIP_BYTES = 22
+_ZIP_UTF8_FLAG = 0x800
+
+
+def _ensure_filename_extension(filename: str, storage_name: str) -> str:
+    """ZIP 내부 파일명에 확장자(.hwp/.pdf 등)가 없으면 스토리지 경로에서 보완."""
+    if os.path.splitext(filename)[1]:
+        return filename
+    ext = os.path.splitext(storage_name.replace("\\", "/"))[1].lower()
+    if ext in {".pdf", ".hwp", ".doc", ".docx", ".jpg", ".jpeg"}:
+        return f"{filename}{ext}"
+    return filename
 
 
 def assignment_zip_arcname(assignment: CounselorAssignmentSubmission) -> str:
     """ZIP 내부 파일명 — 상담사·사례·회차·원본 파일명."""
+    original = assignment.get_filename() or f"assignment_{assignment.pk}"
+    if assignment.file and assignment.file.name:
+        original = _ensure_filename_extension(original, assignment.file.name)
     parts = [
         assignment.submitted_by.name,
         assignment.case.case_number,
         f"{assignment.session_number}회기",
-        assignment.get_filename(),
+        original,
     ]
     arcname = "_".join(str(part) for part in parts if part)
     arcname = _INVALID_ZIP_PATH.sub("_", arcname.replace("/", "_").replace("\\", "_"))
@@ -114,14 +127,13 @@ def collect_assignment_zip_entries(
     return _dedupe_arcnames(entries), missing
 
 
-def _verify_password_protected_zip(zip_bytes: bytes, password: str, expected_names: list[str]) -> None:
+def _verify_assignment_zip(zip_bytes: bytes, expected_names: list[str]) -> None:
     """생성된 ZIP이 열리고 기대 파일명·내용이 있는지 검증."""
     if len(zip_bytes) <= _MIN_ZIP_BYTES:
         raise ValueError("ZIP payload is too small")
 
     verify_buf = io.BytesIO(zip_bytes)
-    with pyzipper.AESZipFile(verify_buf, "r") as zf:
-        zf.setpassword(password.encode("utf-8"))
+    with zipfile.ZipFile(verify_buf, "r") as zf:
         names = zf.namelist()
         if not names:
             raise ValueError("ZIP contains no entries")
@@ -135,33 +147,22 @@ def _verify_password_protected_zip(zip_bytes: bytes, password: str, expected_nam
                 raise ValueError(f"ZIP entry is empty: {arcname}")
 
 
-def build_password_protected_zip(
-    entries: list[tuple[str, bytes]],
-    password: str,
-) -> bytes:
-    """WinZip AES 암호화 ZIP 바이트 반환 (pyzipper 0.4+)."""
-    if not password:
-        raise ValueError("password is required")
-
+def build_cohort_assignment_zip(entries: list[tuple[str, bytes]]) -> bytes:
+    """동기 과제 일괄 ZIP — 표준 Deflate + UTF-8 파일명 (Windows 탐색기 호환)."""
     valid_entries = _dedupe_arcnames(entries)
     if not valid_entries:
         raise ValueError("no valid entries for ZIP")
 
     buffer = io.BytesIO()
-    with pyzipper.AESZipFile(
-        buffer,
-        "w",
-        compression=pyzipper.ZIP_DEFLATED,
-        encryption=pyzipper.WZ_AES,
-        encryption_kwargs={"nbits": 256},
-    ) as zf:
-        zf.setpassword(password.encode("utf-8"))
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for arcname, data in valid_entries:
-            # pyzipper 0.4+: ZipInfo를 직접 writestr에 넘기면 AttributeError 발생.
-            zf.writestr(arcname, data)
+            info = zipfile.ZipInfo(arcname)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.flag_bits |= _ZIP_UTF8_FLAG
+            zf.writestr(info, data)
 
     buffer.seek(0)
     zip_bytes = buffer.getvalue()
     expected_names = [name for name, _ in valid_entries]
-    _verify_password_protected_zip(zip_bytes, password, expected_names)
+    _verify_assignment_zip(zip_bytes, expected_names)
     return zip_bytes

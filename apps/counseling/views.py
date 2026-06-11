@@ -77,7 +77,7 @@ from apps.scheduling.services import (
 from apps.scheduling.utils import ZoomAPIError, ZoomNotConfiguredError, is_zoom_configured
 from apps.documents.models import CounselorAssignmentSubmission, SessionMaterial
 from apps.documents.cohort_zip import (
-    build_password_protected_zip,
+    build_cohort_assignment_zip,
     collect_assignment_zip_entries,
     read_assignment_file_bytes,
 )
@@ -2168,14 +2168,9 @@ def counselor_assignment_upload(request, case_pk, session_number):
 @counselor_required
 @require_POST
 def counselor_cohort_assignments_zip(request, case_pk):
-    """동기 기수 과제 ZIP 일괄 다운로드 — 본인 기수만, 사용자 입력 암호로 AES 암호화."""
+    """동기 기수 과제 ZIP 일괄 다운로드 — 본인 기수만, Windows 탐색기 호환 ZIP."""
     case = _get_counselor_case(request, case_pk)
     fallback = reverse("counselor:case_detail", kwargs={"pk": case.pk})
-    zip_password, redirect_response = _get_download_password_from_request(
-        request, redirect_url=fallback, label="ZIP"
-    )
-    if redirect_response:
-        return redirect_response
 
     cohort = get_counselor_cohort(request.user)
     if cohort is None:
@@ -2213,7 +2208,7 @@ def counselor_cohort_assignments_zip(request, case_pk):
         return redirect(fallback)
 
     try:
-        zip_bytes = build_password_protected_zip(entries, zip_password)
+        zip_bytes = build_cohort_assignment_zip(entries)
     except Exception:
         logger.exception("Failed to build cohort assignment ZIP for case %s session %s", case.pk, session_number)
         messages.error(request, "ZIP 파일 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.")
