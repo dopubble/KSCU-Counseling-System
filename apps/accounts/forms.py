@@ -108,9 +108,7 @@ class SignUpForm(UserCreationForm):
         )
         if commit:
             user.save()
-            if user.role == UserRole.COUNSELOR:
-                CounselorProfile.objects.create(user=user)
-            elif user.role == UserRole.CLIENT:
+            if user.role == UserRole.CLIENT:
                 is_kcu = self.cleaned_data.get("is_kcu_student") == "yes"
                 ClientProfile.objects.create(
                     user=user,
