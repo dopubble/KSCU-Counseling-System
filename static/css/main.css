@@ -552,7 +552,8 @@ a.table-text-link:focus {
     line-height: 1.3;
 }
 
-.counselor-profile-email {
+.counselor-profile-email,
+.counselor-profile-contact {
     font-size: 0.8125rem;
     color: #6c757d;
     word-break: break-all;

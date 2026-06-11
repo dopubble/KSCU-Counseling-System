@@ -146,7 +146,13 @@
                                 </tr>
                                 <tr>
                                     <th>연락처</th>
-                                    <td>{{ case.client.phone|default:"—" }}</td>
+                                    <td>
+                                        <div class="d-flex flex-wrap align-items-center gap-2 case-contact-row">
+                                            <span>{{ case.client.phone|default:"—" }}</span>
+                                            <span class="text-muted" aria-hidden="true">·</span>
+                                            <span class="text-break">{{ case.client.email|default:"—" }}</span>
+                                        </div>
+                                    </td>
                                 </tr>
                                 <tr>
                                     <th>주요 호소 문제</th>
