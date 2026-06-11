@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import chat_views, views
 
 app_name = "client"
 
@@ -28,6 +28,21 @@ urlpatterns = [
         name="request_cancel",
     ),
     path("case/<uuid:pk>/", views.client_case_detail, name="case_detail"),
+    path(
+        "case/<uuid:pk>/chat/unread/",
+        chat_views.client_case_chat_unread,
+        name="case_chat_unread",
+    ),
+    path(
+        "case/<uuid:pk>/chat/messages/",
+        chat_views.client_case_chat_messages,
+        name="case_chat_messages",
+    ),
+    path(
+        "case/<uuid:pk>/chat/send/",
+        chat_views.client_case_chat_send,
+        name="case_chat_send",
+    ),
     path(
         "case/<uuid:case_pk>/shared-materials/<uuid:material_pk>/file/",
         views.client_shared_material_file,

@@ -2,13 +2,28 @@ from django.urls import path
 
 from apps.scheduling.views import appointment_manage
 
-from . import views
+from . import chat_views, views
 
 app_name = "counselor"
 
 urlpatterns = [
     path("", views.counselor_dashboard, name="dashboard"),
     path("case/<uuid:pk>/", views.counselor_case_detail, name="case_detail"),
+    path(
+        "case/<uuid:pk>/chat/unread/",
+        chat_views.counselor_case_chat_unread,
+        name="case_chat_unread",
+    ),
+    path(
+        "case/<uuid:pk>/chat/messages/",
+        chat_views.counselor_case_chat_messages,
+        name="case_chat_messages",
+    ),
+    path(
+        "case/<uuid:pk>/chat/send/",
+        chat_views.counselor_case_chat_send,
+        name="case_chat_send",
+    ),
     path(
         "case/<uuid:case_pk>/session/<uuid:appointment_pk>/confirm/",
         views.counselor_session_appointment_confirm,

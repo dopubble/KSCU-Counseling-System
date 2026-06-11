@@ -196,6 +196,46 @@ class Case(models.Model):
         super().save(*args, **kwargs)
 
 
+class ChatMessage(models.Model):
+    """사례별 1:1 실시간 채팅 메시지 (내담자 ↔ 담당 상담사)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    case = models.ForeignKey(
+        Case,
+        on_delete=models.CASCADE,
+        related_name="chat_messages",
+        verbose_name="사례",
+    )
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="sent_chat_messages",
+        verbose_name="보낸 사람",
+    )
+    recipient = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="received_chat_messages",
+        verbose_name="받는 사람",
+    )
+    body = models.TextField("메시지", max_length=2000)
+    is_read = models.BooleanField("읽음", default=False)
+    created_at = models.DateTimeField("보낸 시간", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "채팅 메시지"
+        verbose_name_plural = "채팅 메시지"
+        ordering = ["created_at"]
+        indexes = [
+            models.Index(fields=["case", "created_at"]),
+            models.Index(fields=["case", "recipient", "is_read"]),
+        ]
+
+    def __str__(self):
+        preview = (self.body[:40] + "…") if len(self.body) > 40 else self.body
+        return f"{self.case.case_number} — {self.sender.name}: {preview}"
+
+
 class SessionScheduleChangeRequest(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     case = models.ForeignKey(

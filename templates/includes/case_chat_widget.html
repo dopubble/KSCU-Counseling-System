@@ -1,0 +1,50 @@
+{# 사례 상세 전용 플로팅 1:1 채팅 — case.counselor 배정 후 표시 #}
+{% if case.counselor %}
+<div id="caseChatRoot"
+     class="case-chat-root"
+     data-messages-url="{{ chat_messages_url }}"
+     data-send-url="{{ chat_send_url }}"
+     data-unread-url="{{ chat_unread_url }}"
+     data-user-id="{{ request.user.pk }}"
+     data-partner-name="{{ chat_partner_name|escape }}">
+    <div id="caseChatPanel" class="case-chat-panel d-none" aria-hidden="true">
+        <div class="case-chat-panel-header">
+            <div>
+                <p class="case-chat-panel-title mb-0">1:1 채팅</p>
+                <p class="case-chat-panel-subtitle mb-0">{{ chat_partner_name }}</p>
+            </div>
+            <button type="button"
+                    class="btn-close case-chat-close-btn"
+                    id="caseChatCloseBtn"
+                    aria-label="채팅 닫기"></button>
+        </div>
+        <div id="caseChatMessages" class="case-chat-messages" role="log" aria-live="polite"></div>
+        <form id="caseChatForm" class="case-chat-form">
+            {% csrf_token %}
+            <input type="text"
+                   id="caseChatInput"
+                   class="form-control form-control-sm case-chat-input"
+                   placeholder="메시지 입력…"
+                   maxlength="2000"
+                   autocomplete="off"
+                   aria-label="채팅 메시지">
+            <button type="submit" class="btn btn-sm btn-primary case-chat-send-btn" aria-label="전송">
+                <i class="bi bi-send" aria-hidden="true"></i>
+            </button>
+        </form>
+    </div>
+    <div class="case-chat-toggle-wrap">
+        <button type="button"
+                id="caseChatToggleBtn"
+                class="case-chat-toggle-btn"
+                aria-expanded="false"
+                aria-controls="caseChatPanel"
+                title="1:1 채팅">
+            <i class="bi bi-chat-dots-fill" aria-hidden="true"></i>
+        </button>
+        <span id="caseChatUnreadBadge"
+              class="case-chat-unread-badge d-none"
+              aria-hidden="true"></span>
+    </div>
+</div>
+{% endif %}

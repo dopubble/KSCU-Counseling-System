@@ -5,6 +5,7 @@
 
 {% block extra_css %}
 <link href="{% static 'css/counselor.css' %}" rel="stylesheet">
+<link href="{% static 'css/case_chat.css' %}" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" rel="stylesheet">
 {% endblock %}
 
@@ -211,6 +212,12 @@
 {% include "client/partials/session_action_modals.html" %}
 {{ counselor_blocked_dates|json_script:"counselor-blocked-dates" }}
 {{ counselor_availability_rules|json_script:"counselor-availability-rules" }}
+{% if case.counselor %}
+{% url 'client:case_chat_messages' case.pk as chat_messages_url %}
+{% url 'client:case_chat_send' case.pk as chat_send_url %}
+{% url 'client:case_chat_unread' case.pk as chat_unread_url %}
+{% include "includes/case_chat_widget.html" with chat_partner_name=case.counselor.name %}
+{% endif %}
 {% endblock %}
 {% endblock %}
 
@@ -218,6 +225,9 @@
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ko.js"></script>
 <script src="{% static 'js/client_schedule_calendar.js' %}?v=6"></script>
+{% if case.counselor %}
+<script src="{% static 'js/case_chat.js' %}?v=2"></script>
+{% endif %}
 <script>
 (function () {
     const modal = document.getElementById("cancelRequestModal");

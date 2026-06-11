@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Case, CounselingApplication, SessionScheduleChangeRequest
+from .models import Case, ChatMessage, CounselingApplication, SessionScheduleChangeRequest
 
 
 @admin.register(CounselingApplication)
@@ -46,6 +46,18 @@ class CaseAdmin(admin.ModelAdmin):
     list_filter = ("status", "risk_level", "counseling_method")
     search_fields = ("case_number", "client__name", "counselor__name")
     readonly_fields = ("case_number", "opened_at")
+
+
+@admin.register(ChatMessage)
+class ChatMessageAdmin(admin.ModelAdmin):
+    list_display = ("case", "sender", "recipient", "body_preview", "created_at")
+    list_filter = ("created_at",)
+    search_fields = ("case__case_number", "sender__name", "recipient__name", "body")
+    readonly_fields = ("created_at",)
+
+    @admin.display(description="메시지")
+    def body_preview(self, obj):
+        return (obj.body[:60] + "…") if len(obj.body) > 60 else obj.body
 
 
 @admin.register(SessionScheduleChangeRequest)
