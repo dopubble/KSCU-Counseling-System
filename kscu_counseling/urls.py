@@ -4,10 +4,12 @@ from django.contrib import admin
 from django.urls import include, path
 
 from apps.accounts.views import home
+from apps.reports.views import platform_user_manual
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("", home, name="home"),
+    path("manual/", platform_user_manual, name="platform_user_manual"),
     path("counseling/", include("apps.counseling.urls")),
     path("counseling/counselor/", include("apps.counseling.urls_counselor")),
     path("accounts/", include("apps.accounts.urls")),

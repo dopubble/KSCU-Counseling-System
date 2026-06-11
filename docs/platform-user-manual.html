@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>전문상담사 수련과정 플랫폼 이용 매뉴얼 | KSCU 상담센터</title>
+  <meta name="description" content="숭실사이버대학교 평생교육원 전문상담사 수련과정 플랫폼 — 내담자·상담사·관리자 이용 가이드">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            kscu: {
+              DEFAULT: '#003366',
+              light: '#0d4a7a',
+              pale: '#e8f0f8',
+            },
+          },
+          fontFamily: {
+            sans: ['Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', 'sans-serif'],
+          },
+        },
+      },
+    };
+  </script>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <style>
+    @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+    html { scroll-behavior: smooth; }
+    .tab-panel { display: none; animation: fadeIn .35s ease; }
+    .tab-panel.active { display: block; }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .step-num {
+      width: 2rem; height: 2rem;
+      display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 9999px; font-weight: 700; font-size: .875rem;
+      background: #003366; color: #fff; flex-shrink: 0;
+    }
+    @media print {
+      .no-print { display: none !important; }
+      .tab-panel { display: block !important; page-break-before: always; }
+      .tab-panel:first-of-type { page-break-before: auto; }
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased">
+
+  <!-- Hero -->
+  <header class="bg-gradient-to-br from-kscu via-kscu-light to-slate-800 text-white">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
+      <p class="text-blue-200 text-sm font-medium tracking-wide uppercase mb-2">KSCU Counseling Platform</p>
+      <h1 class="text-3xl sm:text-4xl font-bold leading-tight mb-3">
+        전문상담사 수련과정<br class="sm:hidden"> 플랫폼 이용 매뉴얼
+      </h1>
+      <p class="text-blue-100 text-base sm:text-lg max-w-2xl leading-relaxed">
+        숭실사이버대학교 평생교육원 상담센터 통합 플랫폼의 주요 기능을
+        역할별(내담자 · 상담사 · 관리자)로 안내합니다.
+      </p>
+      <div class="mt-6 flex flex-wrap gap-3 text-sm">
+        <span class="inline-flex items-center gap-1.5 bg-white/10 backdrop-blur px-3 py-1.5 rounded-full">
+          🌐 <a href="https://kscu-counseling-system-production.up.railway.app/" class="underline hover:text-white" target="_blank" rel="noopener">플랫폼 접속</a>
+        </span>
+        <span class="inline-flex items-center gap-1.5 bg-white/10 backdrop-blur px-3 py-1.5 rounded-full">📅 최종 업데이트: 2026년 6월</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Tab Navigation -->
+  <nav class="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm no-print" aria-label="역할별 매뉴얼 탭">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6">
+      <div class="flex gap-1 sm:gap-2 py-3 overflow-x-auto" role="tablist">
+        <button type="button" role="tab" id="tab-btn-client" aria-selected="true" aria-controls="panel-client"
+          data-tab="client"
+          class="tab-btn flex-shrink-0 px-4 sm:px-6 py-2.5 rounded-lg text-sm font-semibold transition-all bg-kscu text-white shadow-md">
+          👤 내담자 (Client)
+        </button>
+        <button type="button" role="tab" id="tab-btn-counselor" aria-selected="false" aria-controls="panel-counselor"
+          data-tab="counselor"
+          class="tab-btn flex-shrink-0 px-4 sm:px-6 py-2.5 rounded-lg text-sm font-semibold transition-all text-slate-600 hover:bg-slate-100">
+          🎓 상담사 (Counselor)
+        </button>
+        <button type="button" role="tab" id="tab-btn-admin" aria-selected="false" aria-controls="panel-admin"
+          data-tab="admin"
+          class="tab-btn flex-shrink-0 px-4 sm:px-6 py-2.5 rounded-lg text-sm font-semibold transition-all text-slate-600 hover:bg-slate-100">
+          🛡️ 관리자 (Admin)
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
+
+    <!-- ==================== CLIENT ==================== -->
+    <section id="panel-client" role="tabpanel" aria-labelledby="tab-btn-client" class="tab-panel active space-y-8">
+
+      <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 sm:p-6">
+        <h2 class="text-lg font-bold text-emerald-900 mb-1">내담자(Client)란?</h2>
+        <p class="text-emerald-800 text-sm leading-relaxed">
+          상담을 신청하고 받는 이용자입니다. 회원가입 후 <strong>관리자 승인 없이 즉시</strong> 로그인하여
+          상담 신청·예약·자료 공유·채팅·Zoom 상담까지 이용할 수 있습니다.
+        </p>
+      </div>
+
+      <!-- 1. Signup -->
+      <article class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="bg-kscu-pale px-5 sm:px-6 py-4 border-b border-slate-200">
+          <h2 class="text-xl font-bold text-kscu">1. 회원가입 및 즉시 로그인</h2>
+        </div>
+        <div class="p-5 sm:p-6 space-y-4">
+          <p class="text-slate-600 leading-relaxed">
+            내담자는 가입 유형에서 <strong>「내담자」</strong>를 선택하면, 관리자 승인 절차 없이
+            가입과 동시에 계정이 활성화(<code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">ACTIVE</code>)됩니다.
+            가입 완료 후 자동으로 로그인되어 <strong>내 상담실(대시보드)</strong>로 이동합니다.
+          </p>
+          <ol class="space-y-3">
+            <li class="flex gap-3 items-start">
+              <span class="step-num">1</span>
+              <div><strong>회원가입</strong> — 상단 메뉴 또는 홈 화면에서 「회원가입」 클릭 → <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">/accounts/signup/</code></div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">2</span>
+              <div>가입 유형 <strong>「내담자」</strong> 선택, 이메일·이름·생년월일·학생 여부 등 필수 정보 입력</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">3</span>
+              <div>이용약관 동의 후 「가입하기」 — 곧바로 로그인되어 대시보드로 이동</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">4</span>
+              <div><strong>상담 신청</strong> — 「상담 신청」 메뉴(<code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">/counseling/apply/</code>)에서 호소 문제·희망 일정 등 작성 후 제출</div>
+            </li>
+          </ol>
+          <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-900">
+            💡 <strong>참고:</strong> 상담사 계정과 달리 내담자는 「승인 대기」 화면 없이 바로 서비스를 이용할 수 있습니다.
+          </div>
+        </div>
+      </article>
+
+      <!-- 2. Case detail -->
+      <article class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="bg-kscu-pale px-5 sm:px-6 py-4 border-b border-slate-200">
+          <h2 class="text-xl font-bold text-kscu">2. 상담 상세페이지 &amp; 상담 방식 확인</h2>
+        </div>
+        <div class="p-5 sm:p-6 space-y-4">
+          <p class="text-slate-600 leading-relaxed">
+            관리자가 상담사를 배정하면 <strong>내 상담실 → 상담 상세</strong> 페이지에서 사례 정보를 확인할 수 있습니다.
+          </p>
+          <ol class="space-y-3">
+            <li class="flex gap-3 items-start">
+              <span class="step-num">1</span>
+              <div>대시보드에서 진행 중인 사례 카드를 클릭하거나, 사례번호 링크로 상세 페이지 진입</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">2</span>
+              <div>좌측 <strong>「내 상담 정보」</strong> 영역에서 이름 옆 <strong>「상담진행방식: 대면 / 비대면」</strong> 라벨 확인</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">3</span>
+              <div>담당 상담사 정보(이름·이메일) 및 상담사 <strong>가용·차단 일정</strong> 목록도 함께 표시됩니다</div>
+            </li>
+          </ol>
+          <div class="grid sm:grid-cols-2 gap-3 text-sm">
+            <div class="rounded-xl border border-blue-200 bg-blue-50 p-4">
+              <p class="font-bold text-blue-900 mb-1">🏢 대면 (IN_PERSON)</p>
+              <p class="text-blue-800">센터 또는 지정 장소에서 대면 상담이 진행됩니다.</p>
+            </div>
+            <div class="rounded-xl border border-violet-200 bg-violet-50 p-4">
+              <p class="font-bold text-violet-900 mb-1">💻 비대면 (REMOTE)</p>
+              <p class="text-violet-800">Zoom 화상 상담으로 진행됩니다. 회기 카드에 Zoom 버튼이 표시됩니다.</p>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <!-- 3. Chat -->
+      <article class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="bg-kscu-pale px-5 sm:px-6 py-4 border-b border-slate-200">
+          <h2 class="text-xl font-bold text-kscu">3. 1:1 실시간 채팅 및 알림</h2>
+        </div>
+        <div class="p-5 sm:p-6 space-y-4">
+          <p class="text-slate-600 leading-relaxed">
+            담당 상담사가 배정된 사례 상세 페이지에서만 <strong>우측 하단 플로팅 채팅 버튼</strong>이 나타납니다.
+          </p>
+          <ol class="space-y-3">
+            <li class="flex gap-3 items-start">
+              <span class="step-num">1</span>
+              <div>화면 우측 하단 <strong>💬 채팅 아이콘</strong> 버튼 클릭 → 채팅 패널 열림</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">2</span>
+              <div>메시지 입력 후 전송 — 상담사와 실시간 1:1 대화 (폴링 방식 갱신)</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">3</span>
+              <div>채팅창을 닫아 두면, 상담사의 새 메시지가 올 때 버튼 위 <strong class="text-red-600">🔴 빨간색 알림 배지</strong>가 표시됩니다</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">4</span>
+              <div>채팅을 다시 열면 읽음 처리되며 배지가 사라집니다</div>
+            </li>
+          </ol>
+          <div class="bg-slate-100 rounded-xl p-4 text-sm text-slate-700">
+            채팅은 사례 상세 페이지에 있을 때만 동작합니다. 다른 메뉴로 이동하면 자동으로 폴링이 중지됩니다.
+          </div>
+        </div>
+      </article>
+
+      <!-- 4. Files -->
+      <article class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="bg-kscu-pale px-5 sm:px-6 py-4 border-b border-slate-200">
+          <h2 class="text-xl font-bold text-kscu">4. 파일 첨부 및 공유</h2>
+        </div>
+        <div class="p-5 sm:p-6 space-y-4">
+          <ol class="space-y-3">
+            <li class="flex gap-3 items-start">
+              <span class="step-num">1</span>
+              <div>상담 상세 페이지 하단 <strong>회기별 카드</strong> 영역으로 이동</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">2</span>
+              <div>해당 회기의 <strong>「📎 자료 첨부」</strong> 버튼 클릭</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">3</span>
+              <div>과제, 심리검사 결과지, 상담 관련 자료 등 파일 선택 후 업로드</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">4</span>
+              <div>업로드된 파일은 담당 상담사가 같은 회기 카드에서 즉시 확인·다운로드할 수 있습니다</div>
+            </li>
+          </ol>
+        </div>
+      </article>
+
+      <!-- 5. Zoom -->
+      <article class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="bg-kscu-pale px-5 sm:px-6 py-4 border-b border-slate-200">
+          <h2 class="text-xl font-bold text-kscu">5. 비대면 Zoom 상담 참여</h2>
+        </div>
+        <div class="p-5 sm:p-6 space-y-4">
+          <p class="text-slate-600 leading-relaxed">
+            상담진행방식이 <strong>비대면</strong>이고, 해당 회기 예약이 <strong>확정(CONFIRMED)</strong>된 경우에만 Zoom 버튼이 활성화됩니다.
+          </p>
+          <ol class="space-y-3">
+            <li class="flex gap-3 items-start">
+              <span class="step-num">1</span>
+              <div>상담 상세 페이지 회기 카드에서 <strong>「📹 Zoom 회의 바로가기」</strong> 버튼 확인</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">2</span>
+              <div>예약된 상담 시작 시간에 맞춰 버튼 클릭 → Zoom 회의실 새 탭에서 접속</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">3</span>
+              <div>카메라·마이크 권한 허용 후 상담사와 화상 상담 진행</div>
+            </li>
+          </ol>
+          <div class="bg-violet-50 border border-violet-200 rounded-xl p-4 text-sm text-violet-900">
+            Zoom 링크는 상담사가 예약을 확정할 때 자동 생성·등록됩니다. 버튼이 보이지 않으면 예약 확정 여부를 확인하세요.
+          </div>
+        </div>
+      </article>
+
+      <!-- 6. Availability [NEW] -->
+      <article class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden ring-2 ring-sky-200">
+        <div class="bg-sky-50 px-5 sm:px-6 py-4 border-b border-sky-200 flex items-center gap-2">
+          <span class="text-xs font-bold bg-sky-600 text-white px-2 py-0.5 rounded">신규</span>
+          <h2 class="text-xl font-bold text-kscu">6. 이용 가능 / 불가 시간 입력</h2>
+        </div>
+        <div class="p-5 sm:p-6 space-y-4">
+          <p class="text-slate-600 leading-relaxed">
+            2회기 이후 예약을 원활히 조율하기 위해, 내담자는 <strong>마이페이지(내정보 수정)</strong> 또는
+            <strong>상담 상세 → 회기 예약</strong> 화면에서 본인의 상담 가능·불가 시간대를 등록합니다.
+          </p>
+          <ol class="space-y-3">
+            <li class="flex gap-3 items-start">
+              <span class="step-num">1</span>
+              <div>우측 상단 프로필 메뉴 → <strong>「내정보 수정」</strong> (<code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">/accounts/profile/</code>) 진입</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">2</span>
+              <div><strong>「상담 가능 시간」</strong> 섹션에서 캘린더 또는 주간 타임테이블 뷰 선택</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">3</span>
+              <div>가능한 시간대는 <span class="text-green-700 font-semibold">초록색</span>,
+                불가능한 시간대는 <span class="text-red-600 font-semibold">빨간색</span>으로 드래그 또는 클릭하여 표시</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">4</span>
+              <div><strong>「저장하기」</strong> 클릭 — 담당 상담사가 예약 조율 시 해당 정보를 참고합니다</div>
+            </li>
+          </ol>
+          <p class="text-sm text-slate-500">
+            ※ 상담 상세 페이지에서 회기 예약 시에도 달력 UI를 통해 상담사 가용 시간(가능/불가)을 함께 확인할 수 있습니다.
+          </p>
+        </div>
+      </article>
+
+      <!-- 7. Session 2+ booking [NEW] -->
+      <article class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden ring-2 ring-sky-200">
+        <div class="bg-sky-50 px-5 sm:px-6 py-4 border-b border-sky-200 flex items-center gap-2">
+          <span class="text-xs font-bold bg-sky-600 text-white px-2 py-0.5 rounded">신규</span>
+          <h2 class="text-xl font-bold text-kscu">7. 2회기 이후 예약 확인 및 확정</h2>
+        </div>
+        <div class="p-5 sm:p-6 space-y-4">
+          <p class="text-slate-600 leading-relaxed">
+            1회기 종료 후, 상담사와 다음 회기 일정을 조율합니다. 상담사가 제안한 일정을 확인하고 승인하거나,
+            직접 희망 일시를 신청할 수 있습니다.
+          </p>
+          <div class="rounded-xl bg-slate-50 border border-slate-200 p-4">
+            <p class="font-semibold text-slate-800 mb-3">📋 예약 프로세스 흐름</p>
+            <div class="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-0 text-sm">
+              <span class="bg-white border px-3 py-2 rounded-lg shadow-sm">내담자 시간 입력</span>
+              <span class="hidden sm:inline text-slate-400 mx-2">→</span>
+              <span class="bg-white border px-3 py-2 rounded-lg shadow-sm">상담사 일정 제안/등록</span>
+              <span class="hidden sm:inline text-slate-400 mx-2">→</span>
+              <span class="bg-white border px-3 py-2 rounded-lg shadow-sm">내담자 확인</span>
+              <span class="hidden sm:inline text-slate-400 mx-2">→</span>
+              <span class="bg-kscu text-white px-3 py-2 rounded-lg shadow-sm font-semibold">예약 확정</span>
+            </div>
+          </div>
+          <ol class="space-y-3">
+            <li class="flex gap-3 items-start">
+              <span class="step-num">1</span>
+              <div>상담 상세 페이지 <strong>회기 카드</strong>에서 해당 회기(2회기, 3회기 …) 확인</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">2</span>
+              <div>상담사가 제안한 일정이 있으면 회기 상태가 <strong>「예약 요청」</strong>으로 표시되고 희망 일시가 보입니다</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">3</span>
+              <div>일정이 맞으면 <strong>「✅ 예약 확정 / 승인」</strong> 버튼 클릭 — 최종 예약 완료</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">4</span>
+              <div>직접 예약하려면 <strong>「📅 상담일정 예약」</strong> 버튼 → 달력에서 상담사 가용 시간 선택 → 신청</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">5</span>
+              <div>상담사 확정 후 회기 상태가 <strong>「예약 확정」</strong>으로 변경되며, 비대면인 경우 Zoom 버튼 활성화</div>
+            </li>
+          </ol>
+          <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-900">
+            ⚠️ 상담 24시간 이내에는 일정 변경·취소가 제한될 수 있습니다. 미리 조율해 주세요.
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <!-- ==================== COUNSELOR ==================== -->
+    <section id="panel-counselor" role="tabpanel" aria-labelledby="tab-btn-counselor" class="tab-panel space-y-8">
+
+      <div class="bg-indigo-50 border border-indigo-200 rounded-2xl p-5 sm:p-6">
+        <h2 class="text-lg font-bold text-indigo-900 mb-1">상담사(Counselor)란?</h2>
+        <p class="text-indigo-800 text-sm leading-relaxed">
+          수련과정 전문상담사로, 관리자 배정을 통해 내담자를 담당합니다.
+          <strong>회원가입 후 관리자 승인</strong>이 완료되어야 로그인 및 업무가 가능합니다.
+        </p>
+      </div>
+
+      <article class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="bg-kscu-pale px-5 sm:px-6 py-4 border-b border-slate-200">
+          <h2 class="text-xl font-bold text-kscu">1. 회원가입 및 승인 대기</h2>
+        </div>
+        <div class="p-5 sm:p-6 space-y-4">
+          <ol class="space-y-3">
+            <li class="flex gap-3 items-start">
+              <span class="step-num">1</span>
+              <div>회원가입 시 가입 유형 <strong>「상담사」</strong> 선택 후 정보 입력·제출</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">2</span>
+              <div>가입 완료 후 계정 상태가 <strong>「승인대기(PENDING)」</strong>로 저장 — 이 상태에서는 로그인 불가</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">3</span>
+              <div>관리자가 Django Admin 또는 운영 화면에서 <strong>계정 상태(ACTIVE)</strong> 및
+                <strong>상담사 프로필 승인(is_approved)</strong>·<strong>기수</strong>를 설정</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">4</span>
+              <div>승인 완료 후 로그인 → <strong>상담사 대시보드</strong>에서 배정 사례 확인</div>
+            </li>
+          </ol>
+          <div class="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-900">
+            🔒 승인 전 로그인 시도 시 「이메일 또는 비밀번호가 올바르지 않습니다」 또는 「승인 대기」 안내가 표시됩니다.
+          </div>
+        </div>
+      </article>
+
+      <article class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="bg-kscu-pale px-5 sm:px-6 py-4 border-b border-slate-200">
+          <h2 class="text-xl font-bold text-kscu">2. 배정 사례 및 상담 방식 관리</h2>
+        </div>
+        <div class="p-5 sm:p-6 space-y-4">
+          <ol class="space-y-3">
+            <li class="flex gap-3 items-start">
+              <span class="step-num">1</span>
+              <div>로그인 후 <strong>「내 사례」</strong> 대시보드(<code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">/counseling/counselor/</code>)에서 배정된 내담자 목록 확인</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">2</span>
+              <div>사례 상세 페이지 진입 → 내담자 정보·사례번호·남은 회기 수 확인</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">3</span>
+              <div>사례 정보에서 <strong>상담진행방식(대면/비대면)</strong> 확인 — 비대면 사례는 Zoom 연동 대상</div>
+            </li>
+          </ol>
+        </div>
+      </article>
+
+      <article class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="bg-kscu-pale px-5 sm:px-6 py-4 border-b border-slate-200">
+          <h2 class="text-xl font-bold text-kscu">3. 내담자 파일 확인</h2>
+        </div>
+        <div class="p-5 sm:p-6 space-y-4">
+          <ol class="space-y-3">
+            <li class="flex gap-3 items-start">
+              <span class="step-num">1</span>
+              <div>사례 상세 페이지 각 <strong>회기 카드</strong>의 자료 영역 확인</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">2</span>
+              <div>내담자가 업로드한 과제·검사 결과·첨부파일 목록이 실시간으로 표시</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">3</span>
+              <div>파일명 클릭 → 다운로드하여 상담 준비·기록에 활용</div>
+            </li>
+          </ol>
+        </div>
+      </article>
+
+      <article class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="bg-kscu-pale px-5 sm:px-6 py-4 border-b border-slate-200">
+          <h2 class="text-xl font-bold text-kscu">4. 1:1 채팅 및 Zoom 조율</h2>
+        </div>
+        <div class="p-5 sm:p-6 space-y-4">
+          <h3 class="font-semibold text-slate-800">💬 1:1 채팅</h3>
+          <ol class="space-y-3 mb-4">
+            <li class="flex gap-3 items-start">
+              <span class="step-num">1</span>
+              <div>사례 상세 페이지 우측 하단 플로팅 <strong>채팅 버튼</strong> 클릭</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">2</span>
+              <div>내담자와 실시간 메시지 교환 — 일정·과제·Zoom 안내 등 자유롭게 소통</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">3</span>
+              <div>채팅창을 닫은 상태에서 새 메시지 수신 시 <strong class="text-red-600">🔴 알림 배지</strong> 표시</div>
+            </li>
+          </ol>
+          <h3 class="font-semibold text-slate-800">📹 Zoom (비대면)</h3>
+          <ol class="space-y-3">
+            <li class="flex gap-3 items-start">
+              <span class="step-num">1</span>
+              <div>내담자의 예약 요청을 <strong>「예약 확인 및 확정」</strong> 처리하면 Zoom 회의가 자동 생성</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">2</span>
+              <div>확정된 회기 카드의 Zoom 링크로 회의 시작 — 내담자도 동일 링크로 접속</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">3</span>
+              <div>일정 변경 시 시스템이 Zoom 회의 시간을 함께 갱신</div>
+            </li>
+          </ol>
+        </div>
+      </article>
+
+      <article class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden ring-2 ring-sky-200">
+        <div class="bg-sky-50 px-5 sm:px-6 py-4 border-b border-sky-200 flex items-center gap-2">
+          <span class="text-xs font-bold bg-sky-600 text-white px-2 py-0.5 rounded">신규</span>
+          <h2 class="text-xl font-bold text-kscu">5. 내담자 가능 시간 확인 및 일정 요청</h2>
+        </div>
+        <div class="p-5 sm:p-6 space-y-4">
+          <ol class="space-y-3">
+            <li class="flex gap-3 items-start">
+              <span class="step-num">1</span>
+              <div>사례 상세 또는 내담자 프로필에서 <strong>내담자가 입력한 가능/불가 시간</strong> 확인</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">2</span>
+              <div>본인의 <strong>「가용 시간」</strong> 메뉴(<code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">/scheduling/availability/</code>)에서
+                매주 반복·특정 날짜·가능/차단 시간 등록</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">3</span>
+              <div>양측 일정을 조율한 뒤, 사례 상세 <strong>「대기 중인 예약 신청」</strong> 위젯 또는 회기 카드에서
+                다음 회기 일시 등록</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">4</span>
+              <div><strong>「예약 확인 및 확정」</strong> 클릭 → 내담자에게 확정 알림 발송 (비대면 시 Zoom 자동 생성)</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">5</span>
+              <div>내담자가 직접 예약 요청한 경우, 좌측 <strong>「대기 중인 예약 신청」</strong> 알림에서 검토 후 확정/반려</div>
+            </li>
+          </ol>
+        </div>
+      </article>
+
+      <article class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="bg-kscu-pale px-5 sm:px-6 py-4 border-b border-slate-200">
+          <h2 class="text-xl font-bold text-kscu">부록: 상담사 주요 메뉴</h2>
+        </div>
+        <div class="p-5 sm:p-6">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm border-collapse">
+              <thead>
+                <tr class="bg-slate-100">
+                  <th class="text-left p-3 border border-slate-200 font-semibold">메뉴</th>
+                  <th class="text-left p-3 border border-slate-200 font-semibold">경로</th>
+                  <th class="text-left p-3 border border-slate-200 font-semibold">설명</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td class="p-3 border border-slate-200">내 사례</td><td class="p-3 border border-slate-200 font-mono text-xs">/counseling/counselor/</td><td class="p-3 border border-slate-200">배정 사례 목록</td></tr>
+                <tr><td class="p-3 border border-slate-200">가용 시간</td><td class="p-3 border border-slate-200 font-mono text-xs">/scheduling/availability/</td><td class="p-3 border border-slate-200">상담 가능·차단 시간 설정</td></tr>
+                <tr><td class="p-3 border border-slate-200">내정보 수정</td><td class="p-3 border border-slate-200 font-mono text-xs">/accounts/profile/</td><td class="p-3 border border-slate-200">연락처·비밀번호 변경</td></tr>
+                <tr><td class="p-3 border border-slate-200">상담일지</td><td class="p-3 border border-slate-200 font-mono text-xs">사례 상세 내</td><td class="p-3 border border-slate-200">회기별 기록지·종결기록지 작성</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <!-- ==================== ADMIN ==================== -->
+    <section id="panel-admin" role="tabpanel" aria-labelledby="tab-btn-admin" class="tab-panel space-y-8">
+
+      <div class="bg-orange-50 border border-orange-200 rounded-2xl p-5 sm:p-6">
+        <h2 class="text-lg font-bold text-orange-900 mb-1">관리자(Admin)란?</h2>
+        <p class="text-orange-800 text-sm leading-relaxed">
+          센터 운영 담당자로, 상담사 승인·내담자-상담사 매칭·일정 모니터링·통계 등
+          플랫폼 전반을 관리합니다. <strong>관리자 패널</strong>(<code class="text-xs bg-orange-100 px-1 py-0.5 rounded">/admin-panel/</code>)과
+          Django Admin(<code class="text-xs bg-orange-100 px-1 py-0.5 rounded">/admin/</code>)을 함께 사용합니다.
+        </p>
+      </div>
+
+      <article class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="bg-kscu-pale px-5 sm:px-6 py-4 border-b border-slate-200">
+          <h2 class="text-xl font-bold text-kscu">1. 상담사 계정 승인</h2>
+        </div>
+        <div class="p-5 sm:p-6 space-y-4">
+          <ol class="space-y-3">
+            <li class="flex gap-3 items-start">
+              <span class="step-num">1</span>
+              <div>Django Admin → <strong>사용자(Users)</strong> 목록에서 신규 상담사 계정 검색</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">2</span>
+              <div>계정 <strong>상태(status)</strong>를 <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">ACTIVE</code>로 변경
+                → <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">is_active</code>가 자동으로 <strong>True</strong> 설정</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">3</span>
+              <div>하단 <strong>상담사 프로필(CounselorProfile)</strong>에서
+                <strong>승인(is_approved) ✓</strong> 체크 및 <strong>기수(cohort)</strong> 입력 (필수)</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">4</span>
+              <div>저장 — 상담사가 로그인하여 대시보드 이용 가능</div>
+            </li>
+          </ol>
+          <div class="bg-slate-100 rounded-xl p-4 text-sm">
+            운영 패널 <strong>「기수별 상담사 명단」</strong>(<code class="text-xs bg-white px-1 py-0.5 rounded">/admin-panel/counselors/</code>)에서
+            승인·기수 현황을 한눈에 확인할 수 있습니다.
+          </div>
+        </div>
+      </article>
+
+      <article class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="bg-kscu-pale px-5 sm:px-6 py-4 border-b border-slate-200">
+          <h2 class="text-xl font-bold text-kscu">2. 매칭 데이터 및 Zoom 링크 주입</h2>
+        </div>
+        <div class="p-5 sm:p-6 space-y-4">
+          <h3 class="font-semibold text-slate-800">🔗 내담자–상담사 매칭</h3>
+          <ol class="space-y-3 mb-6">
+            <li class="flex gap-3 items-start">
+              <span class="step-num">1</span>
+              <div><strong>관리자 패널 → 상담 통합 관리</strong> 또는 <strong>상담사 매칭</strong>
+                (<code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">/admin-panel/matching/</code>)</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">2</span>
+              <div>「매칭 대기」 필터에서 신규 내담자 신청 목록 확인</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">3</span>
+              <div>해당 신청 → <strong>「상담사 배정」</strong> → 담당 상담사·총 회기 수 입력 후 저장</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">4</span>
+              <div>사례(Case) 생성 및 내담자·상담사에게 알림 발송</div>
+            </li>
+          </ol>
+          <h3 class="font-semibold text-slate-800">📦 일괄 1회기 매칭 (운영)</h3>
+          <ol class="space-y-3 mb-6">
+            <li class="flex gap-3 items-start">
+              <span class="step-num">1</span>
+              <div>기수별 JSON/CSV 매칭 데이터 준비</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">2</span>
+              <div>서버에서 <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">python manage.py import_session1_matches</code> 실행</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">3</span>
+              <div>내담자–상담사 배정 + 1회기 확정 예약 일괄 생성</div>
+            </li>
+          </ol>
+          <h3 class="font-semibold text-slate-800">📹 Zoom 링크 (비대면)</h3>
+          <ul class="list-disc list-inside space-y-2 text-slate-600 ml-2">
+            <li>비대면(REMOTE) 사례는 상담사가 예약 확정 시 Zoom API로 회의 자동 생성</li>
+            <li>생성된 URL은 사례(<code class="text-xs bg-slate-100 px-1 py-0.5 rounded">Case.zoom_meeting_url</code>)에 저장</li>
+            <li>환경 변수 <code class="text-xs bg-slate-100 px-1 py-0.5 rounded">ZOOM_ACCOUNT_ID</code>, <code class="text-xs bg-slate-100 px-1 py-0.5 rounded">ZOOM_CLIENT_ID</code>, <code class="text-xs bg-slate-100 px-1 py-0.5 rounded">ZOOM_CLIENT_SECRET</code> 설정 필요</li>
+            <li>수동 주입이 필요한 경우 Django Admin → 사례(Case)에서 Zoom URL 직접 입력 가능</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden ring-2 ring-sky-200">
+        <div class="bg-sky-50 px-5 sm:px-6 py-4 border-b border-sky-200 flex items-center gap-2">
+          <span class="text-xs font-bold bg-sky-600 text-white px-2 py-0.5 rounded">신규</span>
+          <h2 class="text-xl font-bold text-kscu">3. 예약 및 스케줄 현황 모니터링</h2>
+        </div>
+        <div class="p-5 sm:p-6 space-y-4">
+          <p class="text-slate-600 leading-relaxed">
+            2회기부터 내담자와 상담사가 상호 조율하여 확정하는 예약 전반을 관리자가 모니터링합니다.
+          </p>
+          <ol class="space-y-3">
+            <li class="flex gap-3 items-start">
+              <span class="step-num">1</span>
+              <div><strong>관리자 대시보드</strong> — 오늘 예약·매칭 대기·취소 요청 대기 건수 위젯 확인</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">2</span>
+              <div><strong>상담 통합 관리 → 진행 중인 상담</strong> 탭 — ACTIVE 사례·담당 상담사·회기 현황</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">3</span>
+              <div><strong>취소 대기 목록</strong>(<code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">/admin-panel/cancel-pending/</code>) —
+                내담자 취소 요청 건 검토</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">4</span>
+              <div>일정 분쟁·조율 지연 시 Django Admin에서 예약(Appointment) 상태 직접 확인·조정</div>
+            </li>
+            <li class="flex gap-3 items-start">
+              <span class="step-num">5</span>
+              <div>중복 매칭대기 신청 정리: <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">python manage.py repair_stale_applications --dry-run</code></div>
+            </li>
+          </ol>
+          <div class="overflow-x-auto mt-4">
+            <table class="w-full text-sm border-collapse">
+              <thead>
+                <tr class="bg-slate-100">
+                  <th class="text-left p-3 border border-slate-200 font-semibold">예약 상태</th>
+                  <th class="text-left p-3 border border-slate-200 font-semibold">의미</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td class="p-3 border border-slate-200"><span class="bg-yellow-100 text-yellow-900 px-2 py-0.5 rounded text-xs font-semibold">PENDING</span></td><td class="p-3 border border-slate-200">예약 요청 접수 — 상담사 확정 대기</td></tr>
+                <tr><td class="p-3 border border-slate-200"><span class="bg-green-100 text-green-900 px-2 py-0.5 rounded text-xs font-semibold">CONFIRMED</span></td><td class="p-3 border border-slate-200">예약 확정 — Zoom 링크 활성(비대면)</td></tr>
+                <tr><td class="p-3 border border-slate-200"><span class="bg-orange-100 text-orange-900 px-2 py-0.5 rounded text-xs font-semibold">CANCEL_PENDING</span></td><td class="p-3 border border-slate-200">취소 요청 — 상담사/관리자 처리 대기</td></tr>
+                <tr><td class="p-3 border border-slate-200"><span class="bg-slate-200 text-slate-700 px-2 py-0.5 rounded text-xs font-semibold">COMPLETED</span></td><td class="p-3 border border-slate-200">상담 완료</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </article>
+
+      <article class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="bg-kscu-pale px-5 sm:px-6 py-4 border-b border-slate-200">
+          <h2 class="text-xl font-bold text-kscu">부록: 관리자 주요 URL</h2>
+        </div>
+        <div class="p-5 sm:p-6">
+          <div class="grid sm:grid-cols-2 gap-3 text-sm">
+            <a href="https://kscu-counseling-system-production.up.railway.app/admin-panel/" class="block p-4 rounded-xl border border-slate-200 hover:border-kscu hover:shadow-md transition-all" target="_blank" rel="noopener">
+              <p class="font-bold text-kscu">관리자 대시보드</p>
+              <p class="text-slate-500 font-mono text-xs mt-1">/admin-panel/</p>
+            </a>
+            <a href="https://kscu-counseling-system-production.up.railway.app/admin-panel/matching/" class="block p-4 rounded-xl border border-slate-200 hover:border-kscu hover:shadow-md transition-all" target="_blank" rel="noopener">
+              <p class="font-bold text-kscu">상담사 매칭</p>
+              <p class="text-slate-500 font-mono text-xs mt-1">/admin-panel/matching/</p>
+            </a>
+            <a href="https://kscu-counseling-system-production.up.railway.app/admin-panel/counseling-management/" class="block p-4 rounded-xl border border-slate-200 hover:border-kscu hover:shadow-md transition-all" target="_blank" rel="noopener">
+              <p class="font-bold text-kscu">상담 통합 관리</p>
+              <p class="text-slate-500 font-mono text-xs mt-1">/admin-panel/counseling-management/</p>
+            </a>
+            <a href="https://kscu-counseling-system-production.up.railway.app/admin/" class="block p-4 rounded-xl border border-slate-200 hover:border-kscu hover:shadow-md transition-all" target="_blank" rel="noopener">
+              <p class="font-bold text-kscu">Django Admin</p>
+              <p class="text-slate-500 font-mono text-xs mt-1">/admin/</p>
+            </a>
+          </div>
+        </div>
+      </article>
+    </section>
+
+  </main>
+
+  <footer class="bg-slate-800 text-slate-300 mt-12 no-print">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 py-8 text-center text-sm">
+      <p class="font-semibold text-white mb-1">숭실사이버대학교 평생교육원 · 전문상담사 수련과정</p>
+      <p>본 매뉴얼은 플랫폼 기능 안내용이며, 실제 화면은 업데이트에 따라 일부 차이가 있을 수 있습니다.</p>
+      <p class="mt-3 text-slate-400">문의: 센터 운영 담당자</p>
+    </div>
+  </footer>
+
+  <script>
+    (function () {
+      'use strict';
+
+      var tabButtons = document.querySelectorAll('.tab-btn');
+      var tabPanels = document.querySelectorAll('.tab-panel');
+
+      var activeClasses = ['bg-kscu', 'text-white', 'shadow-md'];
+      var inactiveClasses = ['text-slate-600', 'hover:bg-slate-100'];
+
+      function setActiveTab(tabId) {
+        tabButtons.forEach(function (btn) {
+          var isActive = btn.getAttribute('data-tab') === tabId;
+          btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+          activeClasses.forEach(function (c) { btn.classList.toggle(c, isActive); });
+          inactiveClasses.forEach(function (c) {
+            if (isActive) btn.classList.remove(c);
+            else btn.classList.add(c);
+          });
+          if (isActive && !btn.classList.contains('bg-kscu')) {
+            btn.classList.add('bg-kscu', 'text-white', 'shadow-md');
+          }
+          if (!isActive) {
+            btn.classList.remove('bg-kscu', 'text-white', 'shadow-md');
+          }
+        });
+
+        tabPanels.forEach(function (panel) {
+          var panelId = panel.id.replace('panel-', '');
+          var isActive = panelId === tabId;
+          panel.classList.toggle('active', isActive);
+        });
+
+        if (history.replaceState) {
+          history.replaceState(null, '', '#' + tabId);
+        }
+      }
+
+      tabButtons.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          setActiveTab(btn.getAttribute('data-tab'));
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+      });
+
+      var hash = (location.hash || '').replace('#', '');
+      if (hash === 'client' || hash === 'counselor' || hash === 'admin') {
+        setActiveTab(hash);
+      }
+    })();
+  </script>
+</body>
+</html>

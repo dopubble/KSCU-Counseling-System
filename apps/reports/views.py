@@ -1,4 +1,5 @@
 from django.db.models import Count
+from django.conf import settings
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -54,6 +55,17 @@ def _csv_response(filename: str, header: list[str], rows: list[list]) -> HttpRes
 
 def health_check(request):
     return JsonResponse({"status": "ok"})
+
+
+def platform_user_manual(request):
+    """플랫폼 이용 매뉴얼 (단일 HTML) — 공개."""
+    manual_path = settings.BASE_DIR / "docs" / "platform-user-manual.html"
+    if not manual_path.is_file():
+        raise Http404("매뉴얼 파일을 찾을 수 없습니다.")
+    return FileResponse(
+        manual_path.open("rb"),
+        content_type="text/html; charset=utf-8",
+    )
 
 
 def _month_start(now=None):
