@@ -4,8 +4,8 @@
     var root = document.getElementById("caseChatRoot");
     if (!root) return;
 
-    var POLL_MS = 5000;
-    var UNREAD_POLL_MS = 15000;
+    var POLL_MS = 10000;
+    var UNREAD_POLL_MS = 25000;
     var messagesUrl = root.dataset.messagesUrl;
     var sendUrl = root.dataset.sendUrl;
     var unreadUrl = root.dataset.unreadUrl;
@@ -23,6 +23,10 @@
     var unreadPollTimer = null;
     var lastMessageId = "";
     var knownIds = new Set();
+
+    function isPageVisible() {
+        return document.visibilityState === "visible";
+    }
 
     function getCsrfToken() {
         var inputToken = form && form.querySelector("[name=csrfmiddlewaretoken]");
@@ -86,6 +90,8 @@
     }
 
     function fetchMessages(initial) {
+        if (!isPageVisible()) return Promise.resolve();
+
         var url = messagesUrl;
         if (!initial && lastMessageId) {
             url += (url.indexOf("?") >= 0 ? "&" : "?") + "after=" + encodeURIComponent(lastMessageId);
@@ -118,7 +124,7 @@
     }
 
     function fetchUnread() {
-        if (!unreadUrl || isOpen) return Promise.resolve();
+        if (!unreadUrl || isOpen || !isPageVisible()) return Promise.resolve();
 
         return fetch(unreadUrl, {
             method: "GET",
@@ -130,7 +136,9 @@
                 return response.json();
             })
             .then(function (data) {
-                if (!isOpen) setUnreadBadgeVisible(Boolean(data.has_unread));
+                if (!isOpen && isPageVisible()) {
+                    setUnreadBadgeVisible(Boolean(data.has_unread));
+                }
             })
             .catch(function () {
                 /* unread polling 실패는 조용히 무시 */
@@ -138,6 +146,7 @@
     }
 
     function startPolling() {
+        if (!isPageVisible()) return;
         stopPolling();
         fetchMessages(true);
         pollTimer = window.setInterval(function () {
@@ -153,6 +162,7 @@
     }
 
     function startUnreadPolling() {
+        if (!isPageVisible()) return;
         stopUnreadPolling();
         fetchUnread();
         unreadPollTimer = window.setInterval(fetchUnread, UNREAD_POLL_MS);
@@ -165,6 +175,20 @@
         }
     }
 
+    function syncPollingWithVisibility() {
+        if (!isPageVisible()) {
+            stopPolling();
+            stopUnreadPolling();
+            return;
+        }
+
+        if (isOpen) {
+            startPolling();
+        } else {
+            startUnreadPolling();
+        }
+    }
+
     function openChat() {
         isOpen = true;
         setUnreadBadgeVisible(false);
@@ -172,7 +196,9 @@
         panel.classList.remove("d-none");
         panel.setAttribute("aria-hidden", "false");
         toggleBtn.setAttribute("aria-expanded", "true");
-        startPolling();
+        if (isPageVisible()) {
+            startPolling();
+        }
         input.focus();
     }
 
@@ -182,7 +208,9 @@
         panel.setAttribute("aria-hidden", "true");
         toggleBtn.setAttribute("aria-expanded", "false");
         stopPolling();
-        startUnreadPolling();
+        if (isPageVisible()) {
+            startUnreadPolling();
+        }
     }
 
     function toggleChat() {
@@ -235,10 +263,14 @@
         }
     });
 
+    document.addEventListener("visibilitychange", syncPollingWithVisibility);
+
     window.addEventListener("beforeunload", function () {
         stopPolling();
         stopUnreadPolling();
     });
 
-    startUnreadPolling();
+    if (isPageVisible()) {
+        startUnreadPolling();
+    }
 })();
