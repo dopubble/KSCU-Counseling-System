@@ -71,11 +71,7 @@
                             </div>
                             <div class="counselor-profile-info">
                                 <p class="counselor-profile-name mb-1">{{ counselor.name }}</p>
-                                <p class="counselor-profile-contact mb-0">
-                                    <span>{{ counselor.phone|default:"—" }}</span>
-                                    <span class="text-muted mx-2" aria-hidden="true">·</span>
-                                    <span class="text-break">{{ counselor.email|default:"—" }}</span>
-                                </p>
+                                <p class="counselor-profile-email mb-0">{{ counselor.email|default:"—" }}</p>
                             </div>
                         </div>
                         <hr class="my-3 client-counselor-availability-divider">
