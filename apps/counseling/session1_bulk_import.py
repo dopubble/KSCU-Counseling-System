@@ -367,45 +367,6 @@ def _import_one_row(
     )
 
 
-@dataclass
-class DeactivateCounselorSummary:
-    counselor_name: str
-    cases_cleared: int = 0
-    clients: list[str] = field(default_factory=list)
-    deactivated: bool = False
-
-
-def deactivate_counselor_by_name(
-    name: str,
-    *,
-    dry_run: bool = True,
-) -> DeactivateCounselorSummary:
-    """상담사 계정 비활성화 및 배정 내담자 매칭·예약 데이터 정리."""
-    summary = DeactivateCounselorSummary(counselor_name=name.strip())
-    counselor = User.objects.filter(role=UserRole.COUNSELOR, name=summary.counselor_name).first()
-    if not counselor:
-        return summary
-
-    cases = list(
-        Case.objects.filter(counselor=counselor, status=CaseStatus.ACTIVE).select_related("client")
-    )
-    clients = [case.client for case in cases if case.client_id]
-    summary.cases_cleared = len(cases)
-    summary.clients = [(client.name or "").strip() for client in clients if client]
-
-    if dry_run:
-        return summary
-
-    if clients:
-        clear_matching_data(client_users=clients, dry_run=False)
-
-    counselor.status = UserStatus.INACTIVE
-    counselor.is_active = False
-    counselor.save(update_fields=["status", "is_active", "updated_at"])
-    summary.deactivated = True
-    return summary
-
-
 def import_session1_matches(
     rows: list[Session1MatchRow],
     *,
