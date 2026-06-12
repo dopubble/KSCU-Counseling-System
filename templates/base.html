@@ -41,6 +41,12 @@
                         </li>
                         {% if user.is_authenticated and user.role == "CLIENT" %}
                             {% include "includes/client_nav_items.html" %}
+                        {% elif user.is_authenticated and user.is_counselor %}
+                            <li class="nav-item">
+                                <a class="nav-link {% if request.resolver_match.url_name == 'apply' %}active{% endif %}"
+                                   href="{% url 'counseling:apply' %}">상담 신청</a>
+                            </li>
+                            {% include "includes/counselor_nav_items.html" %}
                         {% else %}
                             <li class="nav-item">
                                 <a class="nav-link {% if request.resolver_match.url_name == 'apply' %}active{% endif %}"
@@ -92,11 +98,6 @@
                                 </li>
                             </ul>
                         </li>
-                        {% if user.is_counselor %}
-                        <li class="nav-item">
-                            <a class="nav-link" href="{% url 'counselor:dashboard' %}">상담사</a>
-                        </li>
-                        {% endif %}
                         <li class="nav-item">
                             <form method="post" action="{% url 'accounts:logout' %}" class="d-inline ms-lg-2">
                                 {% csrf_token %}

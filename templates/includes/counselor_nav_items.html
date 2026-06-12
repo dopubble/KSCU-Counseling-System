@@ -1,0 +1,14 @@
+{% with ns=request.resolver_match.namespace|default:"" url_name=request.resolver_match.url_name|default:"" %}
+<li class="nav-item">
+    <a class="nav-link {% if ns == 'counselor' and url_name != 'dashboard' %}active{% endif %}"
+       href="{% url 'counselor:dashboard' %}#counselor-active-cases">내 사례</a>
+</li>
+<li class="nav-item">
+    <a class="nav-link {% if ns == 'scheduling' and url_name == 'availability_list' %}active{% endif %}"
+       href="{% url 'scheduling:availability_list' %}">가용 시간</a>
+</li>
+<li class="nav-item">
+    <a class="nav-link {% if ns == 'counselor' and url_name == 'dashboard' %}active{% endif %}"
+       href="{% url 'counselor:dashboard' %}">대시보드</a>
+</li>
+{% endwith %}

@@ -3,15 +3,6 @@
 
 {% block title %}상담사 대시보드{% endblock %}
 
-{% block nav_items %}
-<li class="nav-item">
-    <a class="nav-link active" href="{% url 'counselor:dashboard' %}">내 사례</a>
-</li>
-<li class="nav-item">
-    <a class="nav-link" href="{% url 'scheduling:availability_list' %}">가용 시간</a>
-</li>
-{% endblock %}
-
 {% block extra_css %}
 <link href="{% static 'css/counselor.css' %}" rel="stylesheet">
 {% endblock %}
@@ -100,7 +91,7 @@
     </div>
     {% endif %}
 
-    <div class="card border-0 shadow-sm counselor-table-card section-spacing">
+    <div class="card border-0 shadow-sm counselor-table-card section-spacing" id="counselor-active-cases">
         <div class="card-header bg-white border-bottom py-3">
             <h2 class="h6 fw-semibold mb-0">
                 <i class="bi bi-folder2-open me-2 text-counselor"></i>담당 활성 사례

@@ -3,12 +3,6 @@
 
 {% block title %}{{ journal.session_number }}회기 상담일지 — {{ client_summary.client_name }}{% endblock %}
 
-{% block nav_items %}
-<li class="nav-item"><a class="nav-link" href="{% url 'counselor:dashboard' %}">내 사례</a></li>
-<li class="nav-item"><a class="nav-link" href="{% url 'counselor:case_detail' case.pk %}">사례 상세</a></li>
-<li class="nav-item"><span class="nav-link active">일지 상세</span></li>
-{% endblock %}
-
 {% block extra_css %}
 <link href="{% static 'css/counselor.css' %}" rel="stylesheet">
 {% endblock %}
