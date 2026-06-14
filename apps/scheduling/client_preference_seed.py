@@ -67,7 +67,7 @@ CLIENT_PREFERENCE_SEEDS: list[ClientPreferenceSeed] = [
     ClientPreferenceSeed(
         "성순희",
         "sooni1028@naver.com",
-        "이영실",
+        "정영란",
         [_slot([1, 2, 3], "09:00", "12:00")],
     ),
     ClientPreferenceSeed(
@@ -79,7 +79,7 @@ CLIENT_PREFERENCE_SEEDS: list[ClientPreferenceSeed] = [
     ClientPreferenceSeed(
         "정한결",
         "hangyeol3884@naver.com",
-        "한진이",
+        "정영란",
         [_slot([2], "19:00", "21:00")],
     ),
     ClientPreferenceSeed(
@@ -236,7 +236,7 @@ CLIENT_PREFERENCE_SEEDS: list[ClientPreferenceSeed] = [
     ClientPreferenceSeed(
         "홍연서",
         "alberopesca@naver.com",
-        "양은영",
+        "한진이",
         [
             _slot([0, 1, 2, 3, 4], "18:00", "21:00"),
             _slot([5], "13:00", "18:00"),
