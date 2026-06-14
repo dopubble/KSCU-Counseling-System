@@ -27,21 +27,8 @@ EXCLUDED_CLIENT_EMAILS = frozenset(
     }
 )
 
-# 1회기 자동 배정 대상 (스프레드시트 매칭 10명)
-SESSION1_AUTO_MATCH_EMAILS = frozenset(
-    {
-        "hisjoyce77@naver.com",
-        "poopsc1018@gmail.com",
-        "gusdhrl@empas.com",
-        "5671469@naver.com",
-        "sea124@naver.com",
-        "suhboyoung68@gmail.com",
-        "esprit0731@naver.com",
-        "estherborana@gmail.com",
-        "sanqiong@naver.com",
-        "kjsilu@naver.com",
-    }
-)
+# 1회기 자동 배정 대상 — 수동 JSON 주입(36건) 사용으로 비활성
+SESSION1_AUTO_MATCH_EMAILS = frozenset()
 
 
 def _slot(days: list[int], start: str, end: str) -> AvailabilitySlotSeed:
@@ -91,6 +78,8 @@ CLIENT_PREFERENCE_SEEDS: list[ClientPreferenceSeed] = [
             _slot([4], "17:00", "21:00"),
             _slot([5], "13:00", "16:00"),
         ],
+        skip=True,
+        skip_reason="1회기 36건 로스터 외",
     ),
     ClientPreferenceSeed(
         "고혜숙",
@@ -226,6 +215,8 @@ CLIENT_PREFERENCE_SEEDS: list[ClientPreferenceSeed] = [
         "gracyroh@hanmail.net",
         "백경미",
         [_slot([2], "20:00", "21:00")],
+        skip=True,
+        skip_reason="1회기 36건 로스터 외",
     ),
     ClientPreferenceSeed(
         "정경화",
@@ -248,6 +239,8 @@ CLIENT_PREFERENCE_SEEDS: list[ClientPreferenceSeed] = [
         "gumboat@naver.com",
         "신영화",
         [_slot([0, 1, 2, 3, 4], "18:00", "21:00")],
+        skip=True,
+        skip_reason="1회기 36건 로스터 외",
     ),
     ClientPreferenceSeed(
         "이현옥",

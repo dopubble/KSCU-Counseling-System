@@ -367,6 +367,160 @@ def _import_one_row(
     )
 
 
+def full_session1_reset_clear(
+    *,
+    roster_client_names: frozenset[str],
+    dry_run: bool = True,
+) -> ClearSummary:
+    """모든 활성 상담사 배정·1회기 예약 흔적 + 로스터 대상 내담자 전량 삭제."""
+    from django.db.models import Q
+
+    matched_client_ids = set(
+        Case.objects.filter(status=CaseStatus.ACTIVE)
+        .filter(Q(counselor_id__isnull=False) | Q(appointments__isnull=False))
+        .values_list("client_id", flat=True)
+        .distinct()
+    )
+    roster_ids = set(
+        User.objects.filter(role=UserRole.CLIENT, name__in=roster_client_names).values_list(
+            "pk", flat=True
+        )
+    )
+    client_ids = matched_client_ids | roster_ids
+    clients = list(User.objects.filter(pk__in=client_ids))
+    return clear_matching_data(client_users=clients, dry_run=dry_run)
+
+
+@dataclass
+class Session1VerificationIssue:
+    kind: str
+    detail: str
+
+
+@dataclass
+class Session1VerificationReport:
+    ok: bool
+    expected_count: int
+    active_assignment_count: int
+    session1_appointment_count: int
+    by_counselor: dict[str, list[str]] = field(default_factory=dict)
+    issues: list[Session1VerificationIssue] = field(default_factory=list)
+
+
+def verify_session1_roster(rows: list[Session1MatchRow]) -> Session1VerificationReport:
+    """DB 활성 배정이 골드 스탠다드 JSON과 일치하는지 전수 검증."""
+    expected_by_counselor: dict[str, list[str]] = defaultdict(list)
+    expected_pairs: set[tuple[str, str]] = set()
+    for row in rows:
+        expected_by_counselor[row.counselor_name].append(row.client_name)
+        expected_pairs.add((row.counselor_name, row.client_name))
+
+    actual_by_counselor: dict[str, list[str]] = defaultdict(list)
+    active_cases = list(
+        Case.objects.filter(status=CaseStatus.ACTIVE, counselor_id__isnull=False)
+        .select_related("counselor", "client")
+        .order_by("counselor__name", "client__name")
+    )
+    issues: list[Session1VerificationIssue] = []
+
+    for case in active_cases:
+        counselor_name = (case.counselor.name or "").strip()
+        client_name = (case.client.name or "").strip()
+        actual_by_counselor[counselor_name].append(client_name)
+        if (counselor_name, client_name) not in expected_pairs:
+            issues.append(
+                Session1VerificationIssue(
+                    "unexpected_assignment",
+                    f"{counselor_name} / {client_name} (사례 {case.case_number})",
+                )
+            )
+
+    for counselor_name, client_names in sorted(expected_by_counselor.items()):
+        actual_names = set(actual_by_counselor.get(counselor_name, []))
+        for client_name in client_names:
+            if client_name not in actual_names:
+                issues.append(
+                    Session1VerificationIssue(
+                        "missing_assignment",
+                        f"{counselor_name} / {client_name}",
+                    )
+                )
+
+    session1_count = Appointment.objects.filter(session_number=1).count()
+    if session1_count != len(rows):
+        issues.append(
+            Session1VerificationIssue(
+                "appointment_count",
+                f"1회기 예약 {session1_count}건 (기대 {len(rows)}건)",
+            )
+        )
+
+    if len(active_cases) != len(rows):
+        issues.append(
+            Session1VerificationIssue(
+                "assignment_count",
+                f"활성 배정 {len(active_cases)}건 (기대 {len(rows)}건)",
+            )
+        )
+
+    sorted_actual = {name: sorted(names) for name, names in actual_by_counselor.items()}
+    return Session1VerificationReport(
+        ok=not issues,
+        expected_count=len(rows),
+        active_assignment_count=len(active_cases),
+        session1_appointment_count=session1_count,
+        by_counselor=sorted_actual,
+        issues=issues,
+    )
+
+
+def format_verification_report_markdown(
+    rows: list[Session1MatchRow],
+    report: Session1VerificationReport,
+) -> str:
+    expected_by_counselor: dict[str, list[str]] = defaultdict(list)
+    for row in rows:
+        expected_by_counselor[row.counselor_name].append(row.client_name)
+
+    lines = [
+        "# 1회기 매칭 전수 검증 리포트",
+        "",
+        f"- **검증 결과**: {'PASS' if report.ok else 'FAIL'}",
+        f"- **기대 배정**: {report.expected_count}건",
+        f"- **DB 활성 배정**: {report.active_assignment_count}건",
+        f"- **DB 1회기 예약**: {report.session1_appointment_count}건",
+        "",
+        "## 상담사별 매칭 (DB 기준)",
+        "",
+    ]
+
+    all_counselors = sorted(set(expected_by_counselor) | set(report.by_counselor))
+    for counselor_name in all_counselors:
+        db_clients = report.by_counselor.get(counselor_name, [])
+        expected_clients = sorted(expected_by_counselor.get(counselor_name, []))
+        db_label = ", ".join(db_clients) if db_clients else "—"
+        lines.append(f"- **{counselor_name}** — 총 {len(db_clients)}명: {db_label}")
+        if db_clients != expected_clients:
+            lines.append(
+                f"  - (기대: {', '.join(expected_clients) if expected_clients else '—'})"
+            )
+
+    if report.issues:
+        lines.extend(["", "## 불일치 항목", ""])
+        for issue in report.issues:
+            lines.append(f"- [{issue.kind}] {issue.detail}")
+
+    return "\n".join(lines)
+
+
+def assert_session1_roster(rows: list[Session1MatchRow]) -> Session1VerificationReport:
+    report = verify_session1_roster(rows)
+    if not report.ok:
+        details = "; ".join(f"{i.kind}: {i.detail}" for i in report.issues)
+        raise Session1ImportError(f"1회기 매칭 검증 실패 — {details}")
+    return report
+
+
 @dataclass
 class DeactivateCounselorSummary:
     counselor_name: str
@@ -414,6 +568,8 @@ def import_session1_matches(
     with_zoom: bool = False,
     dry_run: bool = True,
     skip_clear: bool = False,
+    full_reset: bool = True,
+    verify: bool = False,
 ) -> ImportSummary:
     """매칭 데이터 삭제 후 상담사 배정 + 1회기 확정 예약 생성."""
     summary = ImportSummary()
@@ -434,13 +590,20 @@ def import_session1_matches(
         if client:
             resolved_clients.append(client)
 
-    if not skip_clear:
-        summary.cleared = clear_matching_data(
-            client_users=resolved_clients,
-            dry_run=dry_run,
-        )
+    roster_names = frozenset(row.client_name for row in rows)
 
     if dry_run:
+        if not skip_clear:
+            if full_reset:
+                summary.cleared = full_session1_reset_clear(
+                    roster_client_names=roster_names,
+                    dry_run=True,
+                )
+            else:
+                summary.cleared = clear_matching_data(
+                    client_users=resolved_clients,
+                    dry_run=True,
+                )
         for row in rows:
             result = _import_one_row(
                 row,
@@ -457,10 +620,16 @@ def import_session1_matches(
 
     with transaction.atomic():
         if not skip_clear:
-            summary.cleared = clear_matching_data(
-                client_users=resolved_clients,
-                dry_run=False,
-            )
+            if full_reset:
+                summary.cleared = full_session1_reset_clear(
+                    roster_client_names=roster_names,
+                    dry_run=False,
+                )
+            else:
+                summary.cleared = clear_matching_data(
+                    client_users=resolved_clients,
+                    dry_run=False,
+                )
 
         for row in rows:
             result = _import_one_row(
@@ -483,5 +652,8 @@ def import_session1_matches(
                 summary.reassigned += 1
             summary.session1_created += 1
             summary.session1_confirmed += 1
+
+        if verify:
+            assert_session1_roster(rows)
 
     return summary

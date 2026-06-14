@@ -10,8 +10,10 @@ from django.utils import timezone
 
 from apps.counseling.session1_bulk_import import (
     Session1ImportError,
+    format_verification_report_markdown,
     import_session1_matches,
     load_session1_matches,
+    verify_session1_roster,
 )
 
 DEFAULT_JSON = (
@@ -71,6 +73,18 @@ class Command(BaseCommand):
             help="기존 데이터 삭제 생략 (재실행·디버그용)",
         )
         parser.add_argument(
+            "--no-full-reset",
+            action="store_false",
+            dest="full_reset",
+            help="36명만 부분 삭제 (기본: 전체 활성 배정·예약 리셋)",
+        )
+        parser.set_defaults(full_reset=True)
+        parser.add_argument(
+            "--verify",
+            action="store_true",
+            help="주입 후 골드 스탠다드 대비 전수 검증",
+        )
+        parser.add_argument(
             "--allow-local",
             action="store_true",
             help="로컬 SQLite에서도 실행",
@@ -101,6 +115,8 @@ class Command(BaseCommand):
                 with_zoom=options["with_zoom"],
                 dry_run=dry_run,
                 skip_clear=options["skip_clear"],
+                full_reset=options["full_reset"],
+                verify=options["verify"],
             )
         except Session1ImportError as exc:
             raise CommandError(str(exc)) from exc
@@ -156,6 +172,13 @@ class Command(BaseCommand):
 
         if summary.errors:
             raise CommandError(f"{summary.errors}건 오류 — DB 변경 없음 (--apply 시 롤백됨)")
+
+        if options["verify"] and not dry_run:
+            report = verify_session1_roster(rows)
+            self.stdout.write("")
+            self.stdout.write(format_verification_report_markdown(rows, report))
+            if not report.ok:
+                raise CommandError("전수 검증 실패 — 위 리포트 참고")
 
         if dry_run:
             self.stdout.write(
