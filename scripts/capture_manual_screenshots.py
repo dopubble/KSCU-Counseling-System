@@ -506,9 +506,93 @@ def capture_counselor_case_detail(page, base_url: str, case_pk: str, path: Path)
 
 
 def capture_counselor_appointment_confirm(
+    page, base_url: str, case_pk: str, path: Path
+) -> None:
+    """사례 상세 — 왼쪽 대기 중인 예약 신청 · 노란색 [예약 확인 및 확정] 강조."""
+    page.goto(f"{base_url}/counseling/counselor/case/{case_pk}/", wait_until="networkidle")
+    page.wait_for_timeout(500)
+    strip_debug_toolbar(page)
+    page.evaluate(
+        """() => {
+            const card = document.querySelector('.counselor-pending-requests-card');
+            if (card) {
+                const top = card.getBoundingClientRect().top + window.scrollY - 72;
+                window.scrollTo(0, Math.max(0, top));
+            }
+        }"""
+    )
+    page.wait_for_timeout(500)
+    strip_debug_toolbar(page)
+    page.evaluate(
+        """() => {
+            const btn = document.querySelector('.counselor-pending-request-btn');
+            if (!btn) return;
+
+            const rect = btn.getBoundingClientRect();
+            const pad = 10;
+
+            const frame = document.createElement('div');
+            frame.id = 'manual-pending-confirm-highlight-frame';
+            Object.assign(frame.style, {
+                position: 'fixed',
+                left: (rect.left - pad) + 'px',
+                top: (rect.top - pad) + 'px',
+                width: (rect.width + pad * 2) + 'px',
+                height: (rect.height + pad * 2) + 'px',
+                border: '4px solid #dc2626',
+                borderRadius: '12px',
+                boxShadow:
+                    '0 0 0 8px rgba(220, 38, 38, 0.35), 0 0 28px rgba(220, 38, 38, 0.65)',
+                zIndex: '10001',
+                pointerEvents: 'none',
+            });
+            document.body.appendChild(frame);
+
+            const label = document.createElement('div');
+            label.id = 'manual-pending-confirm-highlight-label';
+            label.innerHTML =
+                '<span style="font-size:16px;font-weight:800;display:block;">✅ 예약 확인 및 확정</span>' +
+                '<span style="font-size:12px;font-weight:600;opacity:0.95;">여기를 클릭</span>';
+            Object.assign(label.style, {
+                position: 'fixed',
+                left: (rect.right + 20) + 'px',
+                top: (rect.top + rect.height / 2 - 28) + 'px',
+                background: '#dc2626',
+                color: '#fff',
+                padding: '10px 16px',
+                borderRadius: '12px',
+                zIndex: '10002',
+                boxShadow: '0 12px 32px rgba(0, 0, 0, 0.28)',
+                fontFamily: 'Pretendard, Apple SD Gothic Neo, Malgun Gothic, sans-serif',
+                lineHeight: '1.35',
+                pointerEvents: 'none',
+                whiteSpace: 'nowrap',
+            });
+
+            const arrow = document.createElement('div');
+            Object.assign(arrow.style, {
+                position: 'absolute',
+                left: '-11px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                width: '0',
+                height: '0',
+                borderTop: '10px solid transparent',
+                borderBottom: '10px solid transparent',
+                borderRight: '12px solid #dc2626',
+            });
+            label.appendChild(arrow);
+            document.body.appendChild(label);
+        }"""
+    )
+    page.wait_for_timeout(300)
+    page.screenshot(path=str(path), full_page=False)
+
+
+def capture_counselor_appointment_manage(
     page, base_url: str, appointment_pk: str, path: Path
 ) -> None:
-    """상담사 예약 확정 화면 — 예약 확정 버튼 강조."""
+    """예약 처리 화면 — [예약 확정] 버튼 강조."""
     page.goto(
         f"{base_url}/counseling/counselor/appointments/{appointment_pk}/manage/",
         wait_until="networkidle",
@@ -695,10 +779,18 @@ def capture() -> None:
             capture_counselor_appointment_confirm(
                 page,
                 base_url,
-                info["pending_appointment_pk"],
+                info["counselor_case_pk"],
                 OUT / "counselor-appointment-confirm.png",
             )
             print("OK counselor-appointment-confirm.png")
+
+            capture_counselor_appointment_manage(
+                page,
+                base_url,
+                info["pending_appointment_pk"],
+                OUT / "counselor-appointment-manage.png",
+            )
+            print("OK counselor-appointment-manage.png")
 
             context.clear_cookies()
             login(page, base_url, info["admin_email"])
