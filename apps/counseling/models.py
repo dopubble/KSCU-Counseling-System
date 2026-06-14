@@ -100,8 +100,16 @@ class CounselingApplication(models.Model):
         ]
 
     def get_counseling_types_display(self, separator: str = ", ") -> str:
-        types = self.counseling_types or []
-        return separator.join(types)
+        raw = self.counseling_types
+        if raw is None:
+            return ""
+        if isinstance(raw, str):
+            return raw.strip()
+        if isinstance(raw, (list, tuple)):
+            return separator.join(
+                str(item) for item in raw if item is not None and str(item).strip()
+            )
+        return str(raw)
 
     @property
     def counseling_type(self) -> str:
@@ -189,10 +197,38 @@ class Case(models.Model):
         return f"{self.remaining_sessions} / {self.total_sessions}"
 
     def save(self, *args, **kwargs):
-        if not self.case_number:
-            year = timezone.now().year
-            count = Case.objects.filter(opened_at__year=year).count() + 1
-            self.case_number = f"CASE-{year}-{count:04d}"
+        from django.db import IntegrityError
+
+        if self.case_number:
+            super().save(*args, **kwargs)
+            return
+
+        year = timezone.now().year
+        prefix = f"CASE-{year}-"
+        last_error = None
+        for _ in range(8):
+            last = (
+                Case.objects.filter(case_number__startswith=prefix)
+                .order_by("-case_number")
+                .values_list("case_number", flat=True)
+                .first()
+            )
+            if last:
+                try:
+                    seq = int(str(last).rsplit("-", 1)[-1]) + 1
+                except ValueError:
+                    seq = Case.objects.filter(case_number__startswith=prefix).count() + 1
+            else:
+                seq = 1
+            self.case_number = f"{prefix}{seq:04d}"
+            try:
+                super().save(*args, **kwargs)
+                return
+            except IntegrityError as exc:
+                last_error = exc
+                self.case_number = ""
+        if last_error:
+            raise last_error
         super().save(*args, **kwargs)
 
 

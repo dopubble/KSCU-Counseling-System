@@ -26,8 +26,12 @@ import django  # noqa: E402
 
 django.setup()
 
+from datetime import time as dt_time, timedelta
+
 from apps.accounts.models import User, UserRole, UserStatus  # noqa: E402
 from apps.counseling.models import Case, CaseStatus, CounselingMethod  # noqa: E402
+from apps.scheduling.models import Appointment, AppointmentStatus, CounselorAvailability  # noqa: E402
+from django.utils import timezone  # noqa: E402
 
 OUT = BASE_DIR / "static" / "manual" / "screenshots"
 DEFAULT_PORT = int(os.environ.get("MANUAL_SCREENSHOT_PORT", "9876"))
@@ -178,6 +182,61 @@ def ensure_users() -> dict:
     remote_case.zoom_meeting_url = "https://zoom.us/j/demo-meeting"
     remote_case.save(update_fields=["counseling_method", "zoom_meeting_url"])
 
+    CounselorAvailability.objects.filter(counselor=counselor).delete()
+    for day in range(5):
+        CounselorAvailability.objects.create(
+            counselor=counselor,
+            is_recurring=True,
+            day_of_week=day,
+            start_time=dt_time(10, 0),
+            end_time=dt_time(18, 0),
+            is_available=True,
+        )
+    for day in (5, 6):
+        CounselorAvailability.objects.create(
+            counselor=counselor,
+            is_recurring=True,
+            day_of_week=day,
+            start_time=dt_time(10, 0),
+            end_time=dt_time(18, 0),
+            is_available=False,
+        )
+
+    now = timezone.now()
+    zoom_at = now.replace(hour=14, minute=0, second=0, microsecond=0)
+    if zoom_at <= now:
+        zoom_at += timedelta(days=1)
+    Appointment.objects.filter(case=remote_case, session_number=2).delete()
+    Appointment.objects.create(
+        case=remote_case,
+        counselor=counselor,
+        client=remote_client,
+        scheduled_at=zoom_at,
+        session_number=2,
+        status=AppointmentStatus.CONFIRMED,
+        confirmed_at=timezone.now(),
+    )
+
+    pending_at = now.replace(hour=15, minute=0, second=0, microsecond=0)
+    if pending_at <= now:
+        pending_at += timedelta(days=1)
+    while pending_at.weekday() >= 5:
+        pending_at += timedelta(days=1)
+    Appointment.objects.filter(
+        case=case,
+        session_number=2,
+        status=AppointmentStatus.PENDING,
+    ).delete()
+    pending_apt = Appointment.objects.create(
+        case=case,
+        counselor=counselor,
+        client=client,
+        scheduled_at=pending_at,
+        session_number=2,
+        status=AppointmentStatus.PENDING,
+        request_message="매뉴얼 데모 예약 요청",
+    )
+
     info.update(
         {
             "client_email": client.email,
@@ -185,6 +244,7 @@ def ensure_users() -> dict:
             "remote_case_pk": str(remote_case.pk),
             "counselor_email": counselor.email,
             "counselor_case_pk": str(case.pk),
+            "pending_appointment_pk": str(pending_apt.pk),
             "admin_email": admin.email,
             "pending_email": pending_counselor.email,
         }
@@ -218,6 +278,313 @@ def capture_shot(page, url: str, path: Path, *, full_page: bool = True) -> None:
     page.screenshot(path=str(path), full_page=full_page)
 
 
+def capture_element(page, selector: str, path: Path) -> None:
+    locator = page.locator(selector).first
+    locator.scroll_into_view_if_needed()
+    page.wait_for_timeout(500)
+    strip_debug_toolbar(page)
+    locator.screenshot(path=str(path))
+
+
+def capture_viewport(page, path: Path) -> None:
+    page.wait_for_timeout(400)
+    strip_debug_toolbar(page)
+    page.screenshot(path=str(path), full_page=False)
+
+
+def capture_booking_calendar(page, base_url: str, case_pk: str, path: Path) -> None:
+    page.goto(f"{base_url}/client/case/{case_pk}/", wait_until="networkidle")
+    page.wait_for_timeout(500)
+    strip_debug_toolbar(page)
+    booking_btn = page.locator('.client-session-schedule-change-btn:has-text("상담일정 예약")').first
+    booking_btn.scroll_into_view_if_needed()
+    page.wait_for_timeout(300)
+    booking_btn.click()
+    page.wait_for_selector("#sessionScheduleChangeModal.show", timeout=5000)
+    page.wait_for_timeout(400)
+    page.locator("#sessionSchedulePreferredDatetime").click()
+    page.wait_for_selector(".flatpickr-calendar.open", timeout=5000)
+    page.wait_for_timeout(500)
+    strip_debug_toolbar(page)
+    page.screenshot(path=str(path), full_page=False)
+
+
+def capture_file_attachment(page, base_url: str, case_pk: str, path: Path) -> None:
+    """회기별 자료 첨부 — 가로 전체 뷰포트, 불필요한 세로 스크롤 없음."""
+    page.goto(f"{base_url}/client/case/{case_pk}/", wait_until="networkidle")
+    page.wait_for_timeout(500)
+    strip_debug_toolbar(page)
+    page.evaluate(
+        """() => {
+            const row = document.querySelector('.case-detail-row');
+            const attachBtn = document.querySelector(
+                'button[data-bs-target="#sessionMaterialUploadModal"]'
+            );
+            if (!row) return;
+            let top = row.offsetTop - 80;
+            if (attachBtn) {
+                const card = attachBtn.closest('.client-session-card');
+                if (card) {
+                    const cardTop = card.getBoundingClientRect().top + window.scrollY;
+                    top = Math.min(top, cardTop - 100);
+                }
+            }
+            window.scrollTo(0, Math.max(0, top));
+        }"""
+    )
+    page.wait_for_timeout(500)
+    strip_debug_toolbar(page)
+    page.evaluate(
+        """() => {
+            document
+                .querySelectorAll('button[data-bs-target="#sessionMaterialUploadModal"]')
+                .forEach(function (btn) {
+                    btn.style.setProperty('outline', '3px solid #dc2626', 'important');
+                    btn.style.setProperty('outline-offset', '3px', 'important');
+                    btn.style.setProperty(
+                        'box-shadow',
+                        '0 0 0 5px rgba(220, 38, 38, 0.35)',
+                        'important'
+                    );
+                    btn.style.position = 'relative';
+                    btn.style.zIndex = '5';
+                });
+        }"""
+    )
+    page.wait_for_timeout(200)
+    page.screenshot(path=str(path), full_page=False)
+
+
+def capture_zoom_entry(page, base_url: str, case_pk: str, path: Path) -> None:
+    """Zoom 회의 바로가기 — 가로 전체 뷰포트 + 빨간 강조."""
+    page.goto(f"{base_url}/client/case/{case_pk}/", wait_until="networkidle")
+    page.wait_for_timeout(500)
+    strip_debug_toolbar(page)
+    page.evaluate(
+        """() => {
+            const row = document.querySelector('.case-detail-row');
+            const zoomLink = document.querySelector(
+                'article.client-session-card a[href*="zoom"]'
+            ) || document.querySelector(
+                'article.client-session-card a:has(.bi-camera-video)'
+            );
+            if (!row) return;
+            let top = row.offsetTop - 80;
+            if (zoomLink) {
+                const card = zoomLink.closest('.client-session-card');
+                if (card) {
+                    const cardTop = card.getBoundingClientRect().top + window.scrollY;
+                    top = Math.min(top, cardTop - 100);
+                }
+            }
+            window.scrollTo(0, Math.max(0, top));
+        }"""
+    )
+    page.wait_for_timeout(500)
+    strip_debug_toolbar(page)
+    page.evaluate(
+        """() => {
+            const links = document.querySelectorAll(
+                'article.client-session-card a[href*="zoom"], ' +
+                'article.client-session-card footer a.client-dashboard-action-btn'
+            );
+            links.forEach(function (el) {
+                if (!el.textContent.includes('Zoom')) return;
+                el.style.setProperty('outline', '3px solid #dc2626', 'important');
+                el.style.setProperty('outline-offset', '3px', 'important');
+                el.style.setProperty(
+                    'box-shadow',
+                    '0 0 0 5px rgba(220, 38, 38, 0.35)',
+                    'important'
+                );
+                el.style.position = 'relative';
+                el.style.zIndex = '5';
+            });
+        }"""
+    )
+    page.wait_for_timeout(200)
+    page.screenshot(path=str(path), full_page=False)
+
+
+def capture_counselor_case_detail(page, base_url: str, case_pk: str, path: Path) -> None:
+    """상담사 사례 상세 — 가로 전체 뷰포트 + 1:1 채팅 버튼 강조."""
+    page.goto(f"{base_url}/counseling/counselor/case/{case_pk}/", wait_until="networkidle")
+    page.wait_for_timeout(500)
+    strip_debug_toolbar(page)
+    page.evaluate(
+        """() => {
+            const row = document.querySelector('.case-detail-row')
+                || document.querySelector('.client-portal-stack');
+            window.scrollTo(0, row ? Math.max(0, row.offsetTop - 80) : 0);
+        }"""
+    )
+    page.wait_for_timeout(500)
+    strip_debug_toolbar(page)
+    page.evaluate(
+        """() => {
+            const root = document.getElementById('caseChatRoot');
+            const wrap = document.querySelector('.case-chat-toggle-wrap');
+            const btn = document.getElementById('caseChatToggleBtn');
+            if (!root || !wrap || !btn) return;
+
+            root.style.zIndex = '10000';
+            btn.style.setProperty('transform', 'scale(1.15)', 'important');
+            btn.style.setProperty('transform-origin', 'center center', 'important');
+
+            const rect = wrap.getBoundingClientRect();
+            const pad = 16;
+
+            const frame = document.createElement('div');
+            frame.id = 'manual-chat-highlight-frame';
+            Object.assign(frame.style, {
+                position: 'fixed',
+                left: (rect.left - pad) + 'px',
+                top: (rect.top - pad) + 'px',
+                width: (rect.width + pad * 2) + 'px',
+                height: (rect.height + pad * 2) + 'px',
+                border: '4px solid #dc2626',
+                borderRadius: '9999px',
+                boxShadow:
+                    '0 0 0 8px rgba(220, 38, 38, 0.35), 0 0 28px rgba(220, 38, 38, 0.65)',
+                zIndex: '10001',
+                pointerEvents: 'none',
+            });
+            document.body.appendChild(frame);
+
+            const outer = document.createElement('div');
+            Object.assign(outer.style, {
+                position: 'fixed',
+                left: (rect.left - pad - 10) + 'px',
+                top: (rect.top - pad - 10) + 'px',
+                width: (rect.width + (pad + 10) * 2) + 'px',
+                height: (rect.height + (pad + 10) * 2) + 'px',
+                border: '2px dashed #ef4444',
+                borderRadius: '9999px',
+                zIndex: '10000',
+                pointerEvents: 'none',
+            });
+            document.body.appendChild(outer);
+
+            const label = document.createElement('div');
+            label.id = 'manual-chat-highlight-label';
+            label.innerHTML =
+                '<span style="font-size:17px;font-weight:800;display:block;">💬 1:1 상담 채팅</span>' +
+                '<span style="font-size:13px;font-weight:600;opacity:0.95;">여기를 클릭</span>';
+            Object.assign(label.style, {
+                position: 'fixed',
+                right: (window.innerWidth - rect.left + 24) + 'px',
+                bottom: (window.innerHeight - rect.bottom - 6) + 'px',
+                background: '#dc2626',
+                color: '#fff',
+                padding: '12px 18px',
+                borderRadius: '12px',
+                zIndex: '10002',
+                boxShadow: '0 12px 32px rgba(0, 0, 0, 0.28)',
+                fontFamily: 'Pretendard, Apple SD Gothic Neo, Malgun Gothic, sans-serif',
+                lineHeight: '1.35',
+                pointerEvents: 'none',
+                whiteSpace: 'nowrap',
+            });
+
+            const arrow = document.createElement('div');
+            Object.assign(arrow.style, {
+                position: 'absolute',
+                right: '-11px',
+                bottom: '22px',
+                width: '0',
+                height: '0',
+                borderTop: '10px solid transparent',
+                borderBottom: '10px solid transparent',
+                borderLeft: '12px solid #dc2626',
+            });
+            label.appendChild(arrow);
+            document.body.appendChild(label);
+        }"""
+    )
+    page.wait_for_timeout(300)
+    page.screenshot(path=str(path), full_page=False)
+
+
+def capture_counselor_appointment_confirm(
+    page, base_url: str, appointment_pk: str, path: Path
+) -> None:
+    """상담사 예약 확정 화면 — 예약 확정 버튼 강조."""
+    page.goto(
+        f"{base_url}/counseling/counselor/appointments/{appointment_pk}/manage/",
+        wait_until="networkidle",
+    )
+    page.wait_for_timeout(500)
+    strip_debug_toolbar(page)
+    page.evaluate(
+        """() => {
+            document.querySelectorAll('.alert-warning').forEach((el) => el.remove());
+
+            const btn = document.querySelector('.appointment-manage-confirm-btn');
+            if (!btn) return;
+            btn.removeAttribute('disabled');
+            btn.style.setProperty('opacity', '1', 'important');
+
+            const rect = btn.getBoundingClientRect();
+            const pad = 10;
+
+            const frame = document.createElement('div');
+            frame.id = 'manual-confirm-highlight-frame';
+            Object.assign(frame.style, {
+                position: 'fixed',
+                left: (rect.left - pad) + 'px',
+                top: (rect.top - pad) + 'px',
+                width: (rect.width + pad * 2) + 'px',
+                height: (rect.height + pad * 2) + 'px',
+                border: '4px solid #dc2626',
+                borderRadius: '12px',
+                boxShadow:
+                    '0 0 0 8px rgba(220, 38, 38, 0.35), 0 0 28px rgba(220, 38, 38, 0.65)',
+                zIndex: '10001',
+                pointerEvents: 'none',
+            });
+            document.body.appendChild(frame);
+
+            const label = document.createElement('div');
+            label.id = 'manual-confirm-highlight-label';
+            label.innerHTML =
+                '<span style="font-size:16px;font-weight:800;display:block;">✅ 예약 확정</span>' +
+                '<span style="font-size:12px;font-weight:600;opacity:0.95;">여기를 클릭</span>';
+            Object.assign(label.style, {
+                position: 'fixed',
+                left: (rect.right + 20) + 'px',
+                top: (rect.top + rect.height / 2 - 28) + 'px',
+                background: '#dc2626',
+                color: '#fff',
+                padding: '10px 16px',
+                borderRadius: '12px',
+                zIndex: '10002',
+                boxShadow: '0 12px 32px rgba(0, 0, 0, 0.28)',
+                fontFamily: 'Pretendard, Apple SD Gothic Neo, Malgun Gothic, sans-serif',
+                lineHeight: '1.35',
+                pointerEvents: 'none',
+                whiteSpace: 'nowrap',
+            });
+
+            const arrow = document.createElement('div');
+            Object.assign(arrow.style, {
+                position: 'absolute',
+                left: '-11px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                width: '0',
+                height: '0',
+                borderTop: '10px solid transparent',
+                borderBottom: '10px solid transparent',
+                borderRight: '12px solid #dc2626',
+            });
+            label.appendChild(arrow);
+            document.body.appendChild(label);
+        }"""
+    )
+    page.wait_for_timeout(300)
+    page.screenshot(path=str(path), full_page=False)
+
+
 def capture() -> None:
     from playwright.sync_api import sync_playwright
 
@@ -248,6 +615,20 @@ def capture() -> None:
                 print("OK", name)
 
             login(page, base_url, info["client_email"])
+            page.goto(f"{base_url}/client/dashboard/", wait_until="networkidle")
+            page.wait_for_timeout(500)
+            strip_debug_toolbar(page)
+            capture_element(page, "#active-cases", OUT / "client-dashboard-booking.png")
+            print("OK client-dashboard-booking.png")
+
+            capture_booking_calendar(
+                page,
+                base_url,
+                info["client_case_pk"],
+                OUT / "client-booking-calendar.png",
+            )
+            print("OK client-booking-calendar.png")
+
             client_shots = [
                 ("client-dashboard.png", f"{base_url}/client/dashboard/"),
                 ("client-apply.png", f"{base_url}/counseling/apply/"),
@@ -277,28 +658,47 @@ def capture() -> None:
             page.screenshot(path=str(OUT / "client-chat.png"), full_page=False)
             print("OK client-chat.png")
 
+            capture_file_attachment(
+                page,
+                base_url,
+                info["client_case_pk"],
+                OUT / "client-file-attachment.png",
+            )
+            print("OK client-file-attachment.png")
+
             context.clear_cookies()
             login(page, base_url, "manual-remote@kscu.local")
-            capture_shot(
+            capture_zoom_entry(
                 page,
-                f"{base_url}/client/case/{info['remote_case_pk']}/",
+                base_url,
+                info["remote_case_pk"],
                 OUT / "client-zoom.png",
             )
             print("OK client-zoom.png")
 
             context.clear_cookies()
             login(page, base_url, info["counselor_email"])
-            counselor_shots = [
-                ("counselor-dashboard.png", f"{base_url}/counseling/counselor/"),
-                (
-                    "counselor-case-detail.png",
-                    f"{base_url}/counseling/counselor/case/{info['counselor_case_pk']}/",
-                ),
-                ("counselor-availability.png", f"{base_url}/scheduling/availability/"),
-            ]
-            for name, url in counselor_shots:
-                capture_shot(page, url, OUT / name)
-                print("OK", name)
+            capture_shot(page, f"{base_url}/counseling/counselor/", OUT / "counselor-dashboard.png")
+            print("OK counselor-dashboard.png")
+
+            capture_counselor_case_detail(
+                page,
+                base_url,
+                info["counselor_case_pk"],
+                OUT / "counselor-case-detail.png",
+            )
+            print("OK counselor-case-detail.png")
+
+            capture_shot(page, f"{base_url}/scheduling/availability/", OUT / "counselor-availability.png")
+            print("OK counselor-availability.png")
+
+            capture_counselor_appointment_confirm(
+                page,
+                base_url,
+                info["pending_appointment_pk"],
+                OUT / "counselor-appointment-confirm.png",
+            )
+            print("OK counselor-appointment-confirm.png")
 
             context.clear_cookies()
             login(page, base_url, info["admin_email"])

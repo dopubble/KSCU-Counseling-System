@@ -319,15 +319,13 @@ class CounselorMatchForm(forms.Form):
 
             user = profile.user
 
-            specialties = (
-
-                ", ".join(profile.specialties)
-
-                if profile.specialties
-
-                else "전문분야 미등록"
-
-            )
+            if profile.specialties:
+                if isinstance(profile.specialties, (list, tuple)):
+                    specialties = ", ".join(str(item) for item in profile.specialties)
+                else:
+                    specialties = str(profile.specialties)
+            else:
+                specialties = "전문분야 미등록"
 
             active_n = counts.get(user.pk, 0)
 

@@ -454,25 +454,46 @@ def application_detail(request, pk):
                 pk=match_form.cleaned_data["counselor"],
                 role=UserRole.COUNSELOR,
             )
-            if existing_case:
-                case = reassign_counselor(existing_case, counselor)
-                messages.success(
+            try:
+                if existing_case:
+                    case = reassign_counselor(existing_case, counselor)
+                    messages.success(
+                        request,
+                        f"{application.client.name} 님의 담당 상담사를 "
+                        f"{counselor.name} 상담사로 변경했습니다. (사례번호: {case.case_number})",
+                    )
+                else:
+                    total_sessions = match_form.cleaned_data.get("total_sessions") or 10
+                    case = assign_counselor(
+                        application,
+                        counselor,
+                        total_sessions=total_sessions,
+                    )
+                    messages.success(
+                        request,
+                        f"{application.client.name} 님에게 {counselor.name} 상담사를 배정했습니다. "
+                        f"(사례번호: {case.case_number}, 총 {case.total_sessions}회)",
+                    )
+            except ValueError as exc:
+                logger.warning(
+                    "Counselor assignment validation failed (application=%s): %s",
+                    pk,
+                    exc,
+                )
+                messages.error(request, str(exc))
+                return redirect("counseling:application_detail", pk=pk)
+            except IntegrityError:
+                logger.exception(
+                    "Counselor assignment integrity error (application=%s, counselor=%s)",
+                    pk,
+                    counselor.pk,
+                )
+                messages.error(
                     request,
-                    f"{application.client.name} 님의 담당 상담사를 "
-                    f"{counselor.name} 상담사로 변경했습니다. (사례번호: {case.case_number})",
+                    "사례 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요. "
+                    "같은 문제가 반복되면 운영자에게 문의해 주세요.",
                 )
-            else:
-                total_sessions = match_form.cleaned_data.get("total_sessions") or 10
-                case = assign_counselor(
-                    application,
-                    counselor,
-                    total_sessions=total_sessions,
-                )
-                messages.success(
-                    request,
-                    f"{application.client.name} 님에게 {counselor.name} 상담사를 배정했습니다. "
-                    f"(사례번호: {case.case_number}, 총 {case.total_sessions}회)",
-                )
+                return redirect("counseling:application_detail", pk=pk)
             return redirect("admin_panel:matching_list")
         messages.error(request, "상담사 배정에 실패했습니다. 입력 내용을 확인해 주세요.")
     else:

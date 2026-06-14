@@ -607,6 +607,11 @@ def assign_counselor(
     """
     if counselor.role != UserRole.COUNSELOR:
         raise ValueError("선택한 사용자는 상담사가 아닙니다.")
+    if application.client.role != UserRole.CLIENT:
+        raise ValueError(
+            f"내담자({application.client.email}) 계정 역할이 내담자(CLIENT)가 아닙니다. "
+            "관리자에게 계정 역할 확인을 요청해 주세요."
+        )
     if total_sessions < 1:
         raise ValueError("총 회기 수는 1 이상이어야 합니다.")
 
@@ -625,11 +630,15 @@ def assign_counselor(
         },
     )
     if not created:
+        needs_session_reset = not case.counselor_id or case.total_sessions < 1
         case.counselor = counselor
         case.client = application.client
         if case.status != CaseStatus.ACTIVE:
             case.status = CaseStatus.ACTIVE
             case.closed_at = None
+        if needs_session_reset:
+            case.total_sessions = total_sessions
+            case.remaining_sessions = total_sessions
         case.save()
 
     return case
