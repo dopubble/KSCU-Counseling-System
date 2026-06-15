@@ -1248,7 +1248,7 @@ def _resolve_appointment_zoom_url(
     appointment: Optional[Appointment],
     case: Case,
 ) -> str:
-    """참가 join_url — 상담사(대체 호스트)·내담자 공통."""
+    """참가 join_url — 상담사·내담자 공통."""
     if appointment is None:
         return ""
     zoom = getattr(appointment, "zoom_meeting", None)
@@ -1425,7 +1425,7 @@ class CounselorSessionCardView:
 
     @property
     def zoom_url(self) -> str:
-        """상담사는 join_url + Zoom 대체 호스트로 개인 계정 입장."""
+        """상담사·내담자 공통 join_url 입장."""
         appointment = self.appointment
         if appointment is None:
             return self._card.zoom_url
