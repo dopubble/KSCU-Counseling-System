@@ -5,7 +5,7 @@
 
 {% block extra_css %}
 <link href="{% static 'css/counselor.css' %}" rel="stylesheet">
-<link href="{% static 'css/case_chat.css' %}" rel="stylesheet">
+<link href="{% static 'css/case_chat.css' %}?v=2" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" rel="stylesheet">
 {% endblock %}
 
@@ -226,7 +226,7 @@
 <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ko.js"></script>
 <script src="{% static 'js/client_schedule_calendar.js' %}?v=6"></script>
 {% if case.counselor %}
-<script src="{% static 'js/case_chat.js' %}?v=2"></script>
+<script src="{% static 'js/case_chat.js' %}?v=3"></script>
 {% endif %}
 <script>
 (function () {

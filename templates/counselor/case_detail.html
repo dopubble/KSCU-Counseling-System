@@ -5,7 +5,7 @@
 
 {% block extra_css %}
 <link href="{% static 'css/counselor.css' %}" rel="stylesheet">
-<link href="{% static 'css/case_chat.css' %}" rel="stylesheet">
+<link href="{% static 'css/case_chat.css' %}?v=2" rel="stylesheet">
 {% endblock %}
 
 {% block layout %}
@@ -219,12 +219,12 @@
         </div>
     </div>
 </div>
+{% endblock %}
+{% endblock %}
+
+{% block extra_js %}
 <script src="{% static 'js/counselor_session_actions.js' %}?v=9"></script>
 {% if case.counselor and request.user.id == case.counselor_id %}
-<script src="{% static 'js/case_chat.js' %}?v=2"></script>
+<script src="{% static 'js/case_chat.js' %}?v=3"></script>
 {% endif %}
-<script>
-console.log("counselor case_detail: inline script loaded");
-</script>
-{% endblock %}
 {% endblock %}
