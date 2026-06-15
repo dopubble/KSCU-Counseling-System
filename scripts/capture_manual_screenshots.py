@@ -64,6 +64,7 @@ def ensure_users() -> dict:
     from apps.accounts.models import CounselorProfile, ClientProfile
     from apps.counseling.models import (
         ApplicationStatus,
+        ChatMessage,
         CounselingApplication,
     )
     from apps.counseling.services import assign_counselor
@@ -237,6 +238,22 @@ def ensure_users() -> dict:
         request_message="매뉴얼 데모 예약 요청",
     )
 
+    ChatMessage.objects.filter(case=case).delete()
+    ChatMessage.objects.create(
+        case=case,
+        sender=client,
+        recipient=counselor,
+        body="안녕하세요, 다음 회기 일정 문의드립니다.",
+        is_read=False,
+    )
+    ChatMessage.objects.create(
+        case=case,
+        sender=counselor,
+        recipient=client,
+        body="네, 확인 후 안내드리겠습니다.",
+        is_read=True,
+    )
+
     info.update(
         {
             "client_email": client.email,
@@ -407,98 +424,88 @@ def capture_zoom_entry(page, base_url: str, case_pk: str, path: Path) -> None:
 
 
 def capture_counselor_case_detail(page, base_url: str, case_pk: str, path: Path) -> None:
-    """상담사 사례 상세 — 가로 전체 뷰포트 + 1:1 채팅 버튼 강조."""
+    """상담사 사례 상세 — 게시글·상담일지·초기기록·과제·기수과제 번호 강조."""
     page.goto(f"{base_url}/counseling/counselor/case/{case_pk}/", wait_until="networkidle")
     page.wait_for_timeout(500)
     strip_debug_toolbar(page)
     page.evaluate(
         """() => {
+            const chat = document.getElementById('caseChatRoot');
+            if (chat) chat.style.display = 'none';
+            const pending = document.querySelector('.counselor-pending-requests-card');
+            if (pending) pending.style.visibility = 'hidden';
+
             const row = document.querySelector('.case-detail-row')
                 || document.querySelector('.client-portal-stack');
-            window.scrollTo(0, row ? Math.max(0, row.offsetTop - 80) : 0);
+            window.scrollTo(0, row ? Math.max(0, row.offsetTop - 72) : 0);
         }"""
     )
     page.wait_for_timeout(500)
     strip_debug_toolbar(page)
     page.evaluate(
         """() => {
-            const root = document.getElementById('caseChatRoot');
-            const wrap = document.querySelector('.case-chat-toggle-wrap');
-            const btn = document.getElementById('caseChatToggleBtn');
-            if (!root || !wrap || !btn) return;
+            const targets = [
+                { sel: 'button[data-bs-target="#boardPostCreateModal"]', num: 1 },
+                { sel: '#session-1 .client-session-card-footer a[href*="journal"]', num: 2 },
+                { sel: '#session-1 .client-session-card-footer a[href*="initial-record"]', num: 3 },
+                {
+                    sel: '#session-1 button[data-bs-target="#counselorAssignmentUploadModal"]',
+                    num: 4,
+                },
+                { sel: '#session-1 .cohort-assignments-open-btn', num: 5 },
+            ];
 
-            root.style.zIndex = '10000';
-            btn.style.setProperty('transform', 'scale(1.15)', 'important');
-            btn.style.setProperty('transform-origin', 'center center', 'important');
+            function highlight(el, num) {
+                const rect = el.getBoundingClientRect();
+                if (rect.width < 2 || rect.height < 2) return;
+                const pad = 6;
 
-            const rect = wrap.getBoundingClientRect();
-            const pad = 16;
+                const frame = document.createElement('div');
+                frame.className = 'manual-feature-highlight-frame';
+                Object.assign(frame.style, {
+                    position: 'fixed',
+                    left: (rect.left - pad) + 'px',
+                    top: (rect.top - pad) + 'px',
+                    width: (rect.width + pad * 2) + 'px',
+                    height: (rect.height + pad * 2) + 'px',
+                    border: '3px solid #dc2626',
+                    borderRadius: '8px',
+                    boxShadow: '0 0 0 5px rgba(220, 38, 38, 0.28)',
+                    zIndex: '10000',
+                    pointerEvents: 'none',
+                });
+                document.body.appendChild(frame);
 
-            const frame = document.createElement('div');
-            frame.id = 'manual-chat-highlight-frame';
-            Object.assign(frame.style, {
-                position: 'fixed',
-                left: (rect.left - pad) + 'px',
-                top: (rect.top - pad) + 'px',
-                width: (rect.width + pad * 2) + 'px',
-                height: (rect.height + pad * 2) + 'px',
-                border: '4px solid #dc2626',
-                borderRadius: '9999px',
-                boxShadow:
-                    '0 0 0 8px rgba(220, 38, 38, 0.35), 0 0 28px rgba(220, 38, 38, 0.65)',
-                zIndex: '10001',
-                pointerEvents: 'none',
-            });
-            document.body.appendChild(frame);
+                const badge = document.createElement('div');
+                badge.className = 'manual-feature-highlight-badge';
+                badge.textContent = String(num);
+                Object.assign(badge.style, {
+                    position: 'fixed',
+                    left: (rect.left - pad - 2) + 'px',
+                    top: (rect.top - pad - 14) + 'px',
+                    minWidth: '26px',
+                    height: '26px',
+                    padding: '0 6px',
+                    borderRadius: '9999px',
+                    background: '#dc2626',
+                    color: '#fff',
+                    fontWeight: '800',
+                    fontSize: '14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: '10001',
+                    fontFamily: 'Pretendard, Apple SD Gothic Neo, Malgun Gothic, sans-serif',
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.28)',
+                    lineHeight: '1',
+                });
+                document.body.appendChild(badge);
+            }
 
-            const outer = document.createElement('div');
-            Object.assign(outer.style, {
-                position: 'fixed',
-                left: (rect.left - pad - 10) + 'px',
-                top: (rect.top - pad - 10) + 'px',
-                width: (rect.width + (pad + 10) * 2) + 'px',
-                height: (rect.height + (pad + 10) * 2) + 'px',
-                border: '2px dashed #ef4444',
-                borderRadius: '9999px',
-                zIndex: '10000',
-                pointerEvents: 'none',
-            });
-            document.body.appendChild(outer);
-
-            const label = document.createElement('div');
-            label.id = 'manual-chat-highlight-label';
-            label.innerHTML =
-                '<span style="font-size:17px;font-weight:800;display:block;">💬 1:1 상담 채팅</span>' +
-                '<span style="font-size:13px;font-weight:600;opacity:0.95;">여기를 클릭</span>';
-            Object.assign(label.style, {
-                position: 'fixed',
-                right: (window.innerWidth - rect.left + 24) + 'px',
-                bottom: (window.innerHeight - rect.bottom - 6) + 'px',
-                background: '#dc2626',
-                color: '#fff',
-                padding: '12px 18px',
-                borderRadius: '12px',
-                zIndex: '10002',
-                boxShadow: '0 12px 32px rgba(0, 0, 0, 0.28)',
-                fontFamily: 'Pretendard, Apple SD Gothic Neo, Malgun Gothic, sans-serif',
-                lineHeight: '1.35',
-                pointerEvents: 'none',
-                whiteSpace: 'nowrap',
-            });
-
-            const arrow = document.createElement('div');
-            Object.assign(arrow.style, {
-                position: 'absolute',
-                right: '-11px',
-                bottom: '22px',
-                width: '0',
-                height: '0',
-                borderTop: '10px solid transparent',
-                borderBottom: '10px solid transparent',
-                borderLeft: '12px solid #dc2626',
-            });
-            label.appendChild(arrow);
-            document.body.appendChild(label);
+            for (const { sel, num } of targets) {
+                const el = document.querySelector(sel);
+                if (el) highlight(el, num);
+            }
         }"""
     )
     page.wait_for_timeout(300)
@@ -669,6 +676,163 @@ def capture_counselor_appointment_manage(
     page.screenshot(path=str(path), full_page=False)
 
 
+def capture_counselor_chat(page, base_url: str, case_pk: str, path: Path) -> None:
+    """상담사 사례 상세 — 1:1 채팅 플로팅 버튼·채팅창 강조."""
+    page.goto(f"{base_url}/counseling/counselor/case/{case_pk}/", wait_until="networkidle")
+    page.wait_for_timeout(500)
+    strip_debug_toolbar(page)
+    page.evaluate(
+        """() => {
+            const pending = document.querySelector('.counselor-pending-requests-card');
+            if (pending) pending.style.visibility = 'hidden';
+            const row = document.querySelector('.case-detail-row')
+                || document.querySelector('.client-portal-stack');
+            window.scrollTo(0, row ? Math.max(0, row.offsetTop - 72) : 0);
+        }"""
+    )
+    page.wait_for_timeout(400)
+    strip_debug_toolbar(page)
+    page.evaluate(
+        """() => {
+            const btn = document.getElementById('caseChatToggleBtn');
+            if (btn) btn.click();
+        }"""
+    )
+    page.wait_for_selector("#caseChatPanel:not(.d-none)", timeout=5000)
+    page.wait_for_timeout(900)
+    strip_debug_toolbar(page)
+    page.evaluate(
+        """() => {
+            const root = document.getElementById('caseChatRoot');
+            const btn = document.getElementById('caseChatToggleBtn');
+            const wrap = document.querySelector('.case-chat-toggle-wrap');
+            const input = document.getElementById('caseChatInput');
+            if (!root || !btn) return;
+
+            root.style.zIndex = '10050';
+
+            const rootRect = root.getBoundingClientRect();
+            const pad = 14;
+            const spot = document.createElement('div');
+            spot.id = 'manual-chat-spotlight';
+            Object.assign(spot.style, {
+                position: 'fixed',
+                left: (rootRect.left - pad) + 'px',
+                top: (rootRect.top - pad) + 'px',
+                width: (rootRect.width + pad * 2) + 'px',
+                height: (rootRect.height + pad * 2) + 'px',
+                borderRadius: '18px',
+                border: '5px solid #fbbf24',
+                boxShadow:
+                    '0 0 0 9999px rgba(15, 23, 42, 0.62),'
+                    + '0 0 0 8px rgba(220, 38, 38, 0.55),'
+                    + '0 0 40px rgba(251, 191, 36, 0.75)',
+                zIndex: '10040',
+                pointerEvents: 'none',
+            });
+            document.body.appendChild(spot);
+
+            btn.style.setProperty('transform', 'scale(1.18)', 'important');
+            btn.style.setProperty('transform-origin', 'center center', 'important');
+            btn.style.setProperty('box-shadow', '0 0 0 6px #fff, 0 0 24px rgba(220,38,38,0.9)', 'important');
+
+            if (wrap) {
+                const btnRect = wrap.getBoundingClientRect();
+                [10, 24, 38].forEach((ringPad, i) => {
+                    const ring = document.createElement('div');
+                    Object.assign(ring.style, {
+                        position: 'fixed',
+                        left: (btnRect.left - ringPad) + 'px',
+                        top: (btnRect.top - ringPad) + 'px',
+                        width: (btnRect.width + ringPad * 2) + 'px',
+                        height: (btnRect.height + ringPad * 2) + 'px',
+                        borderRadius: '9999px',
+                        border: (4 - i) + 'px solid rgba(220, 38, 38, ' + (0.85 - i * 0.2) + ')',
+                        zIndex: '10041',
+                        pointerEvents: 'none',
+                    });
+                    document.body.appendChild(ring);
+                });
+            }
+
+            const label = document.createElement('div');
+            label.id = 'manual-chat-callout';
+            label.innerHTML =
+                '<span style="font-size:19px;font-weight:800;display:block;line-height:1.3;">'
+                + '💬 1:1 채팅</span>'
+                + '<span style="font-size:13px;font-weight:600;opacity:0.95;">'
+                + '오른쪽 하단 · 클릭하여 열기</span>';
+            const btnRect = (wrap || btn).getBoundingClientRect();
+            Object.assign(label.style, {
+                position: 'fixed',
+                right: (window.innerWidth - btnRect.left + 28) + 'px',
+                bottom: (window.innerHeight - btnRect.bottom - 4) + 'px',
+                background: 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)',
+                color: '#fff',
+                padding: '14px 20px',
+                borderRadius: '14px',
+                zIndex: '10055',
+                boxShadow: '0 16px 48px rgba(220, 38, 38, 0.55)',
+                fontFamily: 'Pretendard, Apple SD Gothic Neo, Malgun Gothic, sans-serif',
+                lineHeight: '1.35',
+                pointerEvents: 'none',
+                whiteSpace: 'nowrap',
+            });
+            const arrow = document.createElement('div');
+            Object.assign(arrow.style, {
+                position: 'absolute',
+                right: '-12px',
+                bottom: '18px',
+                width: '0',
+                height: '0',
+                borderTop: '11px solid transparent',
+                borderBottom: '11px solid transparent',
+                borderLeft: '14px solid #991b1b',
+            });
+            label.appendChild(arrow);
+            document.body.appendChild(label);
+
+            if (input) {
+                const inputRect = input.getBoundingClientRect();
+                const inputFrame = document.createElement('div');
+                Object.assign(inputFrame.style, {
+                    position: 'fixed',
+                    left: (inputRect.left - 6) + 'px',
+                    top: (inputRect.top - 6) + 'px',
+                    width: (inputRect.width + 12) + 'px',
+                    height: (inputRect.height + 12) + 'px',
+                    border: '3px solid #2563eb',
+                    borderRadius: '8px',
+                    boxShadow: '0 0 0 4px rgba(37, 99, 235, 0.25)',
+                    zIndex: '10056',
+                    pointerEvents: 'none',
+                });
+                document.body.appendChild(inputFrame);
+
+                const inputLabel = document.createElement('div');
+                inputLabel.textContent = '메시지 입력';
+                Object.assign(inputLabel.style, {
+                    position: 'fixed',
+                    left: inputRect.left + 'px',
+                    top: (inputRect.top - 28) + 'px',
+                    background: '#2563eb',
+                    color: '#fff',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    zIndex: '10057',
+                    fontFamily: 'Pretendard, sans-serif',
+                    pointerEvents: 'none',
+                });
+                document.body.appendChild(inputLabel);
+            }
+        }"""
+    )
+    page.wait_for_timeout(300)
+    page.screenshot(path=str(path), full_page=False)
+
+
 def capture() -> None:
     from playwright.sync_api import sync_playwright
 
@@ -791,6 +955,14 @@ def capture() -> None:
                 OUT / "counselor-appointment-manage.png",
             )
             print("OK counselor-appointment-manage.png")
+
+            capture_counselor_chat(
+                page,
+                base_url,
+                info["counselor_case_pk"],
+                OUT / "counselor-chat.png",
+            )
+            print("OK counselor-chat.png")
 
             context.clear_cookies()
             login(page, base_url, info["admin_email"])
