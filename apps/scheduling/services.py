@@ -13,7 +13,11 @@ from .utils import (
     ZoomNotConfiguredError,
     clear_zoom_token_cache,
     create_zoom_meeting,
+    get_zoom_meeting,
+    is_zoom_configured,
+    pick_meeting_launch_url,
     update_zoom_meeting,
+    update_zoom_meeting_participant_settings,
 )
 
 logger = logging.getLogger(__name__)
@@ -263,6 +267,95 @@ def reschedule_confirmed_appointment(
             )
 
     return appointment, zoom_warning
+
+
+def sync_existing_zoom_join_urls(
+    *,
+    dry_run: bool = False,
+) -> tuple[int, int, int, list[str]]:
+    """
+    기존 ZoomMeeting·Case 링크를 join_url 기준으로 정리하고 Zoom 설정을 갱신.
+    반환: (updated, skipped, failed, error_messages)
+    """
+    if not is_zoom_configured():
+        raise ZoomNotConfiguredError(
+            "Zoom API 설정이 없습니다. ZOOM_* 환경 변수를 확인해 주세요."
+        )
+
+    qs = (
+        ZoomMeeting.objects.exclude(zoom_meeting_id="")
+        .select_related("appointment", "appointment__case")
+        .filter(appointment__status=AppointmentStatus.CONFIRMED)
+        .order_by("created_at")
+    )
+
+    updated = skipped = failed = 0
+    errors: list[str] = []
+    cases_to_refresh: dict = {}
+
+    for zoom_meeting in qs.iterator():
+        appointment = zoom_meeting.appointment
+        case = appointment.case
+        meeting_id = zoom_meeting.zoom_meeting_id
+
+        if dry_run:
+            updated += 1
+            cases_to_refresh[case.pk] = case
+            continue
+
+        try:
+            update_zoom_meeting_participant_settings(meeting_id)
+            meeting_data = get_zoom_meeting(meeting_id)
+            join_url = pick_meeting_launch_url(meeting_data)
+            if not join_url:
+                skipped += 1
+                continue
+
+            password = (meeting_data.get("password") or "").strip()
+            start_url = (meeting_data.get("start_url") or zoom_meeting.start_url or "").strip()
+
+            zoom_fields = []
+            if zoom_meeting.join_url != join_url:
+                zoom_meeting.join_url = join_url
+                zoom_fields.append("join_url")
+            if start_url and zoom_meeting.start_url != start_url:
+                zoom_meeting.start_url = start_url
+                zoom_fields.append("start_url")
+            if password and zoom_meeting.password != password:
+                zoom_meeting.password = password
+                zoom_fields.append("password")
+            if zoom_fields:
+                zoom_meeting.save(update_fields=zoom_fields)
+
+            cases_to_refresh[case.pk] = case
+            updated += 1
+        except ZoomAPIError as exc:
+            clear_zoom_token_cache()
+            failed += 1
+            errors.append(f"fail {meeting_id} (case {case.case_number}): {exc}")
+            logger.warning(
+                "Zoom join URL sync failed for meeting %s: %s",
+                meeting_id,
+                exc,
+            )
+
+    if not dry_run:
+        for case in cases_to_refresh.values():
+            latest_join = (
+                ZoomMeeting.objects.filter(
+                    appointment__case=case,
+                    appointment__status=AppointmentStatus.CONFIRMED,
+                )
+                .exclude(join_url="")
+                .order_by("-appointment__confirmed_at", "-created_at")
+                .values_list("join_url", flat=True)
+                .first()
+            )
+            if latest_join and case.zoom_meeting_url != latest_join:
+                case.zoom_meeting_url = latest_join
+                case.save(update_fields=["zoom_meeting_url"])
+
+    return updated, skipped, failed, errors
 
 
 @transaction.atomic

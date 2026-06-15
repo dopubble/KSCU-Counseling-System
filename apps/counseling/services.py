@@ -738,23 +738,22 @@ def get_client_home_dashboard(user: User) -> dict[str, Any] | None:
             client=user,
             status__in=list_statuses,
         )
-        .select_related("case", "case__counselor", "counselor")
+        .select_related("case", "case__counselor", "counselor", "zoom_meeting")
         .order_by("-scheduled_at")[:3]
     )
 
     recent_appointments = []
     for apt in recent_list:
         case = apt.case
-        show_zoom = (
-            apt.status == AppointmentStatus.CONFIRMED and bool(case.zoom_meeting_url)
-        )
+        zoom_url = _resolve_appointment_zoom_url(apt, case)
+        show_zoom = apt.status == AppointmentStatus.CONFIRMED and bool(zoom_url)
         recent_appointments.append(
             {
                 "scheduled_at": apt.scheduled_at,
                 "status": apt.status,
                 "status_display": apt.get_status_display(),
                 "show_zoom": show_zoom,
-                "zoom_url": case.zoom_meeting_url if show_zoom else "",
+                "zoom_url": zoom_url,
                 "case_pk": case.pk,
             }
         )
@@ -1244,6 +1243,14 @@ def _resolve_pending_appointment_for_session(
     return None
 
 
+def _is_zoom_host_url(url: str) -> bool:
+    """Zoom 호스트(start) URL — 참가 버튼에 사용하지 않음."""
+    normalized = (url or "").strip().lower()
+    if not normalized:
+        return False
+    return "/s/" in normalized or "zak=" in normalized
+
+
 def _resolve_appointment_zoom_url(
     appointment: Optional[Appointment],
     case: Case,
@@ -1252,12 +1259,9 @@ def _resolve_appointment_zoom_url(
     if appointment is None:
         return ""
     zoom = getattr(appointment, "zoom_meeting", None)
-    if zoom:
-        if zoom.join_url:
-            return zoom.join_url
-        if zoom.start_url:
-            return zoom.start_url
-    if case.zoom_meeting_url:
+    if zoom and zoom.join_url:
+        return zoom.join_url
+    if case.zoom_meeting_url and not _is_zoom_host_url(case.zoom_meeting_url):
         return case.zoom_meeting_url
     return ""
 

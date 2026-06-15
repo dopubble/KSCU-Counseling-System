@@ -115,6 +115,8 @@ def _zoom_meeting_settings() -> dict[str, Any]:
         "waiting_room": False,
         "host_video": True,
         "participant_video": True,
+        "alternative_hosts": "",
+        "alternative_hosts_email_notification": False,
     }
 
 
@@ -249,6 +251,46 @@ def update_zoom_meeting(
         "timezone": tz,
     }
     return _patch_zoom_meeting(meeting_id, payload)
+
+
+def get_zoom_meeting(meeting_id: str) -> dict[str, Any]:
+    """Zoom 회의 상세 조회."""
+    _ensure_zoom_configured()
+    meeting_id = str(meeting_id).strip()
+    if not meeting_id:
+        raise ZoomAPIError("Zoom 회의 ID가 없습니다.")
+
+    token = get_zoom_access_token()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    try:
+        response = requests.get(
+            f"{API_BASE}/meetings/{meeting_id}",
+            headers=headers,
+            timeout=30,
+        )
+        response.raise_for_status()
+        return response.json()
+    except requests.HTTPError as exc:
+        detail = ""
+        if exc.response is not None:
+            try:
+                detail = exc.response.json().get("message", exc.response.text)
+            except Exception:
+                detail = exc.response.text
+        raise ZoomAPIError(
+            f"Zoom 회의 조회에 실패했습니다. {detail or 'API 오류'}"
+        ) from exc
+    except requests.RequestException as exc:
+        raise ZoomAPIError(f"Zoom 회의 조회 중 오류가 발생했습니다: {exc}") from exc
+
+
+def update_zoom_meeting_participant_settings(meeting_id: str) -> dict[str, Any]:
+    """기존 회의 — join_url 입장용 설정(대체 호스트 제거 포함)."""
+    return _patch_zoom_meeting(
+        meeting_id,
+        {"settings": _zoom_meeting_settings()},
+    )
 
 
 def pick_meeting_launch_url(meeting_data: dict[str, Any]) -> str:
