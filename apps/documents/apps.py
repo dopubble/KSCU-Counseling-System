@@ -13,4 +13,3 @@ class DocumentsConfig(AppConfig):
 
         media_root = Path(settings.MEDIA_ROOT)
         media_root.mkdir(parents=True, exist_ok=True)
-        (media_root / "counselor_assignments").mkdir(parents=True, exist_ok=True)

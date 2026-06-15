@@ -254,6 +254,23 @@ def ensure_users() -> dict:
         is_read=True,
     )
 
+    from apps.sessions_app.models import CounselingJournal
+
+    CounselingJournal.objects.update_or_create(
+        case=case,
+        session_number=1,
+        defaults={
+            "counselor": counselor,
+            "session_category": "개인상담",
+            "session_datetime": timezone.now(),
+            "subjective": "매뉴얼 데모 상담 내용",
+            "objective": "매뉴얼 데모 관찰",
+            "assessment": "매뉴얼 데모 평가",
+            "plan": "매뉴얼 데모 계획",
+            "is_draft": False,
+        },
+    )
+
     info.update(
         {
             "client_email": client.email,
@@ -448,11 +465,7 @@ def capture_counselor_case_detail(page, base_url: str, case_pk: str, path: Path)
                 { sel: 'button[data-bs-target="#boardPostCreateModal"]', num: 1 },
                 { sel: '#session-1 .client-session-card-footer a[href*="journal"]', num: 2 },
                 { sel: '#session-1 .client-session-card-footer a[href*="initial-record"]', num: 3 },
-                {
-                    sel: '#session-1 button[data-bs-target="#counselorAssignmentUploadModal"]',
-                    num: 4,
-                },
-                { sel: '#session-1 .cohort-assignments-open-btn', num: 5 },
+                { sel: '#session-1 .cohort-journals-open-btn', num: 4 },
             ];
 
             function highlight(el, num) {

@@ -15,7 +15,6 @@ from apps.counseling.models import ApplicationStatus, Case, CaseStatus, Counseli
 from apps.counseling.services import get_available_counselors, get_counselor_active_case_counts
 from apps.counseling.services import count_cancel_pending_appointments
 from apps.scheduling.models import Appointment, AppointmentStatus
-from apps.documents.models import CounselorAssignmentSubmission
 
 
 def _parse_cohort_param(raw) -> int | None:
@@ -314,73 +313,6 @@ def counselor_list(request):
         },
     )
 
-
-@role_required(UserRole.ADMIN)
-def counselor_assignment_list(request):
-    """기수별 과제 검수 대시보드 — 사례·회차별 최종본."""
-    cohorts = get_available_cohorts()
-    selected_cohort = _parse_cohort_param(request.GET.get("cohort"))
-
-    assignments = (
-        CounselorAssignmentSubmission.objects.select_related(
-            "case",
-            "case__client",
-            "case__counselor",
-            "submitted_by",
-        )
-        .order_by("cohort", "case__case_number", "session_number")
-    )
-    if selected_cohort is not None:
-        assignments = assignments.filter(cohort=selected_cohort)
-
-    assignments = list(assignments)
-
-    if request.GET.get("export") == "csv":
-        rows = [
-            [
-                a.case.case_number,
-                a.case.client.name,
-                a.submitted_by.name,
-                a.cohort or "",
-                a.session_number,
-                a.updated_at.strftime("%Y-%m-%d %H:%M"),
-                a.get_filename(),
-            ]
-            for a in assignments
-        ]
-        suffix = f"_{selected_cohort}기" if selected_cohort else "_전체"
-        return _csv_response(
-            f"과제_제출{suffix}.csv",
-            ["사례번호", "내담자", "상담사", "기수", "회차", "최종제출일", "파일명"],
-            rows,
-        )
-
-    return render(
-        request,
-        "admin_panel/counselor_assignment_list.html",
-        {
-            "assignments": assignments,
-            "assignments_count": len(assignments),
-            "cohorts": cohorts,
-            "selected_cohort": selected_cohort,
-        },
-    )
-
-
-@role_required(UserRole.ADMIN)
-def admin_assignment_file(request, assignment_pk):
-    """과제 파일 다운로드 (관리자)."""
-    assignment = get_object_or_404(
-        CounselorAssignmentSubmission.objects.select_related("case"),
-        pk=assignment_pk,
-    )
-    if not assignment.file:
-        raise Http404("File not found")
-    return FileResponse(
-        assignment.file.open("rb"),
-        as_attachment=True,
-        filename=assignment.get_filename(),
-    )
 
 
 @role_required(UserRole.ADMIN)

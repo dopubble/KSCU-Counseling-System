@@ -1400,19 +1400,17 @@ def build_case_session_cards(case: Case) -> list[CaseSessionCard]:
 class CounselorSessionCardView:
     """상담사 회기 카드 + 확정/반려용 PENDING Appointment 연결."""
 
-    __slots__ = ("_card", "action_appointment", "assignment", "cohort_peers")
+    __slots__ = ("_card", "action_appointment", "cohort_journals")
 
     def __init__(
         self,
         card: CaseSessionCard,
         action_appointment: Optional[Appointment] = None,
-        assignment=None,
-        cohort_peers=(),
+        cohort_journals=(),
     ):
         self._card = card
         self.action_appointment = action_appointment
-        self.assignment = assignment
-        self.cohort_peers = tuple(cohort_peers or ())
+        self.cohort_journals = tuple(cohort_journals or ())
 
     def __getattr__(self, name: str):
         return getattr(self._card, name)
@@ -1472,8 +1470,8 @@ class CounselorSessionCardView:
         return self._card.termination_record_label
 
     @property
-    def cohort_peers_downloadable(self) -> bool:
-        return any(peer.file and peer.file.name for peer in self.cohort_peers)
+    def has_cohort_journals(self) -> bool:
+        return bool(self.cohort_journals)
 
 
 def build_case_session_cards_cached(case: Case) -> list[CaseSessionCard]:
@@ -1490,12 +1488,10 @@ def build_counselor_session_views(
     case: Case,
     *,
     prebuilt_cards: list[CaseSessionCard] | None = None,
-    assignments_by_session: dict | None = None,
-    cohort_peers_by_session: dict | None = None,
+    cohort_journals_by_session: dict | None = None,
 ) -> list[CounselorSessionCardView]:
     """상담사 사례 상세 — 회기 카드에 PENDING Appointment를 확실히 연결."""
-    assignments_by_session = assignments_by_session or {}
-    cohort_peers_by_session = cohort_peers_by_session or {}
+    cohort_journals_by_session = cohort_journals_by_session or {}
     cards = prebuilt_cards or build_case_session_cards(case)
     pending_apts = list(
         case.appointments.filter(status=AppointmentStatus.PENDING).order_by(
@@ -1544,8 +1540,7 @@ def build_counselor_session_views(
             CounselorSessionCardView(
                 card,
                 action_apt,
-                assignment=assignments_by_session.get(card.session_number),
-                cohort_peers=cohort_peers_by_session.get(card.session_number, ()),
+                cohort_journals=cohort_journals_by_session.get(card.session_number, ()),
             )
         )
     return views

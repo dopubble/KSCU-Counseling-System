@@ -25,7 +25,7 @@ from apps.counseling.models import (
 from apps.counseling.services import _counseling_method_for_client
 from apps.counseling.seed_applications import create_application_for_client
 from apps.counseling.services import assign_counselor, reassign_counselor
-from apps.documents.models import CounselorAssignmentSubmission, SessionMaterial
+from apps.documents.models import SessionMaterial
 from apps.scheduling.forms import DEFAULT_APPOINTMENT_DURATION_MINUTES
 from apps.scheduling.models import Appointment, AppointmentStatus
 from apps.scheduling.services import confirm_appointment_with_zoom
@@ -46,7 +46,6 @@ class ClearSummary:
     appointments_deleted: int = 0
     schedule_requests_deleted: int = 0
     session_materials_deleted: int = 0
-    assignments_deleted: int = 0
     applications_reset: int = 0
 
 
@@ -207,7 +206,6 @@ def clear_matching_data(
     apt_qs = Appointment.objects.filter(case_id__in=case_ids)
     sched_qs = SessionScheduleChangeRequest.objects.filter(case_id__in=case_ids)
     material_qs = SessionMaterial.objects.filter(case_id__in=case_ids, is_shared=False)
-    assign_qs = CounselorAssignmentSubmission.objects.filter(case_id__in=case_ids)
     application_ids = list(
         Case.objects.filter(pk__in=case_ids).values_list("application_id", flat=True)
     )
@@ -215,13 +213,11 @@ def clear_matching_data(
     summary.appointments_deleted = apt_qs.count()
     summary.schedule_requests_deleted = sched_qs.count()
     summary.session_materials_deleted = material_qs.count()
-    summary.assignments_deleted = assign_qs.count()
     summary.applications_reset = len(application_ids)
 
     if dry_run:
         return summary
 
-    assign_qs.delete()
     material_qs.delete()
     sched_qs.delete()
     apt_qs.delete()

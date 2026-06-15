@@ -133,7 +133,6 @@ class Command(BaseCommand):
             self.stdout.write(f"  예약 삭제 {cleared.appointments_deleted}건")
             self.stdout.write(f"  일정변경요청 삭제 {cleared.schedule_requests_deleted}건")
             self.stdout.write(f"  회기자료 삭제 {cleared.session_materials_deleted}건")
-            self.stdout.write(f"  과제제출 삭제 {cleared.assignments_deleted}건")
             self.stdout.write(f"  신청 상태 초기화 {cleared.applications_reset}건")
 
         self.stdout.write("")

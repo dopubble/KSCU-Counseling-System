@@ -1,0 +1,147 @@
+{# 회기별 동기 상담일지 목록 · PDF 다운로드 #}
+<div class="modal fade" id="cohortJournalsModal" tabindex="-1" aria-labelledby="cohortJournalsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title mb-0" id="cohortJournalsModalLabel">동기 상담일지</h5>
+                    <p class="small text-muted mb-0 mt-1">
+                        {% if counselor_cohort %}<span class="badge text-bg-secondary">{{ counselor_cohort }}기</span>{% endif %}
+                        <span id="cohortJournalsSessionLabel" class="ms-1"></span>
+                    </p>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+            </div>
+            <div class="modal-body p-0">
+                {% for session in sessions %}
+                <div class="cohort-journals-panel d-none"
+                     id="cohortJournalsPanel{{ session.session_number }}"
+                     data-session-number="{{ session.session_number }}">
+                    {% if session.cohort_journals %}
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th scope="col">상담사</th>
+                                    <th scope="col">사례번호</th>
+                                    <th scope="col">내담자</th>
+                                    <th scope="col">성별</th>
+                                    <th scope="col">생년월일</th>
+                                    <th scope="col">직업</th>
+                                    <th scope="col">작성일</th>
+                                    <th scope="col">PDF</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for entry in session.cohort_journals %}
+                                <tr>
+                                    <td class="fw-semibold">{{ entry.counselor_name }}</td>
+                                    <td class="font-monospace small">{{ entry.case_number }}</td>
+                                    <td>{{ entry.client_name }}</td>
+                                    <td class="small">{{ entry.gender }}</td>
+                                    <td class="small text-nowrap">{{ entry.birth_date }}</td>
+                                    <td class="small">{{ entry.occupation }}</td>
+                                    <td class="small text-nowrap">{{ entry.updated_at }}</td>
+                                    <td>
+                                        <button type="button"
+                                                class="btn btn-sm btn-outline-primary py-0 px-2 cohort-journal-pdf-btn"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#cohortJournalPdfModal"
+                                                data-pdf-action="{% url 'counselor:cohort_journal_pdf' entry.journal_id %}"
+                                                data-pdf-label="{{ entry.case_number }} {{ entry.session_number }}회기 상담일지">
+                                            <i class="bi bi-file-earmark-pdf" aria-hidden="true"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="small text-muted px-3 py-2 mb-0 border-top">
+                        타인 내담자: 이름·연락처·이메일은 마스킹됩니다. 성별·생년월일·직업은 표시됩니다.
+                    </p>
+                    {% else %}
+                    <div class="text-center py-4 px-3">
+                        <p class="text-muted mb-0 small">이 회기에 작성된 동기 상담일지가 없습니다.</p>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            <div class="modal-footer">
+                <p class="small text-muted mb-0">다른 기수 상담일지는 표시되지 않습니다.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="cohortJournalPdfModal" tabindex="-1" aria-labelledby="cohortJournalPdfModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="post" id="cohortJournalPdfForm" action="">
+                {% csrf_token %}
+                <input type="hidden" name="next" id="cohortJournalPdfNext" value="">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="cohortJournalPdfModalLabel">PDF 다운로드</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">
+                        <span id="cohortJournalPdfLabel" class="fw-semibold"></span><br>
+                        PDF 열람 비밀번호를 입력하세요. (4자 이상)
+                    </p>
+                    <label for="cohortJournalPdfPassword" class="form-label fw-semibold">PDF 열람 비밀번호</label>
+                    <input type="password"
+                           class="form-control"
+                           id="cohortJournalPdfPassword"
+                           name="pdf_password"
+                           required
+                           minlength="4"
+                           autocomplete="new-password">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-download me-1" aria-hidden="true"></i>다운로드
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    var cohortModal = document.getElementById("cohortJournalsModal");
+    if (cohortModal) {
+        cohortModal.addEventListener("show.bs.modal", function (event) {
+            var btn = event.relatedTarget;
+            if (!btn) return;
+            var sessionNumber = btn.getAttribute("data-session-number");
+            var sessionLabel = btn.getAttribute("data-session-label") || (sessionNumber + "회기");
+            document.getElementById("cohortJournalsSessionLabel").textContent = sessionLabel;
+            cohortModal.querySelectorAll(".cohort-journals-panel").forEach(function (panel) {
+                panel.classList.toggle(
+                    "d-none",
+                    panel.getAttribute("data-session-number") !== String(sessionNumber)
+                );
+            });
+        });
+    }
+
+    var pdfModal = document.getElementById("cohortJournalPdfModal");
+    if (pdfModal) {
+        pdfModal.addEventListener("show.bs.modal", function (event) {
+            var btn = event.relatedTarget;
+            if (!btn) return;
+            document.getElementById("cohortJournalPdfForm").action =
+                btn.getAttribute("data-pdf-action");
+            document.getElementById("cohortJournalPdfLabel").textContent =
+                btn.getAttribute("data-pdf-label") || "상담일지";
+            document.getElementById("cohortJournalPdfNext").value =
+                window.location.pathname + window.location.search;
+            document.getElementById("cohortJournalPdfPassword").value = "";
+        });
+    }
+})();
+</script>

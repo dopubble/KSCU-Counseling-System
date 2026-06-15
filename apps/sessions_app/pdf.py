@@ -97,7 +97,7 @@ def build_journal_pdf(
 ) -> bytes:
     """상담일지 PDF 바이트 반환 (user_password: PDF 열람 비밀번호, 필수)"""
     if not user_password or not str(user_password).strip():
-        raise ImproperlyConfigured("PDF 암호화를 위해 user_password(이메일)가 필요합니다.")
+        raise ImproperlyConfigured("PDF 암호화를 위해 user_password가 필요합니다.")
 
     user_password = str(user_password).strip()
     font = _register_korean_font()
@@ -159,12 +159,16 @@ def build_journal_pdf(
 
     student_id = summary.get("student_id") or "—"
     counselor_name = journal.counselor.name if journal.counselor_id else "—"
+    client_name = summary.get("client_name") or client.name
 
     meta_rows = [
         ["사례번호", case.case_number, "회기", f"{journal.session_number}회기"],
-        ["내담자", client.name, "학번", student_id or "—"],
-        ["상담 구분", journal.session_category or "—", "상담 일시", _fmt_datetime(journal.session_datetime)],
-        ["담당 상담사", counselor_name, "작성일", _fmt_datetime(journal.created_at)],
+        ["내담자", client_name, "학번", student_id or "—"],
+        ["성별", summary.get("gender") or "—", "생년월일", summary.get("birth_date") or "—"],
+        ["직업", summary.get("occupation") or "—", "연락처", summary.get("phone") or "—"],
+        ["이메일", summary.get("email") or "—", "상담 구분", journal.session_category or "—"],
+        ["상담 일시", _fmt_datetime(journal.session_datetime), "담당 상담사", counselor_name],
+        ["작성일", _fmt_datetime(journal.created_at), "", ""],
     ]
     meta_table = Table(meta_rows, colWidths=[28 * mm, 57 * mm, 28 * mm, 57 * mm])
     meta_table.setStyle(
@@ -223,7 +227,7 @@ def build_initial_record_pdf(
 ) -> bytes:
     """초기상담 기록지 PDF 바이트 반환."""
     if not user_password or not str(user_password).strip():
-        raise ImproperlyConfigured("PDF 암호화를 위해 user_password(이메일)가 필요합니다.")
+        raise ImproperlyConfigured("PDF 암호화를 위해 user_password가 필요합니다.")
 
     user_password = str(user_password).strip()
     font = _register_korean_font()
@@ -415,7 +419,7 @@ def build_termination_record_pdf(
 ) -> bytes:
     """종결기록지 PDF 바이트 반환."""
     if not user_password or not str(user_password).strip():
-        raise ImproperlyConfigured("PDF 암호화를 위해 user_password(이메일)가 필요합니다.")
+        raise ImproperlyConfigured("PDF 암호화를 위해 user_password가 필요합니다.")
 
     user_password = str(user_password).strip()
     font = _register_korean_font()

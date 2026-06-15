@@ -31,7 +31,6 @@ from .forms import (
     BoardPostForm,
     CancelRequestForm,
     CounselingApplyForm,
-    CounselorAssignmentUploadForm,
     CounselorMatchForm,
     SessionMaterialUploadForm,
     SessionScheduleChangeForm,
@@ -74,20 +73,12 @@ from apps.scheduling.services import (
     reject_appointment_request,
 )
 from apps.scheduling.utils import ZoomAPIError, ZoomNotConfiguredError, is_zoom_configured
-from apps.documents.models import CounselorAssignmentSubmission, SessionMaterial
-from apps.documents.cohort_zip import (
-    assignment_zip_arcname,
-    build_password_protected_zip,
-    collect_assignment_zip_entries,
-    read_assignment_file_bytes,
-)
-from apps.documents.assignment_service import (
-    default_assignment_title,
-    get_cohort_peer_assignments_by_session,
+from apps.documents.models import SessionMaterial
+from apps.counseling.cohort_journal_service import (
+    get_cohort_peer_journals_by_session,
     get_counselor_cohort,
-    require_counselor_cohort,
-    upsert_counselor_assignment,
 )
+from apps.counseling.privacy import mask_client_summary_fields
 
 from .cancellation_policy import (
     AppointmentOperationError,
@@ -811,79 +802,6 @@ def _session_material_file_response(material):
     )
 
 
-def _assignment_protected_download_response(request, assignment, *, fallback_url: str):
-    """과제 개별 다운로드 — ZipCrypto 암호 ZIP(1개 파일, Windows 탐색기 호환)."""
-    zip_password, redirect_response = _get_download_password_from_request(
-        request, redirect_url=fallback_url, label="ZIP"
-    )
-    if redirect_response:
-        return redirect_response
-
-    if not assignment.file or not assignment.file.name:
-        messages.error(
-            request,
-            "과제 파일이 서버에 없습니다. 「과제 제출」에서 다시 올려 주세요.",
-        )
-        return redirect(fallback_url)
-
-    data = read_assignment_file_bytes(assignment)
-    if data is None:
-        messages.error(
-            request,
-            "과제 파일이 서버에 없습니다. 운영 서버 재배포로 파일이 삭제됐을 수 있습니다. "
-            "「과제 제출」에서 다시 올려 주세요.",
-        )
-        return redirect(fallback_url)
-
-    arcname = assignment_zip_arcname(assignment)
-    try:
-        zip_bytes = build_password_protected_zip([(arcname, data)], zip_password)
-    except Exception:
-        logger.exception(
-            "Failed to build password-protected ZIP for assignment %s", assignment.pk
-        )
-        messages.error(request, "ZIP 파일 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.")
-        return redirect(fallback_url)
-
-    original = assignment.get_filename() or "assignment"
-    stem = os.path.splitext(original)[0] or "assignment"
-    filename = f"{stem}.zip"
-    ascii_name = f"assignment_{assignment.pk}.zip"
-    return _zip_file_response(zip_bytes, filename=filename, ascii_name=ascii_name)
-
-
-def user_can_submit_assignment(user, case) -> bool:
-    if not user.is_authenticated:
-        return False
-    if user.is_superuser:
-        return True
-    return user.role == UserRole.COUNSELOR and case.counselor_id == user.pk
-
-
-def get_case_counselor_assignments(case):
-    return (
-        CounselorAssignmentSubmission.objects.filter(case=case)
-        .select_related("submitted_by")
-        .order_by("session_number")
-    )
-
-
-def get_cohort_peer_assignments(cohort: int, session_number: int):
-    """동일 기수·회차의 최종 과제 목록 (타 기수 접근 불가)."""
-    return (
-        CounselorAssignmentSubmission.objects.filter(
-            cohort=cohort,
-            session_number=session_number,
-        )
-        .select_related(
-            "case",
-            "case__client",
-            "submitted_by",
-        )
-        .order_by("submitted_by__name", "case__case_number")
-    )
-
-
 def _delete_session_material(request, case, session_number, material_pk, *, redirect_to):
     material = _get_session_material_for_case(case, session_number, material_pk)
     if material.uploaded_by_id != request.user.id:
@@ -1534,16 +1452,6 @@ def _pdf_file_response(pdf_bytes: bytes, *, filename: str, ascii_name: str) -> H
     return response
 
 
-def _zip_file_response(zip_bytes: bytes, *, filename: str, ascii_name: str) -> HttpResponse:
-    response = HttpResponse(zip_bytes, content_type="application/zip")
-    response["Content-Disposition"] = (
-        f'attachment; filename="{ascii_name}"; '
-        f"filename*=UTF-8''{quote(filename)}"
-    )
-    response["Content-Length"] = len(zip_bytes)
-    return response
-
-
 PDF_DOWNLOAD_DISABLED_MESSAGE = "기록 저장 후 다운로드할 수 있습니다."
 
 
@@ -1667,29 +1575,30 @@ def counselor_case_detail(request, pk):
 
     appointments = case.appointments.select_related("zoom_meeting").order_by("-scheduled_at")
 
-    case_assignments = list(get_case_counselor_assignments(case))
-    assignments_by_session = {a.session_number: a for a in case_assignments}
-    assignments_missing_files = [
-        a for a in case_assignments if not a.file_is_available()
-    ]
     counselor_cohort = get_counselor_cohort(request.user)
     total_sessions = max(case.total_sessions, 1)
-    cohort_peers_by_session = (
-        get_cohort_peer_assignments_by_session(
+    cohort_journals_by_session: dict[int, list] = {}
+    if counselor_cohort is not None:
+        raw_by_session = get_cohort_peer_journals_by_session(
             counselor_cohort,
             max_session=total_sessions,
         )
-        if counselor_cohort is not None
-        else {}
-    )
+        for session_number, journals in raw_by_session.items():
+            cohort_journals_by_session[session_number] = [
+                _build_cohort_journal_entry(
+                    journal,
+                    requesting_counselor=request.user,
+                    own_case_id=case.pk,
+                )
+                for journal in journals
+            ]
     for n in range(1, total_sessions + 1):
-        cohort_peers_by_session.setdefault(n, [])
+        cohort_journals_by_session.setdefault(n, [])
 
     sessions = build_counselor_session_views(
         case,
         prebuilt_cards=session_cards,
-        assignments_by_session=assignments_by_session,
-        cohort_peers_by_session=cohort_peers_by_session,
+        cohort_journals_by_session=cohort_journals_by_session,
     )
     upcoming_appointment = (
         case.appointments.filter(
@@ -1729,9 +1638,7 @@ def counselor_case_detail(request, pk):
             "schedule_change_requests_for_case": get_schedule_change_requests_for_counselor(
                 case
             ),
-            "can_submit_assignment": user_can_submit_assignment(request.user, case),
             "counselor_cohort": counselor_cohort,
-            "assignments_missing_files": assignments_missing_files,
             "is_admin_view": request.user.is_superuser
             or request.user.role == UserRole.ADMIN,
         },
@@ -2160,172 +2067,42 @@ def counselor_shared_material_delete(request, case_pk, material_pk):
 
 @counselor_required
 @require_POST
-def counselor_assignment_upload(request, case_pk, session_number):
-    """회기별 상담사 과제 제출 (HWP/PDF) — 회차는 URL로 고정."""
-    case = _get_counselor_case(request, case_pk)
-    if not user_can_submit_assignment(request.user, case):
-        raise PermissionDenied("과제 제출 권한이 없습니다.")
-
-    total = max(case.total_sessions, 1)
-    if session_number < 1 or session_number > total:
-        messages.error(request, "유효하지 않은 회차입니다.")
-        return redirect("counselor:case_detail", pk=case.pk)
-
-    try:
-        require_counselor_cohort(request.user)
-    except ValidationError as exc:
-        messages.error(request, exc.messages[0] if exc.messages else str(exc))
-        return redirect("counselor:case_detail", pk=case.pk)
-
-    form = CounselorAssignmentUploadForm(
-        request.POST, request.FILES, session_number=session_number
+def counselor_cohort_journal_pdf(request, journal_pk):
+    """동기 기수 상담일지 PDF 다운로드 (암호화)."""
+    journal = get_object_or_404(
+        CounselingJournal.objects.select_related(
+            "case",
+            "case__client",
+            "case__application",
+            "counselor",
+        ),
+        pk=journal_pk,
     )
-    if not form.is_valid():
-        for field, errors in form.errors.items():
-            if errors:
-                messages.error(request, errors[0])
-                break
-        else:
-            messages.error(request, "입력 내용을 확인해 주세요.")
-        return redirect("counselor:case_detail", pk=case.pk)
+    fallback = (request.POST.get("next") or "").strip() or reverse("counselor:dashboard")
+    if not user_can_download_cohort_journal(request.user, journal):
+        raise PermissionDenied("상담일지 PDF 다운로드 권한이 없습니다.")
+    if journal.is_draft:
+        messages.error(request, "저장 완료된 상담일지만 다운로드할 수 있습니다.")
+        return redirect(fallback)
 
-    file_obj = form.cleaned_data["file"]
-    record, created = upsert_counselor_assignment(
-        case=case,
-        counselor=request.user,
-        session_number=session_number,
-        title=default_assignment_title(session_number, file_obj.name),
-        note=(form.cleaned_data.get("note") or "").strip(),
-        file=file_obj,
-    )
-    if not record.file or not record.file.name:
-        messages.error(
-            request,
-            "파일이 서버에 저장되지 않았습니다. 잠시 후 다시 제출해 주세요.",
-        )
-        return redirect("counselor:case_detail", pk=case.pk)
-    if created:
-        messages.success(
-            request, f"{session_number}회기 과제가 제출되었습니다."
-        )
-    else:
-        messages.success(
-            request,
-            f"{session_number}회기 과제가 최신 파일로 갱신되었습니다.",
-        )
-    return redirect("counselor:case_detail", pk=case.pk)
-
-
-@counselor_required
-@require_POST
-def counselor_cohort_assignments_zip(request, case_pk):
-    """동기 기수 과제 ZIP 일괄 다운로드 — ZipCrypto 암호, Windows 탐색기 호환."""
-    case = _get_counselor_case(request, case_pk)
-    fallback = reverse("counselor:case_detail", kwargs={"pk": case.pk})
-    zip_password, redirect_response = _get_download_password_from_request(
-        request, redirect_url=fallback, label="ZIP"
+    pdf_password, redirect_response = _get_pdf_password_from_request(
+        request, redirect_url=fallback
     )
     if redirect_response:
         return redirect_response
 
-    cohort = get_counselor_cohort(request.user)
-    if cohort is None:
-        raise PermissionDenied("기수 정보가 없습니다.")
-
-    try:
-        session_number = int(request.POST.get("session", "0"))
-    except (TypeError, ValueError):
-        session_number = 0
-    total = max(case.total_sessions or 0, 1)
-    if session_number < 1 or session_number > total:
-        messages.error(request, "유효하지 않은 회차입니다.")
-        return redirect(fallback)
-
-    assignments = list(get_cohort_peer_assignments(cohort, session_number))
-    if not assignments:
-        messages.info(request, f"{session_number}회기에 제출된 동기 과제가 없습니다.")
-        return redirect(fallback)
-
-    entries, missing = collect_assignment_zip_entries(assignments)
-    if missing:
-        logger.warning(
-            "Cohort ZIP session %s: %s assignment file(s) missing on storage",
-            session_number,
-            len(missing),
-        )
-
-    if not entries:
-        messages.error(
-            request,
-            "과제 파일을 서버에서 찾을 수 없습니다. "
-            "운영 서버 재배포 후에는 과제를 다시 제출해야 할 수 있습니다. "
-            "개별 다운로드(파일 아이콘)도 되지 않으면 해당 회기 과제를 다시 올려 주세요.",
-        )
-        return redirect(fallback)
-
-    try:
-        zip_bytes = build_password_protected_zip(entries, zip_password)
-    except Exception:
-        logger.exception("Failed to build cohort assignment ZIP for case %s session %s", case.pk, session_number)
-        messages.error(request, "ZIP 파일 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.")
-        return redirect(fallback)
-
-    filename = f"cohort{cohort}_{session_number}회기_과제.zip"
-    ascii_name = f"cohort{cohort}_session{session_number}_assignments.zip"
-    return _zip_file_response(zip_bytes, filename=filename, ascii_name=ascii_name)
-
-
-@role_required(UserRole.COUNSELOR, UserRole.ADMIN)
-@require_POST
-def counselor_cohort_assignment_file(request, assignment_pk):
-    """동기 과제 개별 다운로드 — ZipCrypto 암호 ZIP."""
-    assignment = get_object_or_404(
-        CounselorAssignmentSubmission.objects.select_related("case", "submitted_by"),
-        pk=assignment_pk,
+    mask_private = journal.case.counselor_id != request.user.pk
+    client_summary = _journal_client_summary(journal.case, mask_private=mask_private)
+    pdf_bytes = build_journal_pdf(
+        journal,
+        client_summary=client_summary,
+        user_password=pdf_password,
     )
-    if request.user.role == UserRole.COUNSELOR:
-        cohort = get_counselor_cohort(request.user)
-        if cohort is None or assignment.cohort != cohort:
-            raise PermissionDenied("다른 기수 과제에는 접근할 수 없습니다.")
-    fallback = reverse("counselor:case_detail", kwargs={"pk": assignment.case_id})
-    return _assignment_protected_download_response(
-        request, assignment, fallback_url=fallback
+    filename = journal_pdf_filename(journal)
+    ascii_name = f"journal_{journal.case.case_number}_{journal.session_number}.pdf".replace(
+        "/", "-"
     )
-
-
-@role_required(UserRole.COUNSELOR, UserRole.ADMIN)
-@require_POST
-def counselor_assignment_file(request, case_pk, assignment_pk):
-    """과제 파일 다운로드 (담당 상담사·관리자) — ZipCrypto 암호 ZIP."""
-    case = _get_board_manage_case(request, case_pk)
-    assignment = get_object_or_404(
-        CounselorAssignmentSubmission,
-        pk=assignment_pk,
-        case=case,
-    )
-    fallback = reverse("counselor:case_detail", kwargs={"pk": case.pk})
-    return _assignment_protected_download_response(
-        request, assignment, fallback_url=fallback
-    )
-
-
-@role_required(UserRole.COUNSELOR, UserRole.ADMIN)
-@require_POST
-def counselor_assignment_delete(request, case_pk, assignment_pk):
-    """과제 제출 삭제 (제출자·관리자)."""
-    case = _get_board_manage_case(request, case_pk)
-    assignment = get_object_or_404(
-        CounselorAssignmentSubmission,
-        pk=assignment_pk,
-        case=case,
-    )
-    if not assignment.can_delete_by(request.user):
-        raise PermissionDenied("삭제 권한이 없습니다.")
-    if assignment.file:
-        assignment.file.delete(save=False)
-    assignment.delete()
-    messages.success(request, "과제 제출이 삭제되었습니다.")
-    return redirect("counselor:case_detail", pk=case.pk)
+    return _pdf_file_response(pdf_bytes, filename=filename, ascii_name=ascii_name)
 
 
 @counselor_required
@@ -2545,7 +2322,7 @@ def journal_pdf(request, pk, session_number):
     if redirect_response:
         return redirect_response
 
-    client_summary = _case_client_summary(case)
+    client_summary = _journal_client_summary(case, mask_private=False)
     pdf_bytes = build_journal_pdf(
         journal,
         client_summary=client_summary,
@@ -2616,6 +2393,63 @@ def _initial_record_client_summary(case):
         "phone": case.client.phone or "—",
         "email": case.client.email or "—",
         "case_number": case.case_number,
+    }
+
+
+def _journal_client_summary(case, *, mask_private: bool = False) -> dict:
+    """상담일지 PDF·동기 목록용 내담자 요약."""
+    extended = _initial_record_client_summary(case)
+    base = _case_client_summary(case)
+    summary = {
+        "client_name": extended["client_name"],
+        "student_id": base.get("student_id") or "—",
+        "gender": extended["gender"],
+        "birth_date": extended["birth_date"],
+        "occupation": extended["occupation"],
+        "phone": extended["phone"],
+        "email": extended["email"],
+        "counseling_type": base.get("counseling_type", ""),
+        "case_number": base.get("case_number", case.case_number),
+    }
+    if mask_private:
+        return mask_client_summary_fields(summary)
+    return summary
+
+
+def user_can_download_cohort_journal(user, journal) -> bool:
+    """동기 기수 상담일지 PDF — 같은 기수만."""
+    if not user.is_authenticated or journal.is_draft:
+        return False
+    if user.is_superuser:
+        return True
+    if user.role != UserRole.COUNSELOR:
+        return False
+    cohort = get_counselor_cohort(user)
+    journal_cohort = get_counselor_cohort(journal.counselor)
+    return cohort is not None and cohort == journal_cohort
+
+
+def _build_cohort_journal_entry(journal, *, requesting_counselor, own_case_id):
+    case = journal.case
+    mask_private = case.counselor_id != requesting_counselor.pk
+    summary = _journal_client_summary(case, mask_private=mask_private)
+    updated = journal.updated_at or journal.created_at
+    if updated and timezone.is_aware(updated):
+        updated = timezone.localtime(updated)
+    return {
+        "journal_id": journal.pk,
+        "counselor_name": journal.counselor.name if journal.counselor_id else "—",
+        "case_number": case.case_number,
+        "client_name": summary["client_name"],
+        "gender": summary["gender"],
+        "birth_date": summary["birth_date"],
+        "occupation": summary["occupation"],
+        "phone": summary["phone"],
+        "email": summary["email"],
+        "student_id": summary.get("student_id", "—"),
+        "updated_at": updated.strftime("%m-%d %H:%M") if updated else "—",
+        "is_own_case": case.pk == own_case_id,
+        "session_number": journal.session_number,
     }
 
 

@@ -1,4 +1,4 @@
-{# 상담사 회기 카드 — 자료·과제 버튼은 회기 블록 내부 한 줄에 배치 #}
+{# 상담사 회기 카드 — 자료·동기 상담일지 버튼은 회기 블록 내부 한 줄에 배치 #}
 <article class="client-session-card mb-3"
          id="session-{{ session.session_number }}"
          data-session-number="{{ session.session_number }}"
@@ -85,13 +85,13 @@
     </div>
     {% endif %}
 
-    {% if session.has_materials or session.assignment or session.show_counselor_session_toolbar %}
+    {% if session.has_materials or session.show_counselor_session_toolbar %}
     <div class="client-session-card-body">
         {% if session.has_materials %}
         {% include "includes/session_materials_list.html" with session=session case=case portal="counselor" %}
         {% endif %}
 
-        {% if session.appointment and session.counselor_can_update_status or can_submit_assignment and session.show_counselor_session_toolbar %}
+        {% if session.appointment and session.counselor_can_update_status or session.show_counselor_session_toolbar %}
         <div class="client-session-card-actions session-inline-actions session-status-actions d-flex flex-wrap align-items-center gap-2{% if session.has_materials %} mt-3{% else %} mt-1{% endif %}">
             {% if session.appointment and session.counselor_can_update_status %}
             <span class="small text-muted flex-shrink-0">진행 상태</span>
@@ -108,73 +108,16 @@
                 </select>
             </form>
             {% endif %}
-            {% if can_submit_assignment and session.show_counselor_session_toolbar %}
+            {% if session.show_counselor_session_toolbar and counselor_cohort %}
             <button type="button"
-                    class="btn btn-sm btn-outline-secondary client-session-action-btn"
+                    class="btn btn-sm btn-outline-secondary client-session-action-btn cohort-journals-open-btn"
                     data-bs-toggle="modal"
-                    data-bs-target="#counselorAssignmentUploadModal"
-                    data-session-number="{{ session.session_number }}"
-                    data-session-label="{{ session.session_number }}회기"
-                    data-has-assignment="{% if session.assignment %}1{% else %}0{% endif %}"
-                    data-filename="{% if session.assignment %}{{ session.assignment.get_filename }}{% endif %}">
-                <i class="bi bi-journal-check me-1" aria-hidden="true"></i>과제 제출
-            </button>
-            {% if counselor_cohort %}
-            <button type="button"
-                    class="btn btn-sm btn-outline-secondary client-session-action-btn cohort-assignments-open-btn"
-                    data-bs-toggle="modal"
-                    data-bs-target="#cohortAssignmentsModal"
+                    data-bs-target="#cohortJournalsModal"
                     data-session-number="{{ session.session_number }}"
                     data-session-label="{{ session.session_number }}회기">
-                <i class="bi bi-people me-1" aria-hidden="true"></i>우리 기수 과제
+                <i class="bi bi-people me-1" aria-hidden="true"></i>동기 상담일지
             </button>
             {% endif %}
-            {% endif %}
-        </div>
-        {% endif %}
-
-        {% if session.assignment %}
-        <div class="session-assignment-status d-flex flex-wrap align-items-center gap-2 mt-2 mb-0">
-            {% if session.assignment.file_is_available %}
-            <button type="button"
-                    class="small fw-semibold text-truncate btn btn-link p-0 text-start text-decoration-none session-assignment-filename assignment-file-download-btn"
-                    data-bs-toggle="modal"
-                    data-bs-target="#assignmentFileDownloadModal"
-                    data-download-action="{% url 'counselor:assignment_file' case.pk session.assignment.pk %}"
-                    data-download-label="{{ session.assignment.get_filename }}">
-                {{ session.assignment.get_filename }}
-            </button>
-            <span class="badge text-bg-success">제출됨</span>
-            {% else %}
-            <span class="small fw-semibold text-warning session-assignment-filename">
-                {{ session.assignment.get_filename }}
-            </span>
-            <span class="badge text-bg-warning">파일 없음 · 재제출</span>
-            <button type="button"
-                    class="btn btn-sm btn-outline-warning py-0 px-2"
-                    data-bs-toggle="modal"
-                    data-bs-target="#counselorAssignmentUploadModal"
-                    data-session-number="{{ session.session_number }}"
-                    data-session-label="{{ session.session_number }}회기"
-                    data-has-assignment="1"
-                    data-filename="{{ session.assignment.get_filename }}">
-                다시 제출
-            </button>
-            {% endif %}
-            {% if can_submit_assignment or is_admin_view %}
-            <form method="post"
-                  action="{% url 'counselor:assignment_delete' case.pk session.assignment.pk %}"
-                  class="mb-0 flex-shrink-0"
-                  onsubmit="return confirm('{{ session.session_number }}회기 과제를 삭제하시겠습니까?');">
-                {% csrf_token %}
-                <button type="submit"
-                        class="btn btn-sm btn-link text-danger p-0 session-assignment-delete-btn"
-                        aria-label="과제 삭제">
-                    <i class="bi bi-trash" aria-hidden="true"></i>
-                </button>
-            </form>
-            {% endif %}
-            <span class="small text-muted">{{ session.assignment.updated_at|date:"Y-m-d H:i" }}</span>
         </div>
         {% endif %}
     </div>
