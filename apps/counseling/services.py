@@ -1247,16 +1247,12 @@ def _resolve_pending_appointment_for_session(
 def _resolve_appointment_zoom_url(
     appointment: Optional[Appointment],
     case: Case,
-    *,
-    prefer_host: bool = False,
 ) -> str:
-    """내담자는 join_url, 상담사(호스트)는 start_url 우선."""
+    """참가 join_url — 상담사(대체 호스트)·내담자 공통."""
     if appointment is None:
         return ""
     zoom = getattr(appointment, "zoom_meeting", None)
     if zoom:
-        if prefer_host and zoom.start_url:
-            return zoom.start_url
         if zoom.join_url:
             return zoom.join_url
         if zoom.start_url:
@@ -1429,14 +1425,13 @@ class CounselorSessionCardView:
 
     @property
     def zoom_url(self) -> str:
-        """상담사는 Zoom 호스트 URL(start_url)로 회의를 시작합니다."""
+        """상담사는 join_url + Zoom 대체 호스트로 개인 계정 입장."""
         appointment = self.appointment
         if appointment is None:
             return self._card.zoom_url
         return _resolve_appointment_zoom_url(
             appointment,
             appointment.case,
-            prefer_host=True,
         )
 
     @property

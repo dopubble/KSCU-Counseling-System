@@ -108,16 +108,40 @@ def clear_zoom_token_cache() -> None:
     _token_cache["expires_at"] = None
 
 
+def counselor_zoom_host_email(counselor) -> str:
+    """상담사 대체 호스트 등록용 Zoom 이메일 (플랫폼 계정 이메일)."""
+    if counselor is None:
+        return ""
+    return (getattr(counselor, "email", None) or "").strip()
+
+
+def _zoom_meeting_settings(*, alternative_host_email: str | None = None) -> dict[str, Any]:
+    settings_payload: dict[str, Any] = {
+        "join_before_host": True,
+        "waiting_room": False,
+        "host_video": True,
+        "participant_video": True,
+    }
+    host_email = (alternative_host_email or "").strip()
+    if host_email:
+        settings_payload["alternative_hosts"] = host_email
+        settings_payload["alternative_hosts_email_notification"] = False
+    return settings_payload
+
+
 def create_zoom_meeting(
     *,
     topic: str,
     start_time: datetime,
     duration_minutes: int,
     timezone_name: str | None = None,
+    alternative_host_email: str | None = None,
 ) -> dict[str, Any]:
     """
     Zoom 예약 회의 생성.
     반환: id, join_url, start_url, password 등 API JSON
+
+    alternative_host_email: 상담사 개인 Zoom(동일 이메일)으로 대체 호스트 입장.
     """
     _ensure_zoom_configured()
     tz = timezone_name or settings.TIME_ZONE
@@ -131,12 +155,9 @@ def create_zoom_meeting(
         "start_time": local_start.strftime("%Y-%m-%dT%H:%M:%S"),
         "duration": duration_minutes,
         "timezone": tz,
-        "settings": {
-            "join_before_host": True,
-            "waiting_room": False,
-            "host_video": True,
-            "participant_video": True,
-        },
+        "settings": _zoom_meeting_settings(
+            alternative_host_email=alternative_host_email,
+        ),
     }
 
     token = get_zoom_access_token()
@@ -177,29 +198,11 @@ def create_zoom_meeting(
         raise ZoomAPIError(f"Zoom 회의 생성 중 오류가 발생했습니다: {exc}") from exc
 
 
-def update_zoom_meeting(
-    meeting_id: str,
-    *,
-    start_time: datetime,
-    duration_minutes: int,
-    timezone_name: str | None = None,
-) -> dict[str, Any]:
-    """Zoom 예약 회의 일시·시간 변경."""
+def _patch_zoom_meeting(meeting_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     _ensure_zoom_configured()
     meeting_id = str(meeting_id).strip()
     if not meeting_id:
         raise ZoomAPIError("Zoom 회의 ID가 없습니다.")
-
-    tz = timezone_name or settings.TIME_ZONE
-    if timezone.is_naive(start_time):
-        start_time = timezone.make_aware(start_time, timezone.get_current_timezone())
-
-    local_start = timezone.localtime(start_time, timezone.get_current_timezone())
-    payload = {
-        "start_time": local_start.strftime("%Y-%m-%dT%H:%M:%S"),
-        "duration": duration_minutes,
-        "timezone": tz,
-    }
 
     token = get_zoom_access_token()
     headers = {
@@ -215,7 +218,9 @@ def update_zoom_meeting(
             timeout=30,
         )
         response.raise_for_status()
-        return response.json()
+        if response.content:
+            return response.json()
+        return {}
     except requests.Timeout as exc:
         raise ZoomAPIError(
             "Zoom 회의 변경 요청 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요."
@@ -233,12 +238,53 @@ def update_zoom_meeting(
                 detail = exc.response.text
         logger.exception("Zoom update meeting error: %s", detail)
         raise ZoomAPIError(
-            f"Zoom 회의 일정 변경에 실패했습니다. {detail or 'API 오류'}"
+            f"Zoom 회의 변경에 실패했습니다. {detail or 'API 오류'}"
         ) from exc
     except requests.RequestException as exc:
         raise ZoomAPIError(f"Zoom 회의 변경 중 오류가 발생했습니다: {exc}") from exc
 
 
+def update_zoom_meeting(
+    meeting_id: str,
+    *,
+    start_time: datetime,
+    duration_minutes: int,
+    timezone_name: str | None = None,
+    alternative_host_email: str | None = None,
+) -> dict[str, Any]:
+    """Zoom 예약 회의 일시·시간·대체 호스트 변경."""
+    tz = timezone_name or settings.TIME_ZONE
+    if timezone.is_naive(start_time):
+        start_time = timezone.make_aware(start_time, timezone.get_current_timezone())
+
+    local_start = timezone.localtime(start_time, timezone.get_current_timezone())
+    payload: dict[str, Any] = {
+        "start_time": local_start.strftime("%Y-%m-%dT%H:%M:%S"),
+        "duration": duration_minutes,
+        "timezone": tz,
+    }
+    host_email = (alternative_host_email or "").strip()
+    if host_email:
+        payload["settings"] = _zoom_meeting_settings(
+            alternative_host_email=host_email,
+        )
+    return _patch_zoom_meeting(meeting_id, payload)
+
+
+def update_zoom_meeting_alternative_host(
+    meeting_id: str,
+    alternative_host_email: str,
+) -> dict[str, Any]:
+    """기존 회의에 상담사 대체 호스트만 등록."""
+    host_email = (alternative_host_email or "").strip()
+    if not host_email:
+        raise ZoomAPIError("대체 호스트 이메일이 없습니다.")
+    return _patch_zoom_meeting(
+        meeting_id,
+        {"settings": _zoom_meeting_settings(alternative_host_email=host_email)},
+    )
+
+
 def pick_meeting_launch_url(meeting_data: dict[str, Any]) -> str:
-    """상담사용 회의 입장 URL (호스트 URL 우선)"""
-    return (meeting_data.get("start_url") or meeting_data.get("join_url") or "").strip()
+    """참가 URL — 상담사·내담자 공통 (개인 Zoom 계정 입장)."""
+    return (meeting_data.get("join_url") or meeting_data.get("start_url") or "").strip()

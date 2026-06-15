@@ -12,9 +12,11 @@ from .utils import (
     ZoomAPIError,
     ZoomNotConfiguredError,
     clear_zoom_token_cache,
+    counselor_zoom_host_email,
     create_zoom_meeting,
-    pick_meeting_launch_url,
+    is_zoom_configured,
     update_zoom_meeting,
+    update_zoom_meeting_alternative_host,
 )
 
 logger = logging.getLogger(__name__)
@@ -168,12 +170,14 @@ def confirm_appointment_with_zoom(
 
     case = appointment.case
     topic = f"[KSCU 상담] {case.client.name} · {case.case_number}"
+    host_email = counselor_zoom_host_email(appointment.counselor)
 
     try:
         meeting_data = create_zoom_meeting(
             topic=topic,
             start_time=appointment.scheduled_at,
             duration_minutes=appointment.duration_minutes,
+            alternative_host_email=host_email or None,
         )
     except (ZoomAPIError, ZoomNotConfiguredError):
         raise
@@ -247,11 +251,13 @@ def reschedule_confirmed_appointment(
     zoom_warning: str | None = None
     zoom_meeting = getattr(appointment, "zoom_meeting", None)
     if zoom_meeting and zoom_meeting.zoom_meeting_id:
+        host_email = counselor_zoom_host_email(appointment.counselor)
         try:
             update_zoom_meeting(
                 zoom_meeting.zoom_meeting_id,
                 start_time=new_scheduled_at,
                 duration_minutes=appointment.duration_minutes,
+                alternative_host_email=host_email or None,
             )
         except ZoomAPIError as exc:
             clear_zoom_token_cache()
@@ -264,6 +270,63 @@ def reschedule_confirmed_appointment(
             )
 
     return appointment, zoom_warning
+
+
+def sync_zoom_alternative_hosts(
+    *,
+    dry_run: bool = False,
+) -> tuple[int, int, int, list[str]]:
+    """
+    기존 ZoomMeeting에 상담사 대체 호스트 등록.
+    반환: (updated, skipped, failed, error_messages)
+    """
+    from apps.scheduling.models import AppointmentStatus as AptStatus
+
+    if not is_zoom_configured():
+        raise ZoomNotConfiguredError(
+            "Zoom API 설정이 없습니다. ZOOM_* 환경 변수를 확인해 주세요."
+        )
+
+    qs = (
+        ZoomMeeting.objects.exclude(zoom_meeting_id="")
+        .select_related("appointment", "appointment__counselor")
+        .filter(appointment__status=AptStatus.CONFIRMED)
+        .order_by("created_at")
+    )
+
+    updated = skipped = failed = 0
+    errors: list[str] = []
+
+    for zoom_meeting in qs.iterator():
+        appointment = zoom_meeting.appointment
+        host_email = counselor_zoom_host_email(appointment.counselor)
+        if not host_email:
+            skipped += 1
+            continue
+
+        if dry_run:
+            updated += 1
+            continue
+
+        try:
+            update_zoom_meeting_alternative_host(
+                zoom_meeting.zoom_meeting_id,
+                host_email,
+            )
+            updated += 1
+        except ZoomAPIError as exc:
+            clear_zoom_token_cache()
+            failed += 1
+            errors.append(
+                f"fail {zoom_meeting.zoom_meeting_id} ({host_email}): {exc}"
+            )
+            logger.warning(
+                "Zoom alternative host sync failed for meeting %s: %s",
+                zoom_meeting.zoom_meeting_id,
+                exc,
+            )
+
+    return updated, skipped, failed, errors
 
 
 @transaction.atomic
