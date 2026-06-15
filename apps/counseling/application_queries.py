@@ -19,7 +19,7 @@ def annotate_pending_application_flags(
 ) -> QuerySet[CounselingApplication]:
     """
     다른 신청으로 이미 진행 중인 사례가 있는지 표시용 플래그를 붙입니다.
-    (관리자 목록에서 숨기지 않고, 중복 신청임을 안내합니다.)
+    (다른 건 추가 신청 — 목록에서 구분 표시만 합니다.)
     """
     assigned_elsewhere = _assigned_active_case_elsewhere_subquery()
     return queryset.annotate(
@@ -29,6 +29,11 @@ def annotate_pending_application_flags(
 
 def client_has_other_active_case(application: CounselingApplication) -> bool:
     """이 신청 외에 같은 내담자의 진행 중(상담사 배정) 사례가 있는지."""
+    return get_client_other_active_cases(application).exists()
+
+
+def get_client_other_active_cases(application: CounselingApplication) -> QuerySet[Case]:
+    """이 신청과 별도로 진행 중인 다른 상담 사례 (다른 건 추가 신청용)."""
     return (
         Case.objects.filter(
             client_id=application.client_id,
@@ -36,24 +41,19 @@ def client_has_other_active_case(application: CounselingApplication) -> bool:
             counselor_id__isnull=False,
         )
         .exclude(application_id=application.pk)
-        .exists()
+        .select_related("counselor", "application")
+        .order_by("-opened_at")
     )
 
 
 def is_stale_pending_application(application: CounselingApplication) -> bool:
-    """진행 중 사례가 있는데 매칭대기만 중복으로 남은 신청."""
-    try:
-        application.case
-    except Case.DoesNotExist:
-        pass
-    else:
-        return False
-    if application.status not in (
-        ApplicationStatus.RECEIVED,
-        ApplicationStatus.WAITING_MATCH,
-    ):
-        return False
-    return client_has_other_active_case(application)
+    """레거시 — 다른 건 추가 신청은 정상 흐름으로 처리합니다."""
+    return False
+
+
+def stale_pending_applications() -> QuerySet[CounselingApplication]:
+    """레거시 호환 — 추가 신청 허용으로 자동 정리 대상 없음."""
+    return CounselingApplication.objects.none()
 
 
 def waiting_match_for_admin() -> QuerySet[CounselingApplication]:
@@ -62,24 +62,6 @@ def waiting_match_for_admin() -> QuerySet[CounselingApplication]:
         "client", "case", "case__counselor"
     )
     return annotate_pending_application_flags(qs)
-
-
-def stale_pending_applications() -> QuerySet[CounselingApplication]:
-    """이미 배정된 내담자에게 남아 있는 중복 매칭대기 신청."""
-    assigned_elsewhere = _assigned_active_case_elsewhere_subquery()
-    return (
-        CounselingApplication.objects.filter(
-            case__isnull=True,
-            status__in=[
-                ApplicationStatus.RECEIVED,
-                ApplicationStatus.WAITING_MATCH,
-            ],
-        )
-        .annotate(has_other_active_case=Exists(assigned_elsewhere))
-        .filter(has_other_active_case=True)
-        .select_related("client")
-        .order_by("-created_at")
-    )
 
 
 def client_has_open_pending_application(client) -> bool:

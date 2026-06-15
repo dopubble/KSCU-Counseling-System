@@ -49,6 +49,18 @@ def wait_for_server(host: str, port: int, timeout: float = 45.0) -> None:
     raise TimeoutError(f"Server not ready at {host}:{port}")
 
 
+def pick_free_port(start: int = DEFAULT_PORT, attempts: int = 20) -> int:
+    """이미 떠 있는 구버전 runserver(9876 등)에 붙지 않도록 사용 가능 포트 선택."""
+    for port in range(start, start + attempts):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            try:
+                sock.bind(("127.0.0.1", port))
+            except OSError:
+                continue
+            return port
+    raise RuntimeError(f"No free port in range {start}–{start + attempts - 1}")
+
+
 def start_server(port: int) -> subprocess.Popen:
     proc = subprocess.Popen(
         [sys.executable, "manage.py", "runserver", f"127.0.0.1:{port}", "--noreload"],
@@ -441,7 +453,7 @@ def capture_zoom_entry(page, base_url: str, case_pk: str, path: Path) -> None:
 
 
 def capture_counselor_case_detail(page, base_url: str, case_pk: str, path: Path) -> None:
-    """상담사 사례 상세 — 게시글·상담일지·초기기록·과제·기수과제 번호 강조."""
+    """상담사 사례 상세 — 게시글·상담일지·초기기록·우리 기수 과제 번호 강조."""
     page.goto(f"{base_url}/counseling/counselor/case/{case_pk}/", wait_until="networkidle")
     page.wait_for_timeout(500)
     strip_debug_toolbar(page)
@@ -471,7 +483,8 @@ def capture_counselor_case_detail(page, base_url: str, case_pk: str, path: Path)
             function highlight(el, num) {
                 const rect = el.getBoundingClientRect();
                 if (rect.width < 2 || rect.height < 2) return;
-                const pad = 6;
+                const pad = 8;
+                const badgeSize = 48;
 
                 const frame = document.createElement('div');
                 frame.className = 'manual-feature-highlight-frame';
@@ -481,9 +494,11 @@ def capture_counselor_case_detail(page, base_url: str, case_pk: str, path: Path)
                     top: (rect.top - pad) + 'px',
                     width: (rect.width + pad * 2) + 'px',
                     height: (rect.height + pad * 2) + 'px',
-                    border: '3px solid #dc2626',
-                    borderRadius: '8px',
-                    boxShadow: '0 0 0 5px rgba(220, 38, 38, 0.28)',
+                    border: '4px solid #dc2626',
+                    borderRadius: '10px',
+                    boxShadow:
+                        '0 0 0 6px rgba(220, 38, 38, 0.32),'
+                        + '0 0 24px rgba(220, 38, 38, 0.45)',
                     zIndex: '10000',
                     pointerEvents: 'none',
                 });
@@ -494,22 +509,23 @@ def capture_counselor_case_detail(page, base_url: str, case_pk: str, path: Path)
                 badge.textContent = String(num);
                 Object.assign(badge.style, {
                     position: 'fixed',
-                    left: (rect.left - pad - 2) + 'px',
-                    top: (rect.top - pad - 14) + 'px',
-                    minWidth: '26px',
-                    height: '26px',
-                    padding: '0 6px',
+                    left: (rect.left - pad - 6) + 'px',
+                    top: (rect.top - pad - badgeSize + 10) + 'px',
+                    width: badgeSize + 'px',
+                    height: badgeSize + 'px',
                     borderRadius: '9999px',
                     background: '#dc2626',
                     color: '#fff',
-                    fontWeight: '800',
-                    fontSize: '14px',
+                    fontWeight: '900',
+                    fontSize: '26px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    zIndex: '10001',
+                    zIndex: '10002',
                     fontFamily: 'Pretendard, Apple SD Gothic Neo, Malgun Gothic, sans-serif',
-                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.28)',
+                    border: '3px solid #fff',
+                    boxShadow:
+                        '0 0 0 3px #dc2626, 0 6px 18px rgba(0, 0, 0, 0.35)',
                     lineHeight: '1',
                 });
                 document.body.appendChild(badge);
@@ -851,7 +867,7 @@ def capture() -> None:
 
     OUT.mkdir(parents=True, exist_ok=True)
     info = ensure_users()
-    port = DEFAULT_PORT
+    port = pick_free_port()
     base_url = f"http://127.0.0.1:{port}"
     print("Demo accounts:", {k: v for k, v in info.items() if "email" in k})
     print("Starting server at", base_url)

@@ -18,11 +18,20 @@
 </div>
 
 {% if has_other_active_case %}
-<div class="alert alert-warning border-0 shadow-sm section-spacing mb-0" role="alert">
-    <i class="bi bi-exclamation-triangle me-1"></i>
-    이 내담자는 <strong>다른 신청으로 이미 진행 중인 상담 사례</strong>가 있습니다.
-    중복 신청이므로 새로 상담사를 배정하기 전에 진행 중인 사례를 확인해 주세요.
-    필요하면 내담자의 기존 신청을 취소 처리하거나, 종결 후 재신청을 안내해 주세요.
+<div class="alert alert-info border-0 shadow-sm section-spacing mb-0" role="alert">
+    <i class="bi bi-info-circle me-1"></i>
+    이 내담자는 <strong>다른 건으로 진행 중인 상담</strong>이 있습니다.
+    아래 신청은 별도 사례로, <strong>다른 상담사를 배정</strong>할 수 있습니다.
+    <ul class="small mb-0 mt-2 ps-3">
+        {% for other_case in other_active_cases %}
+        <li>
+            {{ other_case.application.counseling_type }}
+            · 담당 {{ other_case.counselor.name }}
+            · {{ other_case.case_number }}
+            · 남은 회기 {{ other_case.remaining_sessions }}/{{ other_case.total_sessions }}
+        </li>
+        {% endfor %}
+    </ul>
 </div>
 {% endif %}
 

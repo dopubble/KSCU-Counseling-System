@@ -10,7 +10,7 @@ from apps.counseling.models import ApplicationStatus, CaseStatus
 
 class Command(BaseCommand):
     help = (
-        "상담사 배정·ACTIVE 사례가 있는데 매칭대기 신청만 중복으로 남은 건을 취소 처리합니다.\n\n"
+        "레거시 명령 — 다른 건 추가 신청을 허용하므로 자동 정리 대상이 없습니다.\n\n"
         "예시:\n"
         "  python manage.py repair_stale_applications --dry-run\n"
         "  python manage.py repair_stale_applications"

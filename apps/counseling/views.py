@@ -89,7 +89,7 @@ from .cancellation_policy import (
 )
 from .application_queries import (
     client_has_open_pending_application,
-    client_has_other_active_case,
+    get_client_other_active_cases,
 )
 from .models import ApplicationStatus, Case, CaseStatus, CounselingApplication, SessionScheduleChangeRequest
 from .services import (
@@ -422,9 +422,8 @@ def application_detail(request, pk):
         ApplicationStatus.RECEIVED,
         ApplicationStatus.WAITING_MATCH,
     )
-    has_other_active_case = client_has_other_active_case(application)
-    if has_other_active_case and can_assign_new:
-        can_assign_new = False
+    other_active_cases = list(get_client_other_active_cases(application))
+    has_other_active_case = bool(other_active_cases)
     can_change_counselor = existing_case is not None
     show_match_form = can_assign_new or can_change_counselor
 
@@ -533,6 +532,7 @@ def application_detail(request, pk):
             "can_change_counselor": can_change_counselor,
             "show_match_form": show_match_form,
             "has_other_active_case": has_other_active_case,
+            "other_active_cases": other_active_cases,
             "counselors_count": counselors.count(),
             "active_case_counts": active_case_counts,
         },
