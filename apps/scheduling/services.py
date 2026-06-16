@@ -148,38 +148,16 @@ def update_pending_appointment(
     return appointment
 
 
-@transaction.atomic
-def confirm_appointment_with_zoom(
-    appointment: Appointment,
-    *,
-    notify: bool = True,
-) -> tuple[Appointment, ZoomMeeting]:
-    """
-    상담사 예약 확정 시 Zoom 회의 생성 및 Case.zoom_meeting_url 저장.
-    """
-    if appointment.status != AppointmentStatus.PENDING:
-        raise AppointmentServiceError("이미 처리된 예약입니다.")
-
-    if _counselor_slot_taken(
-        appointment.counselor_id,
-        appointment.scheduled_at,
-        exclude_appointment_id=appointment.pk,
-    ):
-        raise AppointmentServiceError(
-            "해당 시간에 이미 확정된 다른 상담이 있습니다. 시간을 수정해 주세요."
-        )
-
+def _create_zoom_meeting_for_appointment(appointment: Appointment) -> tuple[ZoomMeeting, str]:
+    """예약 1건에 Zoom 회의 생성·저장. join_url 반환."""
     case = appointment.case
     topic = f"[KSCU 상담] {case.client.name} · {case.case_number}"
 
-    try:
-        meeting_data = create_zoom_meeting(
-            topic=topic,
-            start_time=appointment.scheduled_at,
-            duration_minutes=appointment.duration_minutes,
-        )
-    except (ZoomAPIError, ZoomNotConfiguredError):
-        raise
+    meeting_data = create_zoom_meeting(
+        topic=topic,
+        start_time=appointment.scheduled_at,
+        duration_minutes=appointment.duration_minutes,
+    )
 
     join_url = (meeting_data.get("join_url") or "").strip()
     start_url = (meeting_data.get("start_url") or "").strip()
@@ -196,9 +174,98 @@ def confirm_appointment_with_zoom(
         },
     )
 
-    # 사례·내담자용 링크는 짧은 join_url 우선 (start_url은 호스트용·매우 길 수 있음)
-    case.zoom_meeting_url = join_url or start_url
+    launch_url = join_url or start_url
+    case.zoom_meeting_url = launch_url
     case.save(update_fields=["zoom_meeting_url"])
+    return zoom_meeting, launch_url
+
+
+@transaction.atomic
+def attach_zoom_meeting_to_confirmed_appointment(
+    appointment: Appointment,
+) -> ZoomMeeting:
+    """확정된 예약에 Zoom 회의가 없으면 생성 (대면·비대면 공통)."""
+    if appointment.status != AppointmentStatus.CONFIRMED:
+        raise AppointmentServiceError("확정된 예약만 Zoom 회의를 연결할 수 있습니다.")
+
+    existing = getattr(appointment, "zoom_meeting", None)
+    if existing and existing.join_url:
+        return existing
+
+    zoom_meeting, _launch_url = _create_zoom_meeting_for_appointment(appointment)
+    return zoom_meeting
+
+
+def backfill_missing_zoom_meetings(
+    *,
+    dry_run: bool = False,
+) -> tuple[int, int, list[str]]:
+    """
+    Zoom 없이 확정된 예약에 회의 생성.
+    반환: (created, skipped, errors)
+    """
+    if not is_zoom_configured():
+        raise ZoomNotConfiguredError(
+            "Zoom API 설정이 없습니다. ZOOM_* 환경 변수를 확인해 주세요."
+        )
+
+    qs = (
+        Appointment.objects.filter(status=AppointmentStatus.CONFIRMED)
+        .select_related("case", "case__client", "zoom_meeting")
+        .order_by("scheduled_at")
+    )
+
+    created = skipped = 0
+    errors: list[str] = []
+
+    for appointment in qs.iterator():
+        zoom = getattr(appointment, "zoom_meeting", None)
+        if zoom and zoom.join_url:
+            skipped += 1
+            continue
+
+        if dry_run:
+            created += 1
+            continue
+
+        try:
+            attach_zoom_meeting_to_confirmed_appointment(appointment)
+            created += 1
+        except (ZoomAPIError, ZoomNotConfiguredError, AppointmentServiceError) as exc:
+            clear_zoom_token_cache()
+            failed_label = f"{appointment.case.client.name} ({appointment.pk})"
+            errors.append(f"{failed_label}: {exc}")
+            logger.warning("Zoom backfill failed for appointment %s: %s", appointment.pk, exc)
+
+    return created, skipped, errors
+
+
+@transaction.atomic
+def confirm_appointment_with_zoom(
+    appointment: Appointment,
+    *,
+    notify: bool = True,
+) -> tuple[Appointment, ZoomMeeting]:
+    """
+    상담사 예약 확정 시 Zoom 회의 생성 및 Case.zoom_meeting_url 저장.
+    대면·비대면 구분 없이 항상 Zoom 회의를 생성합니다.
+    """
+    if appointment.status != AppointmentStatus.PENDING:
+        raise AppointmentServiceError("이미 처리된 예약입니다.")
+
+    if _counselor_slot_taken(
+        appointment.counselor_id,
+        appointment.scheduled_at,
+        exclude_appointment_id=appointment.pk,
+    ):
+        raise AppointmentServiceError(
+            "해당 시간에 이미 확정된 다른 상담이 있습니다. 시간을 수정해 주세요."
+        )
+
+    try:
+        zoom_meeting, _launch_url = _create_zoom_meeting_for_appointment(appointment)
+    except (ZoomAPIError, ZoomNotConfiguredError):
+        raise
 
     appointment.status = AppointmentStatus.CONFIRMED
     appointment.confirmed_at = timezone.now()

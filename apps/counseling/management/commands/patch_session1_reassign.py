@@ -29,11 +29,6 @@ class Command(BaseCommand):
             action="store_true",
             help="DB 반영 (기본: dry-run)",
         )
-        parser.add_argument(
-            "--with-zoom",
-            action="store_true",
-            help="비대면 1회기 확정 시 Zoom 회의 생성",
-        )
 
     def handle(self, *args, **options):
         dry_run = not options["apply"]
@@ -82,7 +77,7 @@ class Command(BaseCommand):
                     client_index=client_index,
                     total_sessions=10,
                     create_missing_application=True,
-                    with_zoom=options["with_zoom"],
+                    with_zoom=False,
                     dry_run=True,
                 )
                 self.stdout.write(f"{prefix}{result.client_name} → {result.counselor_name}: {result.message}")
@@ -103,7 +98,7 @@ class Command(BaseCommand):
                     client_index=client_index,
                     total_sessions=10,
                     create_missing_application=True,
-                    with_zoom=options["with_zoom"],
+                    with_zoom=False,
                     dry_run=False,
                 )
                 if result.action == "error":

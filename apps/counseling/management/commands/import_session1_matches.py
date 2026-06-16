@@ -65,7 +65,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--with-zoom",
             action="store_true",
-            help="1회기 확정 시 Zoom 회의 생성 (36건 API 호출 주의)",
+            help="(더 이상 사용하지 않음) 예약 확정 시 항상 Zoom 회의를 생성합니다.",
         )
         parser.add_argument(
             "--skip-clear",

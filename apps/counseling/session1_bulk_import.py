@@ -29,6 +29,7 @@ from apps.documents.models import SessionMaterial
 from apps.scheduling.forms import DEFAULT_APPOINTMENT_DURATION_MINUTES
 from apps.scheduling.models import Appointment, AppointmentStatus
 from apps.scheduling.services import confirm_appointment_with_zoom
+from apps.scheduling.utils import ZoomAPIError, ZoomNotConfiguredError
 
 
 @dataclass
@@ -341,13 +342,16 @@ def _import_one_row(
         request_message="관리자 일괄 1회기 매칭 주입",
     )
 
-    use_zoom = with_zoom and case.counseling_method == CounselingMethod.REMOTE
-    if use_zoom:
+    try:
         confirm_appointment_with_zoom(appointment, notify=False)
-    else:
-        appointment.status = AppointmentStatus.CONFIRMED
-        appointment.confirmed_at = timezone.now()
-        appointment.save(update_fields=["status", "confirmed_at", "updated_at"])
+    except (ZoomAPIError, ZoomNotConfiguredError) as exc:
+        return ImportRowResult(
+            row.client_name,
+            row.counselor_name,
+            row.first_session,
+            "error",
+            str(exc),
+        )
 
     msg = f"{case.case_number} · 1회기 {timezone.localtime(row.first_session):%Y-%m-%d %H:%M}"
     if counselor_err:
