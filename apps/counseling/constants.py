@@ -32,6 +32,7 @@ REMOTE_CLIENT_NAMES = frozenset({
     "임유정",
     "오유진",
     "조현경",
+    "김혜정",
 })
 
 LEGACY_COUNSELING_TYPE_MAP = {
