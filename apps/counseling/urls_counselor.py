@@ -85,6 +85,11 @@ urlpatterns = [
         name="cohort_journal_pdf",
     ),
     path(
+        "case/<uuid:case_pk>/session/<int:session_number>/book/",
+        views.counselor_session_appointment_book,
+        name="session_appointment_book",
+    ),
+    path(
         "case/<uuid:case_pk>/session/<int:session_number>/materials/upload/",
         views.counselor_session_material_upload,
         name="session_material_upload",

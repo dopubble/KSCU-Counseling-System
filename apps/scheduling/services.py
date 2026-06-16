@@ -251,6 +251,64 @@ def backfill_missing_zoom_meetings(
 
 
 @transaction.atomic
+def create_and_confirm_appointment_by_counselor(
+    *,
+    case,
+    session_number: int,
+    scheduled_at,
+    duration_minutes: int | None = None,
+    notify: bool = True,
+) -> tuple[Appointment, ZoomMeeting | None]:
+    """상담사가 내담자 신청 없이 회기 예약을 생성하고 바로 확정."""
+    if not case.counselor_id:
+        raise AppointmentServiceError("담당 상담사가 배정되지 않았습니다.")
+
+    duration = duration_minutes or DEFAULT_APPOINTMENT_DURATION_MINUTES
+    scheduled_at = normalize_client_preferred_datetime(scheduled_at)
+
+    if Appointment.objects.filter(
+        case=case,
+        session_number=session_number,
+        status=AppointmentStatus.PENDING,
+    ).exists():
+        raise AppointmentServiceError(
+            "이 회기에 대기 중인 예약 신청이 있습니다. 해당 신청을 확정해 주세요."
+        )
+
+    if Appointment.objects.filter(
+        case=case,
+        session_number=session_number,
+        status__in=(
+            AppointmentStatus.CONFIRMED,
+            AppointmentStatus.SCHEDULED,
+            AppointmentStatus.CANCEL_PENDING,
+        ),
+    ).exists():
+        raise AppointmentServiceError("이 회기에 이미 확정된 예약이 있습니다.")
+
+    available, message = is_counselor_slot_available(
+        case.counselor_id,
+        scheduled_at,
+        duration_minutes=duration,
+        require_full_duration=True,
+    )
+    if not available:
+        raise AppointmentServiceError(message)
+
+    appointment = Appointment.objects.create(
+        case=case,
+        counselor=case.counselor,
+        client=case.client,
+        scheduled_at=scheduled_at,
+        duration_minutes=duration,
+        status=AppointmentStatus.PENDING,
+        session_number=session_number,
+        request_message="",
+    )
+    return confirm_appointment_with_zoom(appointment, notify=notify)
+
+
+@transaction.atomic
 def confirm_appointment_with_zoom(
     appointment: Appointment,
     *,

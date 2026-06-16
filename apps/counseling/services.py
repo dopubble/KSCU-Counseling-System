@@ -846,6 +846,37 @@ class CaseSessionCard:
         return self.appointment.status == AppointmentStatus.PENDING
 
     @property
+    def show_counselor_direct_booking(self) -> bool:
+        """상담사 — 내담자 신청 없이 일정 입력·확정."""
+        if not self.counselor_assigned:
+            return False
+        if self.status_code in (
+            "COMPLETED",
+            "NO_SHOW",
+            "CONFIRMED",
+            "CHANGE_REQUESTED",
+            "REQUESTED",
+        ):
+            return False
+        if self.has_session_cancel_pending:
+            return False
+        if self.show_counselor_schedule_change_review_actions:
+            return False
+        if self.pending_appointment is not None:
+            return False
+        if self.appointment is not None and self.appointment.status in (
+            AppointmentStatus.PENDING,
+            AppointmentStatus.CONFIRMED,
+            AppointmentStatus.CANCEL_PENDING,
+            AppointmentStatus.COMPLETED,
+            AppointmentStatus.NO_SHOW,
+        ):
+            return False
+        if self.status_code == "CANCELLED" and not self.is_counselor_rejection_notice:
+            return False
+        return self.show_session_actions
+
+    @property
     def show_counselor_appointment_actions(self) -> bool:
         """상담사 예약 확정/반려 버튼 영역 표시."""
         return self.show_counselor_review_buttons

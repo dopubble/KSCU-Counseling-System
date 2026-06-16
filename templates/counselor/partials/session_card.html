@@ -83,6 +83,12 @@
         <p class="small fw-semibold mb-1"><i class="bi bi-x-circle me-1" aria-hidden="true"></i>예약이 반려되었습니다</p>
         <p class="small mb-0 client-pre-wrap">{{ session.rejection_reason }}</p>
     </div>
+    {% elif session.show_counselor_direct_booking %}
+    <div class="session-pending-summary session-direct-booking-summary">
+        <p class="session-pending-summary-notice small text-muted mb-0">
+            내담자 신청 없이 상담 일정을 입력하고 바로 확정할 수 있습니다.
+        </p>
+    </div>
     {% endif %}
 
     {% if session.has_materials or session.show_counselor_session_toolbar %}
@@ -123,8 +129,14 @@
     </div>
     {% endif %}
 
-    {% if session.show_zoom or session.show_counselor_journal or session.show_initial_record or session.show_termination_record %}
+    {% if session.show_counselor_direct_booking or session.show_zoom or session.show_counselor_journal or session.show_initial_record or session.show_termination_record %}
     <div class="client-session-card-footer d-flex flex-wrap align-items-center gap-2">
+        {% if session.show_counselor_direct_booking %}
+        <a href="{% url 'counselor:session_appointment_book' case.pk session.session_number %}"
+           class="btn btn-sm btn-counselor text-white">
+            <i class="bi bi-calendar-plus me-1" aria-hidden="true"></i>일정 입력 및 확정
+        </a>
+        {% endif %}
         {% if session.show_zoom %}
         <a href="{{ session.zoom_url }}"
            target="_blank"

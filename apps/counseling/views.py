@@ -63,11 +63,16 @@ from apps.scheduling.availability import (
     serialize_counselor_availability_rules,
 )
 from apps.scheduling.display import group_availabilities_for_display
-from apps.scheduling.forms import AppointmentRejectForm, AppointmentRequestForm
+from apps.scheduling.forms import (
+    AppointmentRejectForm,
+    AppointmentRequestForm,
+    AppointmentScheduleForm,
+)
 from apps.scheduling.models import Appointment, AppointmentStatus, CounselorAvailability
 from apps.scheduling.services import (
     AppointmentServiceError,
     confirm_appointment_with_zoom,
+    create_and_confirm_appointment_by_counselor,
     create_appointment_request,
     ensure_pending_session_appointment,
     reject_appointment_request,
@@ -2216,10 +2221,88 @@ def case_book_appointment(request, pk):
         return redirect("counselor:appointment_manage", pk=pending.pk)
     messages.info(
         request,
-        "대기 중인 예약 신청이 없습니다. 내담자가 예약을 신청하면 "
-        "사례 상세에서 확인·확정할 수 있습니다.",
+        "대기 중인 예약 신청이 없습니다. 회기별 「일정 입력 및 확정」으로 "
+        "직접 예약하거나, 내담자 신청을 기다릴 수 있습니다.",
     )
     return redirect("counselor:case_detail", pk=case.pk)
+
+
+@counselor_required
+def counselor_session_appointment_book(request, case_pk, session_number):
+    """상담사 — 내담자 신청 없이 회기 일정 입력·확정."""
+    case = _get_counselor_case(request, case_pk)
+    card = _get_session_card(case, session_number)
+    if not card or not card.show_counselor_direct_booking:
+        messages.error(request, "이 회기는 일정을 직접 확정할 수 없습니다.")
+        return redirect("counselor:case_detail", pk=case.pk)
+
+    if request.method == "POST":
+        form = AppointmentScheduleForm(request.POST, counselor_label=True)
+        if not form.is_valid():
+            messages.error(request, "입력 내용을 확인해 주세요.")
+        elif (
+            case.counseling_method == CounselingMethod.REMOTE
+            and not is_zoom_configured()
+        ):
+            messages.error(
+                request,
+                "Zoom API가 설정되지 않아 비대면 예약을 확정할 수 없습니다. .env 설정을 확인해 주세요.",
+            )
+        else:
+            try:
+                appointment, zoom = create_and_confirm_appointment_by_counselor(
+                    case=case,
+                    session_number=session_number,
+                    scheduled_at=form.cleaned_data["scheduled_at"],
+                    duration_minutes=form.cleaned_data["duration_minutes"],
+                )
+                success_msg = (
+                    f"{session_number}회기 예약이 확정되었습니다. "
+                    f"({appointment.scheduled_at:%Y-%m-%d %H:%M})"
+                )
+                if zoom:
+                    success_msg += " Zoom 회의가 생성되었습니다."
+                messages.success(request, success_msg)
+                return redirect("counselor:case_detail", pk=case.pk)
+            except ZoomNotConfiguredError as exc:
+                messages.error(request, str(exc))
+            except ZoomAPIError as exc:
+                messages.error(request, str(exc))
+            except AppointmentServiceError as exc:
+                messages.error(request, str(exc))
+            except IntegrityError:
+                messages.error(
+                    request,
+                    "선택한 시간에 이미 다른 확정 예약이 있습니다.",
+                )
+            except ValidationError as exc:
+                messages.error(
+                    request,
+                    exc.messages[0] if getattr(exc, "messages", None) else str(exc),
+                )
+            except Exception:
+                logger.exception(
+                    "Counselor session book failed (case=%s, session=%s)",
+                    case.pk,
+                    session_number,
+                )
+                messages.error(
+                    request,
+                    "예약 확정 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+                )
+    else:
+        form = AppointmentScheduleForm(counselor_label=True)
+
+    return render(
+        request,
+        "counselor/session_appointment_book.html",
+        {
+            "case": case,
+            "session_number": session_number,
+            "form": form,
+            "zoom_configured": is_zoom_configured(),
+        },
+    )
 
 
 def _case_client_summary(case):
