@@ -91,7 +91,7 @@ from .application_queries import (
     client_has_open_pending_application,
     get_client_other_active_cases,
 )
-from .models import ApplicationStatus, Case, CaseStatus, CounselingApplication, SessionScheduleChangeRequest
+from .models import ApplicationStatus, Case, CaseStatus, CounselingApplication, CounselingMethod, SessionScheduleChangeRequest
 from .services import (
     annotate_application_confirmed_at,
     annotate_application_has_confirmed,
@@ -1685,10 +1685,10 @@ def counselor_session_appointment_confirm(request, case_pk, appointment_pk):
             return err
         return redirect("counselor:case_detail", pk=case.pk)
 
-    if not is_zoom_configured():
+    if case.counseling_method == CounselingMethod.REMOTE and not is_zoom_configured():
         err = _ajax_error_response(
             request,
-            "Zoom API가 설정되지 않아 확정할 수 없습니다. .env 설정을 확인해 주세요.",
+            "Zoom API가 설정되지 않아 비대면 예약을 확정할 수 없습니다. .env 설정을 확인해 주세요.",
         )
         if err:
             return err

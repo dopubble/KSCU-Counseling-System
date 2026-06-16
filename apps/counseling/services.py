@@ -746,7 +746,11 @@ def get_client_home_dashboard(user: User) -> dict[str, Any] | None:
     for apt in recent_list:
         case = apt.case
         zoom_url = _resolve_appointment_zoom_url(apt, case)
-        show_zoom = apt.status == AppointmentStatus.CONFIRMED and bool(zoom_url)
+        show_zoom = (
+            apt.status == AppointmentStatus.CONFIRMED
+            and case.counseling_method == CounselingMethod.REMOTE
+            and bool(zoom_url)
+        )
         recent_appointments.append(
             {
                 "scheduled_at": apt.scheduled_at,
@@ -801,6 +805,7 @@ class CaseSessionCard:
     termination_record: Optional[TerminationCounselingRecord] = None
     counselor_assigned: bool = False
     total_sessions: int = 0
+    counseling_method: str = CounselingMethod.IN_PERSON
 
     @property
     def has_materials(self) -> bool:
@@ -1087,6 +1092,7 @@ class CaseSessionCard:
         return (
             self.appointment is not None
             and self.appointment.status == AppointmentStatus.CONFIRMED
+            and self.counseling_method == CounselingMethod.REMOTE
             and bool(self.zoom_url)
         )
 
@@ -1383,6 +1389,7 @@ def build_case_session_cards(case: Case) -> list[CaseSessionCard]:
                 termination_record=termination_record if session_number == total else None,
                 counselor_assigned=counselor_assigned,
                 total_sessions=total,
+                counseling_method=case.counseling_method,
                 zoom_url=_resolve_appointment_zoom_url(appointment, case)
                 if appointment
                 else "",

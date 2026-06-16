@@ -8,8 +8,8 @@ from apps.scheduling.utils import ZoomNotConfiguredError
 
 class Command(BaseCommand):
     help = (
-        "확정되었지만 Zoom 회의가 없는 예약에 join URL을 생성합니다.\n"
-        "대면·비대면 구분 없이 적용됩니다.\n\n"
+        "확정되었지만 Zoom 회의가 없는 비대면 예약에 join URL을 생성합니다.\n"
+        "대면 상담은 제외됩니다.\n\n"
         "예시:\n"
         "  python manage.py backfill_appointment_zoom --dry-run\n"
         "  python manage.py backfill_appointment_zoom --apply"

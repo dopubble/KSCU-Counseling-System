@@ -17,6 +17,7 @@ from .forms import (
     SETTING_DAILY,
     SETTING_RECURRING,
 )
+from apps.counseling.models import CounselingMethod
 from .models import Appointment, AppointmentStatus, CounselorAvailability
 from .services import (
     AppointmentServiceError,
@@ -159,10 +160,11 @@ def appointment_manage(request, pk):
             except AppointmentServiceError as exc:
                 messages.error(request, str(exc))
         elif action == "confirm":
-            if not is_zoom_configured():
+            case = appointment.case
+            if case.counseling_method == CounselingMethod.REMOTE and not is_zoom_configured():
                 messages.error(
                     request,
-                    "Zoom API가 설정되지 않아 확정할 수 없습니다. .env 설정을 확인해 주세요.",
+                    "Zoom API가 설정되지 않아 비대면 예약을 확정할 수 없습니다. .env 설정을 확인해 주세요.",
                 )
             else:
                 try:
@@ -179,7 +181,7 @@ def appointment_manage(request, pk):
                         request,
                         f"상담이 확정되었습니다. ({appointment.scheduled_at:%Y-%m-%d %H:%M})",
                     )
-                    if case.zoom_meeting_url:
+                    if zoom and case.zoom_meeting_url:
                         messages.success(
                             request,
                             "Zoom 회의가 성공적으로 생성되었습니다.",

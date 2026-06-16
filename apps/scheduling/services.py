@@ -3,6 +3,7 @@ from django.utils import timezone
 
 import logging
 
+from apps.counseling.models import CounselingMethod
 from apps.sessions_app.models import ZoomMeeting
 
 from .forms import DEFAULT_APPOINTMENT_DURATION_MINUTES
@@ -180,13 +181,19 @@ def _create_zoom_meeting_for_appointment(appointment: Appointment) -> tuple[Zoom
     return zoom_meeting, launch_url
 
 
+def _appointment_uses_zoom(appointment: Appointment) -> bool:
+    return appointment.case.counseling_method == CounselingMethod.REMOTE
+
+
 @transaction.atomic
 def attach_zoom_meeting_to_confirmed_appointment(
     appointment: Appointment,
 ) -> ZoomMeeting:
-    """확정된 예약에 Zoom 회의가 없으면 생성 (대면·비대면 공통)."""
+    """확정된 비대면 예약에 Zoom 회의가 없으면 생성."""
     if appointment.status != AppointmentStatus.CONFIRMED:
         raise AppointmentServiceError("확정된 예약만 Zoom 회의를 연결할 수 있습니다.")
+    if not _appointment_uses_zoom(appointment):
+        raise AppointmentServiceError("비대면 상담만 Zoom 회의를 연결할 수 있습니다.")
 
     existing = getattr(appointment, "zoom_meeting", None)
     if existing and existing.join_url:
@@ -210,7 +217,10 @@ def backfill_missing_zoom_meetings(
         )
 
     qs = (
-        Appointment.objects.filter(status=AppointmentStatus.CONFIRMED)
+        Appointment.objects.filter(
+            status=AppointmentStatus.CONFIRMED,
+            case__counseling_method=CounselingMethod.REMOTE,
+        )
         .select_related("case", "case__client", "zoom_meeting")
         .order_by("scheduled_at")
     )
@@ -245,10 +255,10 @@ def confirm_appointment_with_zoom(
     appointment: Appointment,
     *,
     notify: bool = True,
-) -> tuple[Appointment, ZoomMeeting]:
+) -> tuple[Appointment, ZoomMeeting | None]:
     """
-    상담사 예약 확정 시 Zoom 회의 생성 및 Case.zoom_meeting_url 저장.
-    대면·비대면 구분 없이 항상 Zoom 회의를 생성합니다.
+    상담사 예약 확정.
+    비대면(REMOTE)만 Zoom 회의 생성 및 Case.zoom_meeting_url 저장.
     """
     if appointment.status != AppointmentStatus.PENDING:
         raise AppointmentServiceError("이미 처리된 예약입니다.")
@@ -262,10 +272,12 @@ def confirm_appointment_with_zoom(
             "해당 시간에 이미 확정된 다른 상담이 있습니다. 시간을 수정해 주세요."
         )
 
-    try:
-        zoom_meeting, _launch_url = _create_zoom_meeting_for_appointment(appointment)
-    except (ZoomAPIError, ZoomNotConfiguredError):
-        raise
+    zoom_meeting: ZoomMeeting | None = None
+    if _appointment_uses_zoom(appointment):
+        try:
+            zoom_meeting, _launch_url = _create_zoom_meeting_for_appointment(appointment)
+        except (ZoomAPIError, ZoomNotConfiguredError):
+            raise
 
     appointment.status = AppointmentStatus.CONFIRMED
     appointment.confirmed_at = timezone.now()

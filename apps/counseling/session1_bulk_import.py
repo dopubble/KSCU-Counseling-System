@@ -342,16 +342,22 @@ def _import_one_row(
         request_message="관리자 일괄 1회기 매칭 주입",
     )
 
-    try:
-        confirm_appointment_with_zoom(appointment, notify=False)
-    except (ZoomAPIError, ZoomNotConfiguredError) as exc:
-        return ImportRowResult(
-            row.client_name,
-            row.counselor_name,
-            row.first_session,
-            "error",
-            str(exc),
-        )
+    use_zoom = with_zoom and case.counseling_method == CounselingMethod.REMOTE
+    if use_zoom:
+        try:
+            confirm_appointment_with_zoom(appointment, notify=False)
+        except (ZoomAPIError, ZoomNotConfiguredError) as exc:
+            return ImportRowResult(
+                row.client_name,
+                row.counselor_name,
+                row.first_session,
+                "error",
+                str(exc),
+            )
+    else:
+        appointment.status = AppointmentStatus.CONFIRMED
+        appointment.confirmed_at = timezone.now()
+        appointment.save(update_fields=["status", "confirmed_at", "updated_at"])
 
     msg = f"{case.case_number} · 1회기 {timezone.localtime(row.first_session):%Y-%m-%d %H:%M}"
     if counselor_err:

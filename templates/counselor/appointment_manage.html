@@ -33,9 +33,9 @@
             <div class="card border-0 shadow-sm">
                 <div class="card-header bg-white fw-semibold">일정 확인 · 확정</div>
                 <div class="card-body">
-                    {% if not zoom_configured %}
+                    {% if case.counseling_method == 'REMOTE' and not zoom_configured %}
                     <div class="alert alert-warning small">
-                        Zoom API가 설정되지 않았습니다. 확정하려면 .env에 Zoom 자격 증명을 입력해 주세요.
+                        Zoom API가 설정되지 않았습니다. 비대면 예약 확정을 위해 .env에 Zoom 자격 증명을 입력해 주세요.
                     </div>
                     {% endif %}
                     <form method="post" id="appointmentManageForm" class="appointment-manage-form">
@@ -58,12 +58,16 @@
                                     name="action"
                                     value="confirm"
                                     class="btn btn-counselor text-white appointment-manage-confirm-btn"
-                                    {% if not zoom_configured %}disabled{% endif %}>
+                                    {% if case.counseling_method == 'REMOTE' and not zoom_configured %}disabled{% endif %}>
                                 <i class="bi bi-check2-circle me-1"></i>예약 확정
                             </button>
                         </div>
                         <p class="small text-muted mt-3 mb-0">
+                            {% if case.counseling_method == 'REMOTE' %}
                             <strong>예약 확정</strong> 시 Zoom 회의가 자동 생성되며 내담자·사례에 링크가 저장됩니다.
+                            {% else %}
+                            <strong>예약 확정</strong> 시 대면 상담 일정이 확정됩니다 (Zoom 회의는 생성되지 않습니다).
+                            {% endif %}
                         </p>
                     </form>
                 </div>
