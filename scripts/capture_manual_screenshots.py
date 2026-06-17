@@ -62,6 +62,13 @@ def pick_free_port(start: int = DEFAULT_PORT, attempts: int = 20) -> int:
 
 
 def start_server(port: int) -> subprocess.Popen:
+    subprocess.run(
+        [sys.executable, "manage.py", "migrate", "--noinput"],
+        cwd=BASE_DIR,
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
     proc = subprocess.Popen(
         [sys.executable, "manage.py", "runserver", f"127.0.0.1:{port}", "--noreload"],
         cwd=BASE_DIR,
