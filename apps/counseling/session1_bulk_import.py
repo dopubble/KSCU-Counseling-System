@@ -519,6 +519,176 @@ def format_verification_report_markdown(
     return "\n".join(lines)
 
 
+@dataclass
+class Session1TimeSyncResult:
+    client_name: str
+    counselor_name: str
+    old_at: datetime | None
+    new_at: datetime | None
+    status: str
+    detail: str = ""
+
+
+def _local_slot_label(dt: datetime) -> str:
+    return timezone.localtime(dt).strftime("%Y-%m-%d %H:%M")
+
+
+def sync_session1_times_from_roster(
+    rows: list[Session1MatchRow],
+    *,
+    dry_run: bool = True,
+    skip_availability: bool = True,
+    counselor_name: str | None = None,
+    client_names: frozenset[str] | None = None,
+) -> list[Session1TimeSyncResult]:
+    """골드 스탠다드 JSON과 DB 1회기 확정 일시 불일치만 조정."""
+    from apps.scheduling.services import (
+        AppointmentServiceError,
+        reschedule_confirmed_appointment,
+    )
+
+    client_index = _build_name_index(UserRole.CLIENT)
+    results: list[Session1TimeSyncResult] = []
+
+    for row in rows:
+        if counselor_name and row.counselor_name != counselor_name:
+            continue
+        if client_names and row.client_name not in client_names:
+            continue
+
+        client, client_err = resolve_client_by_name(
+            row.client_name,
+            client_index=client_index,
+        )
+        if client_err or not client:
+            results.append(
+                Session1TimeSyncResult(
+                    row.client_name,
+                    row.counselor_name,
+                    None,
+                    row.first_session,
+                    "error",
+                    client_err or "내담자 없음",
+                )
+            )
+            continue
+
+        case = (
+            Case.objects.filter(
+                client=client,
+                counselor__name=row.counselor_name,
+                status=CaseStatus.ACTIVE,
+            )
+            .select_related("counselor")
+            .first()
+        )
+        if not case:
+            results.append(
+                Session1TimeSyncResult(
+                    row.client_name,
+                    row.counselor_name,
+                    None,
+                    row.first_session,
+                    "error",
+                    "활성 배정 없음",
+                )
+            )
+            continue
+
+        appointment = (
+            Appointment.objects.filter(case=case, session_number=1)
+            .order_by("-created_at")
+            .first()
+        )
+        if not appointment:
+            results.append(
+                Session1TimeSyncResult(
+                    row.client_name,
+                    row.counselor_name,
+                    None,
+                    row.first_session,
+                    "error",
+                    "1회기 예약 없음",
+                )
+            )
+            continue
+
+        if appointment.status != AppointmentStatus.CONFIRMED:
+            results.append(
+                Session1TimeSyncResult(
+                    row.client_name,
+                    row.counselor_name,
+                    timezone.localtime(appointment.scheduled_at),
+                    row.first_session,
+                    "skipped",
+                    f"상태 {appointment.get_status_display()}",
+                )
+            )
+            continue
+
+        old_at = timezone.localtime(appointment.scheduled_at)
+        expected_label = _local_slot_label(row.first_session)
+        current_label = _local_slot_label(appointment.scheduled_at)
+        if current_label == expected_label:
+            results.append(
+                Session1TimeSyncResult(
+                    row.client_name,
+                    row.counselor_name,
+                    old_at,
+                    timezone.localtime(row.first_session),
+                    "ok",
+                    "일치",
+                )
+            )
+            continue
+
+        if dry_run:
+            results.append(
+                Session1TimeSyncResult(
+                    row.client_name,
+                    row.counselor_name,
+                    old_at,
+                    timezone.localtime(row.first_session),
+                    "sync",
+                    f"{current_label} → {expected_label}",
+                )
+            )
+            continue
+
+        try:
+            appointment, zoom_warning = reschedule_confirmed_appointment(
+                appointment,
+                new_scheduled_at=row.first_session,
+                skip_availability=skip_availability,
+            )
+            detail = f"{current_label} → {_local_slot_label(appointment.scheduled_at)}"
+            if zoom_warning:
+                detail += f" (Zoom: {zoom_warning})"
+            results.append(
+                Session1TimeSyncResult(
+                    row.client_name,
+                    row.counselor_name,
+                    old_at,
+                    timezone.localtime(appointment.scheduled_at),
+                    "synced",
+                    detail,
+                )
+            )
+        except AppointmentServiceError as exc:
+            results.append(
+                Session1TimeSyncResult(
+                    row.client_name,
+                    row.counselor_name,
+                    old_at,
+                    timezone.localtime(row.first_session),
+                    "error",
+                    str(exc),
+                )
+            )
+
+    return results
+
+
 def assert_session1_roster(rows: list[Session1MatchRow]) -> Session1VerificationReport:
     report = verify_session1_roster(rows)
     if not report.ok:
