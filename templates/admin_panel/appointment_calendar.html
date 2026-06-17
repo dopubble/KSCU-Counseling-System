@@ -15,7 +15,7 @@
     <div class="admin-calendar-toolbar">
         <div>
             <p class="text-muted mb-0 small">
-                확정된 예약만 표시합니다. 비대면 일정은 Zoom 호스트 풀 기준으로 색상이 구분됩니다.
+                확정(CONFIRMED)된 예약만 표시합니다. 비대면 일정은 Zoom 호스트 풀 기준으로 색상이 구분됩니다.
             </p>
             {% if use_mock %}
             <span class="badge text-bg-warning mt-2">데모 모드 — 가상 데이터</span>
@@ -54,7 +54,8 @@
         <div id="adminAppointmentCalendar"
              data-events-url="{% url 'admin_panel:appointment_calendar_events' %}"
              data-mock-url="{% url 'admin_panel:appointment_calendar_events' %}?mock=1"
-             data-use-mock="{% if use_mock %}1{% else %}0{% endif %}"></div>
+             data-use-mock="{% if use_mock %}1{% else %}0{% endif %}"
+             data-timezone="{{ calendar_timezone }}"></div>
     </div>
 </div>
 

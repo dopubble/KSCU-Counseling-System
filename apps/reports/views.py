@@ -4,7 +4,6 @@ from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.dateparse import parse_datetime
 
 from apps.accounts.decorators import role_required
 from apps.accounts.models import CounselorProfile, User, UserRole
@@ -31,8 +30,10 @@ from apps.reports.table_sort import (
 from apps.reports.appointment_calendar import (
     HOST_COLORS,
     build_calendar_events,
+    get_calendar_timezone_name,
     get_mock_calendar_events,
     get_zoom_host_pool,
+    parse_calendar_bound,
     zoom_host_label,
 )
 from apps.scheduling.models import Appointment, AppointmentStatus
@@ -120,7 +121,7 @@ def build_admin_dashboard_stats(now=None, *, use_cache: bool = True):
         "active_cases": Case.objects.filter(status=CaseStatus.ACTIVE).count(),
         "appointments_today": Appointment.objects.filter(
             scheduled_at__date=now.date(),
-            status__in=[AppointmentStatus.SCHEDULED, AppointmentStatus.CONFIRMED],
+            status=AppointmentStatus.CONFIRMED,
         ).count(),
         "cancel_pending": cancel_pending_count,
     }
@@ -139,9 +140,14 @@ def admin_dashboard(request):
 
     waiting_applications = waiting_qs.order_by("-created_at")[:10]
 
-    today_appointments = Appointment.objects.filter(
-        scheduled_at__date=now.date(),
-    ).select_related("client", "counselor").order_by("scheduled_at")[:10]
+    today_appointments = (
+        Appointment.objects.filter(
+            scheduled_at__date=now.date(),
+            status=AppointmentStatus.CONFIRMED,
+        )
+        .select_related("client", "counselor")
+        .order_by("scheduled_at")[:10]
+    )
 
     return render(
         request,
@@ -403,8 +409,8 @@ def _calendar_legend_hosts() -> list[dict[str, str]]:
 
 
 def _parse_calendar_range(request):
-    start = parse_datetime((request.GET.get("start") or "").strip())
-    end = parse_datetime((request.GET.get("end") or "").strip())
+    start = parse_calendar_bound((request.GET.get("start") or "").strip())
+    end = parse_calendar_bound((request.GET.get("end") or "").strip())
     return start, end
 
 
@@ -417,6 +423,7 @@ def appointment_calendar(request):
         {
             "use_mock": use_mock,
             "zoom_host_pool": _calendar_legend_hosts(),
+            "calendar_timezone": get_calendar_timezone_name(),
         },
     )
 

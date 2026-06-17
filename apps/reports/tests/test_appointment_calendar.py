@@ -1,16 +1,20 @@
 from datetime import timedelta
 
-from django.test import TestCase, override_settings
+from django.test import Client, TestCase, override_settings
+from django.urls import reverse
 from django.utils import timezone
 
-from apps.counseling.models import CounselingMethod
+from apps.accounts.models import User, UserRole, UserStatus
 from apps.reports.appointment_calendar import (
     assign_zoom_hosts,
+    appointment_overlaps_range,
     build_calendar_events,
     get_mock_calendar_events,
     CalendarInterval,
+    parse_calendar_bound,
     zoom_host_label,
 )
+from apps.scheduling.models import Appointment, AppointmentStatus
 
 
 class AppointmentCalendarTests(TestCase):
@@ -45,3 +49,85 @@ class AppointmentCalendarTests(TestCase):
     def test_build_calendar_events_empty(self):
         events = build_calendar_events()
         self.assertEqual(events, [])
+
+    def test_parse_calendar_bound_makes_naive_datetime_aware(self):
+        parsed = parse_calendar_bound("2026-06-17")
+        self.assertIsNotNone(parsed)
+        self.assertIsNotNone(parsed.tzinfo)
+
+    def test_confirmed_session1_client_visible_in_day_and_month_views(self):
+        """1회기 확정(이현옥 유형) 일정이 FullCalendar 요청 범위에서 누락되지 않아야 한다."""
+        apt = Appointment.objects.filter(
+            client__name="이현옥",
+            status=AppointmentStatus.CONFIRMED,
+            session_number=1,
+        ).first()
+        if apt is None:
+            self.skipTest("로컬 DB에 이현옥 1회기 확정 예약 없음")
+
+        day_start = parse_calendar_bound("2026-06-17T00:00:00+09:00")
+        day_end = parse_calendar_bound("2026-06-18T00:00:00+09:00")
+        month_start = parse_calendar_bound("2026-06-01")
+        month_end = parse_calendar_bound("2026-07-01")
+
+        for start, end in ((day_start, day_end), (month_start, month_end)):
+            events = build_calendar_events(start=start, end=end)
+            names = [event["extendedProps"]["client_name"] for event in events]
+            self.assertIn("이현옥", names, msg=f"range {start} ~ {end}")
+
+        start_at = timezone.localtime(apt.scheduled_at)
+        end_at = start_at + timedelta(minutes=apt.duration_minutes or 50)
+        self.assertTrue(
+            appointment_overlaps_range(
+                start_at, end_at, range_start=day_start, range_end=day_end
+            )
+        )
+
+    def test_pending_appointment_excluded_from_calendar(self):
+        pending_count = Appointment.objects.filter(
+            status=AppointmentStatus.PENDING
+        ).count()
+        if pending_count == 0:
+            self.skipTest("PENDING 예약 없음")
+
+        start = parse_calendar_bound("2026-06-01")
+        end = parse_calendar_bound("2026-07-01")
+        events = build_calendar_events(start=start, end=end)
+        event_ids = {event["id"] for event in events}
+        pending_ids = {
+            str(pk)
+            for pk in Appointment.objects.filter(status=AppointmentStatus.PENDING).values_list(
+                "pk", flat=True
+            )
+        }
+        self.assertFalse(event_ids & pending_ids)
+
+    def test_calendar_events_api_returns_confirmed_client(self):
+        apt = Appointment.objects.filter(
+            client__name="이현옥",
+            status=AppointmentStatus.CONFIRMED,
+        ).first()
+        if apt is None:
+            self.skipTest("로컬 DB에 이현옥 확정 예약 없음")
+
+        admin = User.objects.create_user(
+            email="admin-calendar@example.com",
+            password="Testpass123!",
+            name="관리자",
+            role=UserRole.ADMIN,
+            status=UserStatus.ACTIVE,
+        )
+        client = Client()
+        client.force_login(admin)
+        response = client.get(
+            reverse("admin_panel:appointment_calendar_events"),
+            {
+                "start": "2026-06-17T00:00:00+09:00",
+                "end": "2026-06-18T00:00:00+09:00",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        names = [
+            event["extendedProps"]["client_name"] for event in response.json()["events"]
+        ]
+        self.assertIn("이현옥", names)

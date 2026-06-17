@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
 from django.conf import settings
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from apps.counseling.models import CounselingMethod
 from apps.scheduling.models import Appointment, AppointmentStatus
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_ZOOM_HOST_POOL = ("host_01", "host_02")
 
@@ -24,6 +28,9 @@ HOST_COLORS: dict[str, dict[str, str]] = {
 IN_PERSON_COLORS = {"bg": "#64748b", "border": "#475569"}
 REMOTE_NO_ZOOM_COLORS = {"bg": "#0891b2", "border": "#0e7490"}
 
+# DB 선필터용 — 최장 상담 시간보다 넉넉한 버퍼(분)
+CALENDAR_RANGE_BUFFER_MINUTES = 180
+
 
 @dataclass(frozen=True)
 class CalendarInterval:
@@ -31,6 +38,10 @@ class CalendarInterval:
     start: datetime
     end: datetime
     is_remote: bool
+
+
+def get_calendar_timezone_name() -> str:
+    return getattr(settings, "TIME_ZONE", "Asia/Seoul")
 
 
 def get_zoom_host_pool() -> tuple[str, ...]:
@@ -58,6 +69,48 @@ def _host_colors(host_id: str) -> dict[str, str]:
 
 def _intervals_overlap(a_start: datetime, a_end: datetime, b_start: datetime, b_end: datetime) -> bool:
     return a_start < b_end and b_start < a_end
+
+
+def _calendar_localtime(value: datetime) -> datetime:
+    """캘린더 구간 비교·표시는 서비스 타임존(Asia/Seoul) 기준."""
+    if timezone.is_naive(value):
+        value = timezone.make_aware(value, timezone.get_current_timezone())
+    return timezone.localtime(value)
+
+
+def parse_calendar_bound(raw: str) -> datetime | None:
+    """FullCalendar start/end 쿼리를 timezone-aware datetime으로 변환."""
+    text = (raw or "").strip()
+    if not text:
+        return None
+    parsed = parse_datetime(text)
+    if parsed is None:
+        return None
+    if timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
+    return parsed
+
+
+def appointment_overlaps_range(
+    start_at: datetime,
+    end_at: datetime,
+    *,
+    range_start: datetime | None,
+    range_end: datetime | None,
+) -> bool:
+    """예약 구간 [start_at, end_at)이 캘린더 표시 구간과 겹치는지."""
+    start_at = _calendar_localtime(start_at)
+    end_at = _calendar_localtime(end_at)
+    range_start = _calendar_localtime(range_start) if range_start is not None else None
+    range_end = _calendar_localtime(range_end) if range_end is not None else None
+
+    if range_start is None and range_end is None:
+        return True
+    if range_end is not None and start_at >= range_end:
+        return False
+    if range_start is not None and end_at <= range_start:
+        return False
+    return True
 
 
 def assign_zoom_hosts(intervals: list[CalendarInterval]) -> dict[str, str]:
@@ -150,8 +203,6 @@ def _serialize_event_row(row: dict[str, Any]) -> dict[str, Any]:
         colors = IN_PERSON_COLORS
     elif host_id:
         colors = _host_colors(host_id)
-    elif zoom_url:
-        colors = REMOTE_NO_ZOOM_COLORS
     else:
         colors = REMOTE_NO_ZOOM_COLORS
 
@@ -187,65 +238,83 @@ def build_calendar_events(
     start: datetime | None = None,
     end: datetime | None = None,
 ) -> list[dict[str, Any]]:
-    """확정(CONFIRMED) 예약을 FullCalendar 이벤트 JSON으로 변환."""
+    """확정(CONFIRMED) 예약만 FullCalendar 이벤트 JSON으로 변환."""
     qs = (
         Appointment.objects.filter(status=AppointmentStatus.CONFIRMED)
         .select_related("client", "counselor", "case", "zoom_meeting")
         .order_by("scheduled_at")
     )
-    if start is not None:
-        qs = qs.filter(scheduled_at__gte=start)
     if end is not None:
         qs = qs.filter(scheduled_at__lt=end)
-
-    appointments = list(qs)
-    intervals: list[CalendarInterval] = []
-    for apt in appointments:
-        is_remote = apt.case.counseling_method == CounselingMethod.REMOTE
-        start_at = timezone.localtime(apt.scheduled_at)
-        end_at = start_at + timedelta(minutes=apt.duration_minutes or 50)
-        intervals.append(
-            CalendarInterval(
-                appointment_id=str(apt.id),
-                start=start_at,
-                end=end_at,
-                is_remote=is_remote,
-            )
+    if start is not None:
+        qs = qs.filter(
+            scheduled_at__gte=start - timedelta(minutes=CALENDAR_RANGE_BUFFER_MINUTES)
         )
+
+    appointments: list[Appointment] = []
+    intervals: list[CalendarInterval] = []
+    for apt in qs:
+        try:
+            is_remote = apt.case.counseling_method == CounselingMethod.REMOTE
+            start_at = _calendar_localtime(apt.scheduled_at)
+            duration = apt.duration_minutes or 50
+            if duration <= 0:
+                duration = 50
+            end_at = start_at + timedelta(minutes=duration)
+            if not appointment_overlaps_range(
+                start_at, end_at, range_start=start, range_end=end
+            ):
+                continue
+            appointments.append(apt)
+            intervals.append(
+                CalendarInterval(
+                    appointment_id=str(apt.id),
+                    start=start_at,
+                    end=end_at,
+                    is_remote=is_remote,
+                )
+            )
+        except Exception:
+            logger.exception("캘린더 이벤트 변환 실패 appointment_id=%s", apt.pk)
+            continue
 
     host_assignments = assign_zoom_hosts(intervals)
     events: list[dict[str, Any]] = []
 
     for apt, interval in zip(appointments, intervals, strict=True):
-        is_remote = interval.is_remote
-        zoom_meeting = getattr(apt, "zoom_meeting", None)
-        zoom_url = ""
-        if zoom_meeting and zoom_meeting.join_url:
-            zoom_url = zoom_meeting.join_url.strip()
-        elif is_remote and apt.case.zoom_meeting_url:
-            zoom_url = apt.case.zoom_meeting_url.strip()
+        try:
+            is_remote = interval.is_remote
+            zoom_meeting = getattr(apt, "zoom_meeting", None)
+            zoom_url = ""
+            if zoom_meeting and zoom_meeting.join_url:
+                zoom_url = zoom_meeting.join_url.strip()
+            elif is_remote and apt.case.zoom_meeting_url:
+                zoom_url = apt.case.zoom_meeting_url.strip()
 
-        session_no = apt.session_number
-        session_label = f"{session_no}회차" if session_no else "회차 미지정"
-        client_name = apt.client.name or "내담자"
-        counselor_name = apt.counselor.name or "상담사"
+            session_no = apt.session_number
+            session_label = f"{session_no}회차" if session_no else "회차 미지정"
+            client_name = apt.client.name or "내담자"
+            counselor_name = apt.counselor.name or "상담사"
 
-        host_id = host_assignments.get(str(apt.id), "") if is_remote else ""
+            host_id = host_assignments.get(str(apt.id), "") if is_remote else ""
 
-        row = {
-            "id": str(apt.id),
-            "title": f"{client_name} ({session_label})",
-            "start": interval.start.isoformat(),
-            "end": interval.end.isoformat(),
-            "counselor": counselor_name,
-            "client_name": client_name,
-            "session_number": session_no,
-            "zoom_host_id": host_id,
-            "zoom_url": zoom_url,
-            "counseling_method": apt.case.counseling_method,
-            "status": apt.status,
-            "case_number": apt.case.case_number,
-        }
-        events.append(_serialize_event_row(row))
+            row = {
+                "id": str(apt.id),
+                "title": f"{client_name} ({session_label})",
+                "start": interval.start.isoformat(),
+                "end": interval.end.isoformat(),
+                "counselor": counselor_name,
+                "client_name": client_name,
+                "session_number": session_no,
+                "zoom_host_id": host_id,
+                "zoom_url": zoom_url,
+                "counseling_method": apt.case.counseling_method,
+                "status": apt.status,
+                "case_number": apt.case.case_number,
+            }
+            events.append(_serialize_event_row(row))
+        except Exception:
+            logger.exception("캘린더 이벤트 직렬화 실패 appointment_id=%s", apt.pk)
+            continue
 
     return events

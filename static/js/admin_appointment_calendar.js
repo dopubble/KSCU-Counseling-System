@@ -1,6 +1,6 @@
 /**
  * 관리자 예약 관리 캘린더 (FullCalendar v6)
- * data-events-url, data-mock-url on #adminAppointmentCalendar
+ * data-events-url, data-mock-url, data-timezone on #adminAppointmentCalendar
  */
 (function () {
     "use strict";
@@ -13,6 +13,7 @@
     const eventsUrl = calendarEl.dataset.eventsUrl || "";
     const mockUrl = calendarEl.dataset.mockUrl || "";
     const useMock = calendarEl.dataset.useMock === "1";
+    const calendarTimeZone = calendarEl.dataset.timezone || "Asia/Seoul";
     const detailModalEl = document.getElementById("adminAppointmentDetailModal");
     const detailModal = detailModalEl
         ? window.bootstrap.Modal.getOrCreateInstance(detailModalEl)
@@ -72,15 +73,18 @@
 
     const calendar = new FullCalendar.Calendar(calendarEl, {
         locale: "ko",
-        timeZone: "local",
+        timeZone: calendarTimeZone,
         initialView: "dayGridMonth",
         height: "auto",
         expandRows: true,
         nowIndicator: true,
         slotMinTime: "08:00:00",
-        slotMaxTime: "23:00:00",
+        slotMaxTime: "24:00:00",
         slotDuration: "00:30:00",
         allDaySlot: false,
+        dayMaxEvents: false,
+        dayMaxEventRows: false,
+        eventOrder: "start",
         headerToolbar: {
             left: "prev,next today",
             center: "title",
