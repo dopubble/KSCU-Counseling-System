@@ -1,30 +1,58 @@
 {% with ns=request.resolver_match.namespace|default:"" url_name=request.resolver_match.url_name|default:"" %}
 <li class="nav-item">
-    <a class="nav-link {% if ns == 'admin_panel' and url_name == 'matching_list' %}active{% endif %}"
-       href="{% url 'admin_panel:matching_list' %}">상담사 매칭</a>
+    <a class="nav-link {% if ns == 'admin_panel' and url_name == 'dashboard' %}active{% endif %}"
+       href="{% url 'admin_panel:dashboard' %}">대시보드</a>
 </li>
-<li class="nav-item">
-    <a class="nav-link {% if ns == 'admin_panel' and url_name == 'counseling_management' or ns == 'counseling' and url_name == 'application_detail' or ns == 'admin_panel' and url_name == 'application_list' or ns == 'admin_panel' and url_name == 'case_list' %}active{% endif %}"
-       href="{% url 'admin_panel:counseling_management' %}">상담 통합 관리</a>
+
+<li class="nav-item dropdown">
+    <a class="nav-link dropdown-toggle admin-nav-dropdown-toggle {% if ns == 'admin_panel' and url_name == 'counseling_management' or ns == 'admin_panel' and url_name == 'matching_list' or ns == 'admin_panel' and url_name == 'cancel_pending_list' or ns == 'admin_panel' and url_name == 'application_list' or ns == 'admin_panel' and url_name == 'case_list' or ns == 'counseling' and url_name == 'application_detail' %}active{% endif %}"
+       href="#"
+       id="adminCounselingMenu"
+       role="button"
+       data-bs-toggle="dropdown"
+       aria-expanded="false">
+        상담 관리
+    </a>
+    <ul class="dropdown-menu" aria-labelledby="adminCounselingMenu">
+        <li>
+            <a class="dropdown-item {% if ns == 'admin_panel' and url_name == 'counseling_management' or ns == 'counseling' and url_name == 'application_detail' or ns == 'admin_panel' and url_name == 'application_list' or ns == 'admin_panel' and url_name == 'case_list' %}active{% endif %}"
+               href="{% url 'admin_panel:counseling_management' %}">상담 통합 관리</a>
+        </li>
+        <li>
+            <a class="dropdown-item {% if ns == 'admin_panel' and url_name == 'matching_list' %}active{% endif %}"
+               href="{% url 'admin_panel:matching_list' %}">상담사 매칭</a>
+        </li>
+        <li>
+            <a class="dropdown-item {% if ns == 'admin_panel' and url_name == 'cancel_pending_list' %}active{% endif %}"
+               href="{% url 'admin_panel:cancel_pending_list' %}">취소 대기</a>
+        </li>
+    </ul>
 </li>
+
+<li class="nav-item dropdown">
+    <a class="nav-link dropdown-toggle admin-nav-dropdown-toggle {% if ns == 'admin_panel' and url_name == 'counselor_list' %}active{% endif %}"
+       href="#"
+       id="adminCounselorMenu"
+       role="button"
+       data-bs-toggle="dropdown"
+       aria-expanded="false">
+        상담사
+    </a>
+    <ul class="dropdown-menu" aria-labelledby="adminCounselorMenu">
+        <li>
+            <a class="dropdown-item {% if ns == 'admin_panel' and url_name == 'counselor_list' %}active{% endif %}"
+               href="{% url 'admin_panel:counselor_list' %}">상담사 명단</a>
+        </li>
+    </ul>
+</li>
+
 <li class="nav-item">
     <a class="nav-link {% if ns == 'admin_panel' and url_name == 'appointment_calendar' %}active{% endif %}"
        href="{% url 'admin_panel:appointment_calendar' %}">예약 캘린더</a>
 </li>
-<li class="nav-item">
-    <a class="nav-link {% if ns == 'admin_panel' and url_name == 'counselor_list' %}active{% endif %}"
-       href="{% url 'admin_panel:counselor_list' %}">상담사 명단</a>
-</li>
-<li class="nav-item">
-    <a class="nav-link {% if ns == 'admin_panel' and url_name == 'cancel_pending_list' %}active{% endif %}"
-       href="{% url 'admin_panel:cancel_pending_list' %}">취소 대기</a>
-</li>
+
 <li class="nav-item">
     <a class="nav-link {% if ns == 'admin_panel' and url_name == 'statistics' %}active{% endif %}"
        href="{% url 'admin_panel:statistics' %}">통계</a>
-</li>
-<li class="nav-item">
-    <a class="nav-link {% if ns == 'admin_panel' and url_name == 'dashboard' %}active{% endif %}"
-       href="{% url 'admin_panel:dashboard' %}">대시보드</a>
 </li>
 {% endwith %}
