@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from django.conf import settings
+from django.db.models.functions import TruncDate
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
@@ -71,11 +73,21 @@ def _intervals_overlap(a_start: datetime, a_end: datetime, b_start: datetime, b_
     return a_start < b_end and b_start < a_end
 
 
+def _calendar_service_tz() -> ZoneInfo:
+    return ZoneInfo(get_calendar_timezone_name())
+
+
 def _calendar_localtime(value: datetime) -> datetime:
     """캘린더 구간 비교·표시는 서비스 타임존(Asia/Seoul) 기준."""
     if timezone.is_naive(value):
         value = timezone.make_aware(value, timezone.get_current_timezone())
-    return timezone.localtime(value)
+    return timezone.localtime(value, _calendar_service_tz())
+
+
+def _local_date_bound(value: datetime | None) -> date | None:
+    if value is None:
+        return None
+    return _calendar_localtime(value).date()
 
 
 def parse_calendar_bound(raw: str) -> datetime | None:
@@ -239,17 +251,19 @@ def build_calendar_events(
     end: datetime | None = None,
 ) -> list[dict[str, Any]]:
     """확정(CONFIRMED) 예약만 FullCalendar 이벤트 JSON으로 변환."""
+    service_tz = _calendar_service_tz()
     qs = (
         Appointment.objects.filter(status=AppointmentStatus.CONFIRMED)
+        .annotate(local_day=TruncDate("scheduled_at", tzinfo=service_tz))
         .select_related("client", "counselor", "case", "zoom_meeting")
         .order_by("scheduled_at")
     )
-    if end is not None:
-        qs = qs.filter(scheduled_at__lt=end)
-    if start is not None:
-        qs = qs.filter(
-            scheduled_at__gte=start - timedelta(minutes=CALENDAR_RANGE_BUFFER_MINUTES)
-        )
+    range_start_date = _local_date_bound(start)
+    range_end_date = _local_date_bound(end)
+    if range_end_date is not None:
+        qs = qs.filter(local_day__lt=range_end_date)
+    if range_start_date is not None:
+        qs = qs.filter(local_day__gte=range_start_date)
 
     appointments: list[Appointment] = []
     intervals: list[CalendarInterval] = []
@@ -261,10 +275,6 @@ def build_calendar_events(
             if duration <= 0:
                 duration = 50
             end_at = start_at + timedelta(minutes=duration)
-            if not appointment_overlaps_range(
-                start_at, end_at, range_start=start, range_end=end
-            ):
-                continue
             appointments.append(apt)
             intervals.append(
                 CalendarInterval(

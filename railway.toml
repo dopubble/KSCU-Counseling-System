@@ -7,7 +7,7 @@ builder = "nixpacks"
 buildCommand = "python manage.py collectstatic --noinput"
 
 [deploy]
-preDeployCommand = "python manage.py migrate --noinput && python manage.py sync_zoom_join_urls"
+preDeployCommand = "python manage.py migrate --noinput && python manage.py sync_zoom_join_urls && python manage.py repair_session1_confirmations --apply"
 startCommand = "gunicorn kscu_counseling.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --worker-class gthread --threads 4 --timeout 120 --graceful-timeout 30 --keep-alive 5"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 5

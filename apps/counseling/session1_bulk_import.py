@@ -469,6 +469,53 @@ def verify_session1_roster(rows: list[Session1MatchRow]) -> Session1Verification
             )
         )
 
+    client_index = _build_name_index(UserRole.CLIENT)
+    for row in rows:
+        client, client_err = resolve_client_by_name(row.client_name, client_index=client_index)
+        if client_err:
+            continue
+        case = (
+            Case.objects.filter(
+                client=client,
+                status=CaseStatus.ACTIVE,
+                counselor_id__isnull=False,
+            )
+            .select_related("counselor")
+            .first()
+        )
+        if not case:
+            continue
+        appointment = (
+            Appointment.objects.filter(case=case, session_number=1)
+            .order_by("-created_at")
+            .first()
+        )
+        if not appointment:
+            issues.append(
+                Session1VerificationIssue(
+                    "missing_session1",
+                    f"{row.counselor_name} / {row.client_name}",
+                )
+            )
+            continue
+        if appointment.status != AppointmentStatus.CONFIRMED:
+            issues.append(
+                Session1VerificationIssue(
+                    "session1_not_confirmed",
+                    f"{row.client_name}: {appointment.get_status_display()} "
+                    f"({timezone.localtime(appointment.scheduled_at):%Y-%m-%d %H:%M})",
+                )
+            )
+        expected_label = _local_slot_label(row.first_session)
+        current_label = _local_slot_label(appointment.scheduled_at)
+        if current_label != expected_label:
+            issues.append(
+                Session1VerificationIssue(
+                    "session1_time_mismatch",
+                    f"{row.client_name}: DB {current_label} ≠ 기대 {expected_label}",
+                )
+            )
+
     sorted_actual = {name: sorted(names) for name, names in actual_by_counselor.items()}
     return Session1VerificationReport(
         ok=not issues,
@@ -681,6 +728,239 @@ def sync_session1_times_from_roster(
                     row.counselor_name,
                     old_at,
                     timezone.localtime(row.first_session),
+                    "error",
+                    str(exc),
+                )
+            )
+
+    return results
+
+
+@dataclass
+class Session1RepairResult:
+    client_name: str
+    counselor_name: str
+    status: str
+    detail: str = ""
+
+
+def _ensure_session1_pending(appointment: Appointment) -> None:
+    if appointment.status == AppointmentStatus.PENDING:
+        return
+    appointment.status = AppointmentStatus.PENDING
+    appointment.confirmed_at = None
+    appointment.save(update_fields=["status", "confirmed_at", "updated_at"])
+
+
+def repair_session1_confirmations_from_roster(
+    rows: list[Session1MatchRow],
+    *,
+    dry_run: bool = True,
+    skip_availability: bool = True,
+    counselor_name: str | None = None,
+    client_names: frozenset[str] | None = None,
+) -> list[Session1RepairResult]:
+    """로스터 1회기 예약을 CONFIRMED·올바른 일시로 복구 (캘린더 누락 방지)."""
+    from apps.scheduling.services import (
+        AppointmentServiceError,
+        reschedule_confirmed_appointment,
+    )
+
+    client_index = _build_name_index(UserRole.CLIENT)
+    results: list[Session1RepairResult] = []
+
+    for row in rows:
+        if counselor_name and row.counselor_name != counselor_name:
+            continue
+        if client_names and row.client_name not in client_names:
+            continue
+
+        client, client_err = resolve_client_by_name(row.client_name, client_index=client_index)
+        if client_err:
+            results.append(
+                Session1RepairResult(
+                    row.client_name,
+                    row.counselor_name,
+                    "error",
+                    client_err,
+                )
+            )
+            continue
+
+        case = _active_case(client)
+        if not case or not case.counselor_id:
+            results.append(
+                Session1RepairResult(
+                    row.client_name,
+                    row.counselor_name,
+                    "error",
+                    "활성 배정 없음",
+                )
+            )
+            continue
+
+        appointment = (
+            Appointment.objects.filter(case=case, session_number=1)
+            .order_by("-created_at")
+            .first()
+        )
+        expected_label = _local_slot_label(row.first_session)
+        is_remote = case.counseling_method == CounselingMethod.REMOTE
+
+        if not appointment:
+            if dry_run:
+                results.append(
+                    Session1RepairResult(
+                        row.client_name,
+                        row.counselor_name,
+                        "create",
+                        f"1회기 예약 생성 필요 ({expected_label})",
+                    )
+                )
+                continue
+            try:
+                appointment = Appointment.objects.create(
+                    case=case,
+                    counselor=case.counselor,
+                    client=client,
+                    scheduled_at=row.first_session,
+                    duration_minutes=DEFAULT_APPOINTMENT_DURATION_MINUTES,
+                    status=AppointmentStatus.PENDING,
+                    session_number=1,
+                    request_message="1회기 로스터 복구",
+                )
+                if is_remote:
+                    confirm_appointment_with_zoom(appointment, notify=False)
+                else:
+                    appointment.status = AppointmentStatus.CONFIRMED
+                    appointment.confirmed_at = timezone.now()
+                    appointment.save(update_fields=["status", "confirmed_at", "updated_at"])
+                results.append(
+                    Session1RepairResult(
+                        row.client_name,
+                        row.counselor_name,
+                        "created",
+                        f"1회기 생성·확정 ({expected_label})",
+                    )
+                )
+            except (AppointmentServiceError, ZoomAPIError, ZoomNotConfiguredError) as exc:
+                results.append(
+                    Session1RepairResult(
+                        row.client_name,
+                        row.counselor_name,
+                        "error",
+                        str(exc),
+                    )
+                )
+            continue
+
+        current_label = _local_slot_label(appointment.scheduled_at)
+        time_mismatch = current_label != expected_label
+
+        if appointment.status == AppointmentStatus.CONFIRMED:
+            if not time_mismatch:
+                results.append(
+                    Session1RepairResult(
+                        row.client_name,
+                        row.counselor_name,
+                        "ok",
+                        "일치",
+                    )
+                )
+                continue
+            if dry_run:
+                results.append(
+                    Session1RepairResult(
+                        row.client_name,
+                        row.counselor_name,
+                        "reschedule",
+                        f"{current_label} → {expected_label}",
+                    )
+                )
+                continue
+            try:
+                appointment, zoom_warning = reschedule_confirmed_appointment(
+                    appointment,
+                    new_scheduled_at=row.first_session,
+                    skip_availability=skip_availability,
+                )
+                detail = f"{current_label} → {_local_slot_label(appointment.scheduled_at)}"
+                if zoom_warning:
+                    detail += f" (Zoom: {zoom_warning})"
+                results.append(
+                    Session1RepairResult(
+                        row.client_name,
+                        row.counselor_name,
+                        "rescheduled",
+                        detail,
+                    )
+                )
+            except AppointmentServiceError as exc:
+                results.append(
+                    Session1RepairResult(
+                        row.client_name,
+                        row.counselor_name,
+                        "error",
+                        str(exc),
+                    )
+                )
+            continue
+
+        if appointment.status not in (
+            AppointmentStatus.PENDING,
+            AppointmentStatus.SCHEDULED,
+        ):
+            results.append(
+                Session1RepairResult(
+                    row.client_name,
+                    row.counselor_name,
+                    "skipped",
+                    f"상태 {appointment.get_status_display()}",
+                )
+            )
+            continue
+
+        action_label = "confirm"
+        if time_mismatch:
+            action_label = "confirm+reschedule"
+        if dry_run:
+            results.append(
+                Session1RepairResult(
+                    row.client_name,
+                    row.counselor_name,
+                    action_label,
+                    f"{appointment.get_status_display()} · "
+                    f"{current_label if not time_mismatch else f'{current_label} → {expected_label}'}",
+                )
+            )
+            continue
+
+        try:
+            if time_mismatch:
+                appointment.scheduled_at = row.first_session
+                appointment.save(update_fields=["scheduled_at", "updated_at"])
+
+            if is_remote:
+                _ensure_session1_pending(appointment)
+                confirm_appointment_with_zoom(appointment, notify=False)
+            else:
+                appointment.status = AppointmentStatus.CONFIRMED
+                appointment.confirmed_at = timezone.now()
+                appointment.save(update_fields=["status", "confirmed_at", "updated_at"])
+
+            results.append(
+                Session1RepairResult(
+                    row.client_name,
+                    row.counselor_name,
+                    "confirmed",
+                    f"확정 ({_local_slot_label(appointment.scheduled_at)})",
+                )
+            )
+        except (AppointmentServiceError, ZoomAPIError, ZoomNotConfiguredError) as exc:
+            results.append(
+                Session1RepairResult(
+                    row.client_name,
+                    row.counselor_name,
                     "error",
                     str(exc),
                 )
