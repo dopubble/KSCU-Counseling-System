@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load ui_tags %}
+{% load ui_tags admin_table_tags %}
 
 {% block title %}{{ page_title }} — 관리자{% endblock %}
 
@@ -53,12 +53,12 @@
             <table class="table table-hover mb-0 align-middle">
                 <thead class="table-light">
                     <tr>
-                        <th>내담자</th>
-                        <th>상담 분야</th>
-                        <th>신청 상태</th>
-                        <th>담당 상담사</th>
-                        <th>사례번호</th>
-                        <th>신청일</th>
+                        {% admin_sort_th "내담자" "client" %}
+                        {% admin_sort_th "상담 분야" "counseling_type" %}
+                        {% admin_sort_th "신청 상태" "status" %}
+                        {% admin_sort_th "담당 상담사" "counselor" %}
+                        {% admin_sort_th "사례번호" "case_number" %}
+                        {% admin_sort_th "신청일" "created_at" %}
                         <th></th>
                     </tr>
                 </thead>

@@ -164,6 +164,18 @@ CANCEL_PENDING_SORT_SPECS: tuple[SortFieldSpec, ...] = (
     SortFieldSpec("cancel_reason", orm="cancel_reason"),
 )
 
+MATCHING_SORT_SPECS: tuple[SortFieldSpec, ...] = (
+    SortFieldSpec("client", orm="client__name"),
+    SortFieldSpec(
+        "counseling_type",
+        python_key=lambda app: (app.counseling_type or "").lower(),
+    ),
+    SortFieldSpec("status", orm="status"),
+    SortFieldSpec("counselor", orm="case__counselor__name"),
+    SortFieldSpec("case_number", orm="case__case_number"),
+    SortFieldSpec("created_at", orm="created_at"),
+)
+
 TAB_SORT_DEFAULTS: dict[str, tuple[str, SortDirection]] = {
     "waiting": ("created_at", "desc"),
     "active": ("opened_at", "desc"),
@@ -171,6 +183,7 @@ TAB_SORT_DEFAULTS: dict[str, tuple[str, SortDirection]] = {
 }
 
 CANCEL_PENDING_DEFAULT: tuple[str, SortDirection] = ("cancel_requested_at", "desc")
+MATCHING_DEFAULT: tuple[str, SortDirection] = ("created_at", "desc")
 
 
 def allowed_sort_keys(specs: Sequence[SortFieldSpec]) -> tuple[str, ...]:

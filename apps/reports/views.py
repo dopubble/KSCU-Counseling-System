@@ -20,6 +20,8 @@ from apps.reports.table_sort import (
     CANCEL_PENDING_DEFAULT,
     CANCEL_PENDING_SORT_SPECS,
     CLOSED_CASE_SORT_SPECS,
+    MATCHING_DEFAULT,
+    MATCHING_SORT_SPECS,
     TAB_SORT_DEFAULTS,
     WAITING_SORT_SPECS,
     allowed_sort_keys,
@@ -265,6 +267,18 @@ def matching_list(request):
     elif filter_key == "assigned":
         queryset = queryset.filter(case__counselor__isnull=False)
 
+    default_field, default_dir = MATCHING_DEFAULT
+    sort = parse_sort(
+        request,
+        allowed=allowed_sort_keys(MATCHING_SORT_SPECS),
+        default_field=default_field,
+        default_direction=default_dir,
+    )
+    applications = sort_queryset(queryset, sort, MATCHING_SORT_SPECS)
+    applications_count = (
+        len(applications) if isinstance(applications, list) else applications.count()
+    )
+
     counselors = get_available_counselors()
     active_case_counts = get_counselor_active_case_counts()
     counselor_workload = [
@@ -286,12 +300,14 @@ def matching_list(request):
         request,
         "admin_panel/matching_list.html",
         {
-            "applications": queryset,
-            "applications_count": queryset.count(),
+            "applications": applications,
+            "applications_count": applications_count,
             "page_title": "상담사 매칭",
             "filter": filter_key,
             "filter_label": filter_labels.get(filter_key, filter_labels["all"]),
             "counselor_workload": counselor_workload,
+            "sort_field": sort.field,
+            "sort_dir": sort.direction,
         },
     )
 
