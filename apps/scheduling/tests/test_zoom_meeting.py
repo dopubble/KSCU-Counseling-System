@@ -28,6 +28,17 @@ class ZoomMeetingSettingsTests(SimpleTestCase):
         self.assertTrue(_is_zoom_host_url("https://zoom.us/j/123?zak=token"))
         self.assertFalse(_is_zoom_host_url("https://zoom.us/j/123"))
 
+    def test_is_zoom_host_key_configured(self):
+        from apps.scheduling.utils import get_zoom_host_key, is_zoom_host_key_configured
+
+        with self.settings(ZOOM_HOST_KEY="123456"):
+            self.assertTrue(is_zoom_host_key_configured())
+            self.assertEqual(get_zoom_host_key(), "123456")
+        with self.settings(ZOOM_HOST_KEY="12345"):
+            self.assertFalse(is_zoom_host_key_configured())
+        with self.settings(ZOOM_HOST_KEY=""):
+            self.assertFalse(is_zoom_host_key_configured())
+
     def test_resolve_appointment_zoom_url_never_returns_start_url(self):
         class Zoom:
             join_url = ""

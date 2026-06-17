@@ -1128,6 +1128,21 @@ class CaseSessionCard:
         )
 
     @property
+    def show_zoom_host_key_help(self) -> bool:
+        """상담사 — Claim Host 안내 (비대면 확정 회기 + 호스트 키 설정 시)."""
+        from apps.scheduling.utils import is_zoom_host_key_configured
+
+        return self.show_zoom and is_zoom_host_key_configured()
+
+    @property
+    def zoom_host_key(self) -> str:
+        from apps.scheduling.utils import get_zoom_host_key
+
+        if not self.show_zoom_host_key_help:
+            return ""
+        return get_zoom_host_key()
+
+    @property
     def show_counselor_journal(self) -> bool:
         """상담사: 내담자 매칭(담당 배정) 후 일지 작성·열람."""
         return self.counselor_assigned

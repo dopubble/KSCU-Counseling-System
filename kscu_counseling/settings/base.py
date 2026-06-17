@@ -196,6 +196,8 @@ CELERY_TIMEZONE = TIME_ZONE
 ZOOM_ACCOUNT_ID = _env_str("ZOOM_ACCOUNT_ID")
 ZOOM_CLIENT_ID = _env_str("ZOOM_CLIENT_ID")
 ZOOM_CLIENT_SECRET = _env_str("ZOOM_CLIENT_SECRET")
+# API로 생성한 회의의 Claim Host용 6자리 키 (Zoom 프로필과 동일 값, 상담사 화면 전용)
+ZOOM_HOST_KEY = _env_str("ZOOM_HOST_KEY")
 
 # ---------------------------------------------------------------------------
 # Gmail SMTP (상담 신청·취소 요청 알림, 비밀번호 찾기 등)

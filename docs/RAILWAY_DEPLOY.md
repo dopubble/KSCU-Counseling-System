@@ -140,6 +140,7 @@ CSRF_TRUSTED_ORIGINS=https://your-app.up.railway.app,https://counseling.kcu.ac.k
 | `ZOOM_ACCOUNT_ID` | 예약 확정·일정 변경 시 |
 | `ZOOM_CLIENT_ID` | |
 | `ZOOM_CLIENT_SECRET` | |
+| `ZOOM_HOST_KEY` | 상담사 Claim Host 안내용 6자리 (Zoom Profile → Host Key 와 동일) |
 
 ### Gmail SMTP
 
@@ -177,6 +178,7 @@ REDIS_URL=${{Redis.REDIS_URL}}
 ZOOM_ACCOUNT_ID=
 ZOOM_CLIENT_ID=
 ZOOM_CLIENT_SECRET=
+ZOOM_HOST_KEY=
 
 EMAIL_HOST=smtp.gmail.com
 EMAIL_PORT=587

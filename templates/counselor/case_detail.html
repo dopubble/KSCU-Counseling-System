@@ -40,6 +40,12 @@
             <i class="bi bi-calendar-check me-2"></i>
             다음 상담: <strong>{{ upcoming_appointment.scheduled_at|date:"Y-m-d H:i" }}</strong>
             ({{ upcoming_appointment.duration_minutes }}분)
+            {% if case.counseling_method == 'REMOTE' and zoom_host_key_configured %}
+            <p class="small mb-0 mt-2">
+                비대면 상담: Zoom 입장 후 <strong>참가자 → 호스트 권한 획득</strong>에서
+                호스트 키 <span class="font-monospace fw-bold user-select-all">{{ zoom_host_key }}</span>를 입력하세요.
+            </p>
+            {% endif %}
         </div>
         {% endif %}
 

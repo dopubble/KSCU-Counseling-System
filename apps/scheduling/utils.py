@@ -42,6 +42,16 @@ def is_zoom_configured() -> bool:
     return bool(account_id and client_id and client_secret)
 
 
+def get_zoom_host_key() -> str:
+    """기관 Zoom 계정 호스트 키 — Claim Host 안내용 (상담사 화면 전용)."""
+    return (getattr(settings, "ZOOM_HOST_KEY", None) or "").strip()
+
+
+def is_zoom_host_key_configured() -> bool:
+    key = get_zoom_host_key()
+    return len(key) == 6 and key.isdigit()
+
+
 def _ensure_zoom_configured() -> tuple[str, str, str]:
     account_id, client_id, client_secret = _zoom_credentials()
     if not (account_id and client_id and client_secret):

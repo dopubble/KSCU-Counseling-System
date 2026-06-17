@@ -77,7 +77,13 @@ from apps.scheduling.services import (
     ensure_pending_session_appointment,
     reject_appointment_request,
 )
-from apps.scheduling.utils import ZoomAPIError, ZoomNotConfiguredError, is_zoom_configured
+from apps.scheduling.utils import (
+    ZoomAPIError,
+    ZoomNotConfiguredError,
+    get_zoom_host_key,
+    is_zoom_configured,
+    is_zoom_host_key_configured,
+)
 from apps.documents.models import SessionMaterial
 from apps.counseling.cohort_journal_service import (
     get_cohort_peer_journals_by_session,
@@ -1646,6 +1652,8 @@ def counselor_case_detail(request, pk):
             "counselor_cohort": counselor_cohort,
             "is_admin_view": request.user.is_superuser
             or request.user.role == UserRole.ADMIN,
+            "zoom_host_key_configured": is_zoom_host_key_configured(),
+            "zoom_host_key": get_zoom_host_key() if is_zoom_host_key_configured() else "",
         },
     )
 
