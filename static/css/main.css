@@ -207,9 +207,9 @@
     justify-content: center;
     width: 1.35rem;
     height: 1.35rem;
-    border: 1.5px solid #dc3545;
+    border: 1.5px solid #495057;
     border-radius: 0.2rem;
-    color: #dc3545;
+    color: #495057;
     background: #fff;
     text-decoration: none;
     line-height: 1;
@@ -218,12 +218,12 @@
 }
 
 .admin-sort-btn:hover {
-    background: #dc3545;
+    background: #495057;
     color: #fff;
 }
 
 .admin-sort-btn.is-active {
-    background: #dc3545;
+    background: #495057;
     color: #fff;
 }
 
