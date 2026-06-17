@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load ui_tags %}
+{% load ui_tags admin_table_tags %}
 
 {% block title %}상담 통합 관리 — 관리자{% endblock %}
 
@@ -54,13 +54,13 @@
                     <table class="table table-hover mb-0 align-middle">
                         <thead class="table-light">
                             <tr>
-                                <th>이름</th>
-                                <th>학번</th>
-                                <th>상담 분야</th>
-                                <th>희망 일시</th>
-                                <th>상태</th>
-                                <th>담당 상담사</th>
-                                <th>신청일</th>
+                                {% admin_sort_th "이름" "client" %}
+                                {% admin_sort_th "학번" "student_id" %}
+                                {% admin_sort_th "상담 분야" "counseling_type" %}
+                                {% admin_sort_th "희망 일시" "preferred_at" %}
+                                {% admin_sort_th "상태" "status" %}
+                                {% admin_sort_th "담당 상담사" "counselor" %}
+                                {% admin_sort_th "신청일" "created_at" %}
                                 <th></th>
                             </tr>
                         </thead>
@@ -131,14 +131,14 @@
                     <table class="table table-hover mb-0 align-middle">
                         <thead class="table-light">
                             <tr>
-                                <th>사례번호</th>
-                                <th>내담자</th>
-                                <th>상담 분야</th>
-                                <th>담당 상담사</th>
-                                <th>남은 회기</th>
-                                <th>사례 상태</th>
-                                <th>매칭 여부</th>
-                                <th>개시일</th>
+                                {% admin_sort_th "사례번호" "case_number" %}
+                                {% admin_sort_th "내담자" "client" %}
+                                {% admin_sort_th "상담 분야" "counseling_type" %}
+                                {% admin_sort_th "담당 상담사" "counselor" %}
+                                {% admin_sort_th "남은 회기" "remaining_sessions" %}
+                                {% admin_sort_th "사례 상태" "status" %}
+                                {% admin_sort_th "매칭 여부" "app_status" %}
+                                {% admin_sort_th "개시일" "opened_at" %}
                                 <th></th>
                             </tr>
                         </thead>
@@ -189,14 +189,14 @@
                     <table class="table table-hover mb-0 align-middle">
                         <thead class="table-light">
                             <tr>
-                                <th>사례번호</th>
-                                <th>내담자</th>
-                                <th>상담 분야</th>
-                                <th>담당 상담사</th>
-                                <th>사례 상태</th>
-                                <th>신청 상태</th>
-                                <th>당일 취소</th>
-                                <th>종결일</th>
+                                {% admin_sort_th "사례번호" "case_number" %}
+                                {% admin_sort_th "내담자" "client" %}
+                                {% admin_sort_th "상담 분야" "counseling_type" %}
+                                {% admin_sort_th "담당 상담사" "counselor" %}
+                                {% admin_sort_th "사례 상태" "status" %}
+                                {% admin_sort_th "신청 상태" "app_status" %}
+                                {% admin_sort_th "당일 취소" "day_of_cancel_count" %}
+                                {% admin_sort_th "종결일" "closed_at" %}
                                 <th></th>
                             </tr>
                         </thead>

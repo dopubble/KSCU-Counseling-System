@@ -1,0 +1,11 @@
+<th{% if align %} class="text-{{ align }}"{% endif %}>
+    <span class="admin-sort-th-inner">
+        <span>{{ label }}</span>
+        <a href="{{ href }}"
+           class="admin-sort-btn{% if is_active %} is-active{% endif %}"
+           title="{% if is_active %}{% if sort_dir == 'asc' %}오름차순 — 클릭 시 내림차순{% else %}내림차순 — 클릭 시 오름차순{% endif %}{% else %}클릭하여 정렬{% endif %}"
+           aria-label="{{ label }} 정렬">
+            <i class="bi {{ icon_class }}" aria-hidden="true"></i>
+        </a>
+    </span>
+</th>

@@ -194,6 +194,44 @@
     font-weight: 600;
 }
 
+.admin-sort-th-inner {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    white-space: nowrap;
+}
+
+.admin-sort-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.35rem;
+    height: 1.35rem;
+    border: 1.5px solid #dc3545;
+    border-radius: 0.2rem;
+    color: #dc3545;
+    background: #fff;
+    text-decoration: none;
+    line-height: 1;
+    flex-shrink: 0;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.admin-sort-btn:hover {
+    background: #dc3545;
+    color: #fff;
+}
+
+.admin-sort-btn.is-active {
+    background: #dc3545;
+    color: #fff;
+}
+
+.admin-sort-btn .bi {
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
 /* 상단 네비 — 관리자·상담사·내담자 공통 메뉴 간격 */
 .site-navbar .navbar-nav {
     --site-nav-item-gap: 0.5rem;

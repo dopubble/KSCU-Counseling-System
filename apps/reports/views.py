@@ -15,6 +15,17 @@ from apps.counseling.application_queries import (
 from apps.counseling.models import ApplicationStatus, Case, CaseStatus, CounselingApplication
 from apps.counseling.services import get_available_counselors, get_counselor_active_case_counts
 from apps.counseling.services import count_cancel_pending_appointments
+from apps.reports.table_sort import (
+    ACTIVE_CASE_SORT_SPECS,
+    CANCEL_PENDING_DEFAULT,
+    CANCEL_PENDING_SORT_SPECS,
+    CLOSED_CASE_SORT_SPECS,
+    TAB_SORT_DEFAULTS,
+    WAITING_SORT_SPECS,
+    allowed_sort_keys,
+    parse_sort,
+    sort_queryset,
+)
 from apps.reports.appointment_calendar import (
     HOST_COLORS,
     build_calendar_events,
@@ -152,22 +163,49 @@ def counseling_management(request):
     if active_tab not in _COUNSELING_MGMT_TABS:
         active_tab = "waiting"
 
-    waiting_applications = list(
-        _waiting_match_queryset().order_by("-created_at")
+    default_field, default_dir = TAB_SORT_DEFAULTS[active_tab]
+    if active_tab == "waiting":
+        sort_specs = WAITING_SORT_SPECS
+    elif active_tab == "active":
+        sort_specs = ACTIVE_CASE_SORT_SPECS
+    else:
+        sort_specs = CLOSED_CASE_SORT_SPECS
+
+    sort = parse_sort(
+        request,
+        allowed=allowed_sort_keys(sort_specs),
+        default_field=default_field,
+        default_direction=default_dir,
     )
-    active_cases = list(
-        Case.objects.filter(
-            status=CaseStatus.ACTIVE,
-            counselor__isnull=False,
-        )
-        .select_related("client", "counselor", "application")
-        .order_by("-opened_at")
+
+    waiting_qs = _waiting_match_queryset()
+    if active_tab == "waiting":
+        waiting_applications = sort_queryset(waiting_qs, sort, WAITING_SORT_SPECS)
+    else:
+        waiting_applications = waiting_qs.order_by("-created_at")
+    if not isinstance(waiting_applications, list):
+        waiting_applications = list(waiting_applications)
+
+    active_qs = Case.objects.filter(
+        status=CaseStatus.ACTIVE,
+        counselor__isnull=False,
+    ).select_related("client", "counselor", "application")
+    if active_tab == "active":
+        active_cases = sort_queryset(active_qs, sort, ACTIVE_CASE_SORT_SPECS)
+    else:
+        active_cases = active_qs.order_by("-opened_at")
+    if not isinstance(active_cases, list):
+        active_cases = list(active_cases)
+
+    closed_qs = Case.objects.filter(status=CaseStatus.CLOSED).select_related(
+        "client", "counselor", "application"
     )
-    closed_cases = list(
-        Case.objects.filter(status=CaseStatus.CLOSED)
-        .select_related("client", "counselor", "application")
-        .order_by("-closed_at", "-opened_at")
-    )
+    if active_tab == "closed":
+        closed_cases = sort_queryset(closed_qs, sort, CLOSED_CASE_SORT_SPECS)
+    else:
+        closed_cases = closed_qs.order_by("-closed_at", "-opened_at")
+    if not isinstance(closed_cases, list):
+        closed_cases = list(closed_cases)
 
     return render(
         request,
@@ -180,6 +218,8 @@ def counseling_management(request):
             "waiting_count": len(waiting_applications),
             "active_count": len(active_cases),
             "closed_count": len(closed_cases),
+            "sort_field": sort.field,
+            "sort_dir": sort.direction,
         },
     )
 
@@ -259,17 +299,30 @@ def matching_list(request):
 @role_required(UserRole.ADMIN)
 def cancel_pending_list(request):
     """취소 대기(CANCEL_PENDING) 예약 목록."""
-    appointments = (
-        Appointment.objects.filter(status=AppointmentStatus.CANCEL_PENDING)
-        .select_related("client", "counselor", "case", "case__application")
-        .order_by("-cancel_requested_at", "-updated_at")
+    default_field, default_dir = CANCEL_PENDING_DEFAULT
+    sort = parse_sort(
+        request,
+        allowed=allowed_sort_keys(CANCEL_PENDING_SORT_SPECS),
+        default_field=default_field,
+        default_direction=default_dir,
     )
+    appointments_qs = Appointment.objects.filter(
+        status=AppointmentStatus.CANCEL_PENDING
+    ).select_related("client", "counselor", "case", "case__application")
+    appointments = sort_queryset(appointments_qs, sort, CANCEL_PENDING_SORT_SPECS)
+    if isinstance(appointments, list):
+        appointments_count = len(appointments)
+    else:
+        appointments_count = appointments.count()
+        appointments = list(appointments)
     return render(
         request,
         "admin_panel/cancel_pending_list.html",
         {
             "appointments": appointments,
-            "appointments_count": appointments.count(),
+            "appointments_count": appointments_count,
+            "sort_field": sort.field,
+            "sort_dir": sort.direction,
         },
     )
 

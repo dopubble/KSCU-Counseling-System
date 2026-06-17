@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load ui_tags %}
+{% load ui_tags admin_table_tags %}
 
 {% block title %}취소 요청 대기{% endblock %}
 
@@ -19,12 +19,12 @@
             <table class="table table-hover align-middle mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th>사례번호</th>
-                        <th>내담자</th>
-                        <th>담당 상담사</th>
-                        <th>상담 일시</th>
-                        <th>취소 요청일</th>
-                        <th>취소 사유</th>
+                        {% admin_sort_th "사례번호" "case_number" %}
+                        {% admin_sort_th "내담자" "client" %}
+                        {% admin_sort_th "담당 상담사" "counselor" %}
+                        {% admin_sort_th "상담 일시" "scheduled_at" %}
+                        {% admin_sort_th "취소 요청일" "cancel_requested_at" %}
+                        {% admin_sort_th "취소 사유" "cancel_reason" %}
                     </tr>
                 </thead>
                 <tbody>
