@@ -127,7 +127,11 @@ def signup(request):
     return render(
         request,
         "accounts/signup.html",
-        {"form": form, "next_url": next_url},
+        {
+            "form": form,
+            "next_url": next_url,
+            "platform_name": "숭실사이버대학교 평생교육원 전문상담 플랫폼",
+        },
     )
 
 

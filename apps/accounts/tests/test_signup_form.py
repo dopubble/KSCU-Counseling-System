@@ -22,7 +22,8 @@ class SignUpFormEmailTests(TestCase):
             "role": UserRole.CLIENT,
             "password1": "Testpass123!",
             "password2": "Testpass123!",
-            "agree_terms": True,
+            "agree_service_terms": True,
+            "agree_privacy": True,
             "birth_date": "1990-01-01",
             "is_kcu_student": "no",
         }
@@ -54,3 +55,12 @@ class SignUpFormEmailTests(TestCase):
         form = SignUpForm(data=data)
         self.assertFalse(form.is_valid())
         self.assertEqual(form.errors["phone"], ["휴대폰 번호를 입력해 주세요."])
+
+    def test_consent_fields_required(self):
+        data = self._signup_data("new@example.com")
+        data["agree_service_terms"] = False
+        data["agree_privacy"] = False
+        form = SignUpForm(data=data)
+        self.assertFalse(form.is_valid())
+        self.assertIn("agree_service_terms", form.errors)
+        self.assertIn("agree_privacy", form.errors)

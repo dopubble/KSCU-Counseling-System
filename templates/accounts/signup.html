@@ -3,9 +3,13 @@
 
 {% block title %}회원가입 - 숭실사이버대학교 평생교육원{% endblock %}
 
+{% block extra_css %}
+<link href="{% static 'css/signup.css' %}" rel="stylesheet">
+{% endblock %}
+
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-md-6">
+    <div class="col-md-7 col-lg-6">
         <div class="card shadow-sm">
             <div class="card-body p-4">
                 <h2 class="card-title text-center mb-4">회원가입</h2>
@@ -30,9 +34,12 @@
 
                     {{ form.password1|as_crispy_field }}
                     {{ form.password2|as_crispy_field }}
-                    {{ form.agree_terms|as_crispy_field }}
 
-                    <button type="submit" class="btn btn-primary w-100 mt-2">가입하기</button>
+                    <div class="mt-4">
+                        {% include "accounts/partials/signup_consent.html" %}
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100 mt-3" id="signup-submit-btn" disabled>가입하기</button>
                 </form>
                 <p class="text-center mt-3 mb-0">
                     이미 계정이 있으신가요?
@@ -42,6 +49,8 @@
         </div>
     </div>
 </div>
+
+{% include "accounts/partials/service_terms_modal.html" %}
 {% endblock %}
 
 {% block extra_js %}

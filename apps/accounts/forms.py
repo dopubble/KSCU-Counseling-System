@@ -63,9 +63,15 @@ class SignUpForm(UserCreationForm):
             },
         ),
     )
-    agree_terms = forms.BooleanField(
-        label="이용약관 및 개인정보 처리방침에 동의합니다.",
+    agree_service_terms = forms.BooleanField(
+        label="서비스 이용약관 동의",
         required=True,
+        error_messages={"required": "서비스 이용약관에 동의해 주세요."},
+    )
+    agree_privacy = forms.BooleanField(
+        label="개인정보 수집 및 이용 동의",
+        required=True,
+        error_messages={"required": "개인정보 수집 및 이용에 동의해 주세요."},
     )
 
     class Meta:
@@ -77,6 +83,11 @@ class SignUpForm(UserCreationForm):
         for name in ("email", "name", "phone", "password1", "password2"):
             if name in self.fields:
                 self.fields[name].widget.attrs.setdefault("class", "form-control")
+        for name in ("agree_service_terms", "agree_privacy"):
+            if name in self.fields:
+                self.fields[name].widget.attrs.setdefault(
+                    "class", "form-check-input signup-consent-item"
+                )
 
     def clean_email(self):
         email = User.objects.normalize_email(self.cleaned_data["email"].strip())

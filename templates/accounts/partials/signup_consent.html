@@ -1,0 +1,70 @@
+<section class="signup-consent border rounded-3 p-3 p-md-4" id="signup-consent" aria-labelledby="signup-consent-heading">
+    <h3 class="h6 fw-semibold text-kscu mb-3" id="signup-consent-heading">
+        <i class="bi bi-shield-check me-1"></i>약관 및 개인정보 동의
+    </h3>
+
+    <div class="signup-consent-all form-check mb-3 pb-3 border-bottom">
+        <input class="form-check-input" type="checkbox" id="signup-agree-all" aria-controls="id_agree_service_terms id_agree_privacy">
+        <label class="form-check-label fw-semibold" for="signup-agree-all">전체 동의하기</label>
+        <div class="form-text small mb-0">아래 필수 항목에 모두 동의합니다.</div>
+    </div>
+
+    <div class="signup-consent-row d-flex align-items-start justify-content-between gap-2 mb-2">
+        <div class="form-check flex-grow-1 mb-0">
+            <input class="form-check-input signup-consent-item"
+                   type="checkbox"
+                   name="agree_service_terms"
+                   id="id_agree_service_terms"
+                   value="on"
+                   {% if form.agree_service_terms.value %}checked{% endif %}
+                   required
+                   aria-describedby="agree-service-terms-error">
+            <label class="form-check-label" for="id_agree_service_terms">
+                <span class="badge text-bg-secondary me-1">필수</span>서비스 이용약관 동의
+            </label>
+            {% if form.agree_service_terms.errors %}
+            <div class="invalid-feedback d-block" id="agree-service-terms-error">{{ form.agree_service_terms.errors.0 }}</div>
+            {% endif %}
+        </div>
+        <button type="button"
+                class="btn btn-link btn-sm signup-consent-detail-link p-0 text-nowrap flex-shrink-0"
+                data-bs-toggle="modal"
+                data-bs-target="#serviceTermsModal">
+            자세히 보기
+        </button>
+    </div>
+
+    <div class="form-check mb-3">
+        <input class="form-check-input signup-consent-item"
+               type="checkbox"
+               name="agree_privacy"
+               id="id_agree_privacy"
+               value="on"
+               {% if form.agree_privacy.value %}checked{% endif %}
+               required
+               aria-describedby="agree-privacy-error">
+        <label class="form-check-label" for="id_agree_privacy">
+            <span class="badge text-bg-secondary me-1">필수</span>개인정보 수집 및 이용 동의
+        </label>
+        {% if form.agree_privacy.errors %}
+        <div class="invalid-feedback d-block" id="agree-privacy-error">{{ form.agree_privacy.errors.0 }}</div>
+        {% endif %}
+    </div>
+
+    <div class="signup-privacy-summary" tabindex="0" role="region" aria-label="개인정보 수집 및 이용 안내">
+        <p class="mb-2 fw-semibold text-secondary">개인정보 수집 및 이용 안내</p>
+        <p class="mb-2">{{ platform_name }}은 서비스 제공 및 계약의 이행을 위해 아래와 같이 최소한의 개인정보를 수집 및 이용합니다.</p>
+        <p class="mb-1 fw-semibold">1. 수집하는 개인정보 항목</p>
+        <ul class="mb-2 ps-3">
+            <li>회원가입 시: 이메일(로그인 ID), 비밀번호, 이름, 휴대전화 번호</li>
+            <li>서비스 이용 시: 생년월일·학번·소속 학과(내담자), 상담 신청·예약 내역, 상담사 배정 정보, Zoom 접속 정보, 상담 관련 기록, 서비스 이용 기록, IP 주소</li>
+        </ul>
+        <p class="mb-1 fw-semibold">2. 수집 및 이용 목적</p>
+        <ul class="mb-2 ps-3">
+            <li>회원 식별 및 관리, 상담 예약·스케줄 관리 및 화상 상담(Zoom) 연결, 상담 진행 및 기록 관리, 고객 문의·고충 처리</li>
+        </ul>
+        <p class="mb-1 fw-semibold">3. 보유 및 이용 기간</p>
+        <p class="mb-2">회원 탈퇴 시까지 (단, 전자상거래법 등 관계 법령에 따라 보존할 필요가 있는 경우 해당 기간 동안 보관)</p>
+        <p class="mb-0 text-muted">※ 귀하는 동의를 거부할 권리가 있으나, 필수 동의 거부 시 회원가입 및 상담 서비스 이용이 제한됩니다.</p>
+    </div>
+</section>

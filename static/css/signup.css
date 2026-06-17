@@ -1,0 +1,68 @@
+.signup-consent {
+    background-color: #f8f9fb;
+    border-color: #dee2e6 !important;
+}
+
+.signup-consent-all {
+    background: rgba(0, 51, 102, 0.05);
+    border-radius: 0.375rem;
+    padding: 0.75rem 1rem;
+    margin-left: -0.25rem;
+    margin-right: -0.25rem;
+}
+
+.signup-consent-all .form-check-input:checked {
+    background-color: var(--kscu-primary);
+    border-color: var(--kscu-primary);
+}
+
+.signup-consent-row .form-check-label,
+.signup-consent .form-check-label {
+    line-height: 1.5;
+}
+
+.signup-consent-detail-link {
+    color: var(--kscu-primary);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.signup-consent-detail-link:hover,
+.signup-consent-detail-link:focus {
+    color: var(--kscu-primary-light);
+    text-decoration: underline;
+}
+
+.signup-privacy-summary {
+    max-height: 11rem;
+    overflow-y: auto;
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    padding: 0.875rem 1rem;
+    color: #495057;
+}
+
+.signup-privacy-summary ul {
+    margin-bottom: 0.5rem;
+}
+
+.signup-privacy-summary p:last-child {
+    font-size: 0.78rem;
+}
+
+.signup-terms-body p {
+    margin-bottom: 0.75rem;
+}
+
+.signup-terms-body ul {
+    padding-left: 1.25rem;
+    margin-bottom: 1rem;
+}
+
+#signup-submit-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.65;
+}
