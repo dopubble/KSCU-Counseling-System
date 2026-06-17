@@ -41,10 +41,9 @@
             다음 상담: <strong>{{ upcoming_appointment.scheduled_at|date:"Y-m-d H:i" }}</strong>
             ({{ upcoming_appointment.duration_minutes }}분)
             {% if case.counseling_method == 'REMOTE' and zoom_host_key_configured %}
-            <p class="small mb-0 mt-2">
-                비대면 상담: Zoom 입장 후 <strong>참가자 → 호스트 권한 획득</strong>에서
-                호스트 키 <span class="font-monospace fw-bold user-select-all">{{ zoom_host_key }}</span>를 입력하세요.
-            </p>
+            <div class="small mt-2 mb-0">
+                {% include "counselor/partials/zoom_host_key_help.html" with zoom_host_key=zoom_host_key %}
+            </div>
             {% endif %}
         </div>
         {% endif %}
@@ -217,6 +216,9 @@
         {% include "counselor/partials/appointment_reject_modal.html" %}
         {% include "counselor/partials/cancel_reject_modal.html" %}
         {% include "counselor/partials/schedule_change_reject_modal.html" %}
+        {% if zoom_host_key_configured %}
+        {% include "counselor/partials/zoom_claim_host_guide_modal.html" %}
+        {% endif %}
         {% if case.counselor and request.user.id == case.counselor_id %}
         {% url 'counselor:case_chat_messages' case.pk as chat_messages_url %}
         {% url 'counselor:case_chat_send' case.pk as chat_send_url %}

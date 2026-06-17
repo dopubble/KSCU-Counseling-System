@@ -1,0 +1,18 @@
+{# 상담사 전용 — zoom_host_key 변수 필요 #}
+<div class="counselor-zoom-host-key-help w-100">
+    <p class="small mb-1 counselor-zoom-host-key-line">
+        <button type="button"
+                class="btn btn-link btn-sm p-0 align-baseline counselor-zoom-host-key-help-btn"
+                data-bs-toggle="modal"
+                data-bs-target="#zoomClaimHostGuideModal"
+                title="호스트 권한 획득 방법 안내"
+                aria-label="호스트 권한 획득 방법 안내 보기">
+            <i class="bi bi-question-circle text-counselor" aria-hidden="true"></i>
+        </button>
+        호스트 키:
+        <span class="font-monospace fw-bold user-select-all">{{ zoom_host_key }}</span>
+    </p>
+    <p class="small text-muted mb-0 counselor-zoom-host-key-note">
+        ※ 회의실 입장 → 참가자 클릭 → 호스트 권한 획득(Claim Host) → 호스트키 입력
+    </p>
+</div>

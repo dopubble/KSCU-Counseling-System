@@ -146,19 +146,7 @@
         </a>
         {% endif %}
         {% if session.show_zoom_host_key_help %}
-        <div class="counselor-zoom-host-key-help w-100">
-            <p class="small fw-semibold mb-1">
-                <i class="bi bi-key me-1" aria-hidden="true"></i>호스트 권한 안내
-            </p>
-            <p class="small text-muted mb-2 mb-md-0">
-                입장 후 <strong>참가자</strong> → <strong>호스트 권한 획득(Claim Host)</strong>에서
-                아래 키를 입력하세요. 회사 Zoom 계정으로 별도 입장·호스트 넘기기가 필요 없습니다.
-            </p>
-            <p class="small mb-0">
-                호스트 키:
-                <span class="font-monospace fw-bold user-select-all">{{ session.zoom_host_key }}</span>
-            </p>
-        </div>
+        {% include "counselor/partials/zoom_host_key_help.html" with zoom_host_key=session.zoom_host_key %}
         {% endif %}
         {% if session.show_initial_record %}
             {% if session.initial_record and not session.initial_record.is_draft %}

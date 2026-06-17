@@ -1,0 +1,28 @@
+{% load static %}
+<div class="modal fade"
+     id="zoomClaimHostGuideModal"
+     tabindex="-1"
+     aria-labelledby="zoomClaimHostGuideModalLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header border-0 pb-0">
+                <h2 class="modal-title h5 fw-semibold" id="zoomClaimHostGuideModalLabel">
+                    호스트 권한 획득(Claim Host) 안내
+                </h2>
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="닫기"></button>
+            </div>
+            <div class="modal-body pt-2 pb-4">
+                <p class="small text-muted mb-3">
+                    회의실 입장 → 참가자 클릭 → 호스트 권한 획득(Claim Host) → 호스트키 입력
+                </p>
+                <img src="{% static 'images/zoom-claim-host-guide-ko.png' %}"
+                     alt="Zoom 호스트 권한 획득 절차: 참가자 메뉴에서 호스트 권한 획득을 선택하고 호스트 키를 입력하는 방법"
+                     class="img-fluid rounded border w-100 counselor-zoom-claim-host-guide-img">
+            </div>
+        </div>
+    </div>
+</div>

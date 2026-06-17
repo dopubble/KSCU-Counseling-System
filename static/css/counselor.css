@@ -249,6 +249,30 @@
     line-height: 1.5;
 }
 
+.counselor-zoom-host-key-help-btn {
+    line-height: 1;
+    vertical-align: -0.125em;
+    text-decoration: none;
+}
+
+.counselor-zoom-host-key-help-btn:hover,
+.counselor-zoom-host-key-help-btn:focus {
+    text-decoration: none;
+    opacity: 0.85;
+}
+
+.counselor-zoom-host-key-help-btn .bi-question-circle {
+    font-size: 1.05rem;
+}
+
+.counselor-zoom-host-key-note {
+    line-height: 1.45;
+}
+
+.counselor-zoom-claim-host-guide-img {
+    background: #f8f9fa;
+}
+
 .appointment-manage-form .appointment-manage-scheduled-field {
     margin-bottom: 0.75rem;
 }
