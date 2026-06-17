@@ -18,7 +18,7 @@ class SignUpFormEmailTests(TestCase):
         return {
             "email": email,
             "name": "신규",
-            "phone": "",
+            "phone": "010-1234-5678",
             "role": UserRole.CLIENT,
             "password1": "Testpass123!",
             "password2": "Testpass123!",
@@ -40,3 +40,17 @@ class SignUpFormEmailTests(TestCase):
     def test_new_email_allowed(self):
         form = SignUpForm(data=self._signup_data("new@example.com"))
         self.assertTrue(form.is_valid(), form.errors)
+
+    def test_phone_required(self):
+        data = self._signup_data("new@example.com")
+        data["phone"] = ""
+        form = SignUpForm(data=data)
+        self.assertFalse(form.is_valid())
+        self.assertIn("phone", form.errors)
+
+    def test_phone_whitespace_only_rejected(self):
+        data = self._signup_data("new@example.com")
+        data["phone"] = "   "
+        form = SignUpForm(data=data)
+        self.assertFalse(form.is_valid())
+        self.assertEqual(form.errors["phone"], ["휴대폰 번호를 입력해 주세요."])

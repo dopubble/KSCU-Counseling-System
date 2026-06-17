@@ -19,7 +19,14 @@ class SignUpForm(UserCreationForm):
         widget=forms.RadioSelect,
     )
     name = forms.CharField(label="이름", max_length=100)
-    phone = forms.CharField(label="휴대폰", max_length=20, required=False)
+    phone = forms.CharField(
+        label="휴대폰",
+        max_length=20,
+        error_messages={"required": "휴대폰 번호를 입력해 주세요."},
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "placeholder": "010-0000-0000", "autocomplete": "tel"},
+        ),
+    )
     birth_date = forms.DateField(
         label="생년월일",
         required=False,
@@ -107,7 +114,7 @@ class SignUpForm(UserCreationForm):
     def save(self, commit=True):
         user = super().save(commit=False)
         user.name = self.cleaned_data["name"]
-        user.phone = self.cleaned_data.get("phone", "")
+        user.phone = self.cleaned_data["phone"]
         user.role = self.cleaned_data["role"]
         user.status = (
             UserStatus.ACTIVE if user.role == UserRole.CLIENT else UserStatus.PENDING
