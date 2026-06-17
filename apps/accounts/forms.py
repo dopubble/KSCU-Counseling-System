@@ -71,6 +71,12 @@ class SignUpForm(UserCreationForm):
             if name in self.fields:
                 self.fields[name].widget.attrs.setdefault("class", "form-control")
 
+    def clean_email(self):
+        email = User.objects.normalize_email(self.cleaned_data["email"].strip())
+        if User.objects.filter(email__iexact=email).exists():
+            raise forms.ValidationError("이미 가입된 이메일입니다.")
+        return email
+
     def clean(self):
         cleaned = super().clean()
         role = cleaned.get("role")
