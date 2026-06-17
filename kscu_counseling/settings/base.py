@@ -198,6 +198,8 @@ ZOOM_CLIENT_ID = _env_str("ZOOM_CLIENT_ID")
 ZOOM_CLIENT_SECRET = _env_str("ZOOM_CLIENT_SECRET")
 # API로 생성한 회의의 Claim Host용 6자리 키 (Zoom 프로필과 동일 값, 상담사 화면 전용)
 ZOOM_HOST_KEY = _env_str("ZOOM_HOST_KEY")
+# 관리자 캘린더 — Zoom 호스트 풀 표시·색상 분배 (쉼표 구분, 예: host_01,host_02)
+ZOOM_HOST_POOL = _env_str("ZOOM_HOST_POOL")
 
 # ---------------------------------------------------------------------------
 # Gmail SMTP (상담 신청·취소 요청 알림, 비밀번호 찾기 등)

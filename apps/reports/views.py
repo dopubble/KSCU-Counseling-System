@@ -4,6 +4,7 @@ from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from apps.accounts.decorators import role_required
 from apps.accounts.models import CounselorProfile, User, UserRole
@@ -14,6 +15,13 @@ from apps.counseling.application_queries import (
 from apps.counseling.models import ApplicationStatus, Case, CaseStatus, CounselingApplication
 from apps.counseling.services import get_available_counselors, get_counselor_active_case_counts
 from apps.counseling.services import count_cancel_pending_appointments
+from apps.reports.appointment_calendar import (
+    HOST_COLORS,
+    build_calendar_events,
+    get_mock_calendar_events,
+    get_zoom_host_pool,
+    zoom_host_label,
+)
 from apps.scheduling.models import Appointment, AppointmentStatus
 
 
@@ -313,6 +321,45 @@ def counselor_list(request):
         },
     )
 
+
+def _calendar_legend_hosts() -> list[dict[str, str]]:
+    return [
+        {
+            "id": host_id,
+            "label": zoom_host_label(host_id),
+            "color": HOST_COLORS.get(host_id, {}).get("bg", "#4f46e5"),
+        }
+        for host_id in get_zoom_host_pool()
+    ]
+
+
+def _parse_calendar_range(request):
+    start = parse_datetime((request.GET.get("start") or "").strip())
+    end = parse_datetime((request.GET.get("end") or "").strip())
+    return start, end
+
+
+@role_required(UserRole.ADMIN)
+def appointment_calendar(request):
+    use_mock = request.GET.get("mock") == "1"
+    return render(
+        request,
+        "admin_panel/appointment_calendar.html",
+        {
+            "use_mock": use_mock,
+            "zoom_host_pool": _calendar_legend_hosts(),
+        },
+    )
+
+
+@role_required(UserRole.ADMIN)
+def appointment_calendar_events(request):
+    if request.GET.get("mock") == "1":
+        return JsonResponse({"events": get_mock_calendar_events()})
+
+    start, end = _parse_calendar_range(request)
+    events = build_calendar_events(start=start, end=end)
+    return JsonResponse({"events": events})
 
 
 @role_required(UserRole.ADMIN)

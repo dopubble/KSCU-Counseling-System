@@ -59,7 +59,12 @@
     </div>
     <div class="col-lg-6">
         <div class="card shadow-sm h-100">
-            <div class="card-header">오늘 예약</div>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>오늘 예약</span>
+                <a href="{% url 'admin_panel:appointment_calendar' %}" class="btn btn-sm btn-outline-primary">
+                    캘린더
+                </a>
+            </div>
             <div class="card-body">
                 {% if today_appointments %}
                 <ul class="list-group list-group-flush">

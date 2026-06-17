@@ -1,0 +1,141 @@
+/**
+ * 관리자 예약 관리 캘린더 (FullCalendar v6)
+ * data-events-url, data-mock-url on #adminAppointmentCalendar
+ */
+(function () {
+    "use strict";
+
+    const calendarEl = document.getElementById("adminAppointmentCalendar");
+    if (!calendarEl || typeof FullCalendar === "undefined") {
+        return;
+    }
+
+    const eventsUrl = calendarEl.dataset.eventsUrl || "";
+    const mockUrl = calendarEl.dataset.mockUrl || "";
+    const useMock = calendarEl.dataset.useMock === "1";
+    const detailModalEl = document.getElementById("adminAppointmentDetailModal");
+    const detailModal = detailModalEl
+        ? window.bootstrap.Modal.getOrCreateInstance(detailModalEl)
+        : null;
+
+    function setDetail(id, label, value, hidden) {
+        const row = document.getElementById(id);
+        if (!row) return;
+        const valueEl = row.querySelector("[data-detail-value]");
+        if (valueEl) {
+            valueEl.textContent = value || "—";
+        }
+        row.classList.toggle("d-none", Boolean(hidden));
+    }
+
+    function openDetailModal(event) {
+        if (!detailModal) return;
+        const props = event.extendedProps || {};
+        const sessionLabel = props.session_number
+            ? `${props.session_number}회차`
+            : "—";
+
+        setDetail("detailClient", "내담자", props.client_name || event.title);
+        setDetail("detailCounselor", "담당 상담사", props.counselor_name);
+        setDetail("detailSession", "상담 회차", sessionLabel);
+        setDetail("detailMethod", "상담 방식", props.counseling_method_label);
+        setDetail("detailStatus", "예약 상태", props.status_label);
+        setDetail("detailCase", "사례 번호", props.case_number);
+
+        const hasHost = Boolean(props.zoom_host_id);
+        setDetail(
+            "detailZoomHost",
+            "줌 호스트",
+            props.zoom_host_label || props.zoom_host_id,
+            !hasHost,
+        );
+
+        const zoomBtn = document.getElementById("detailZoomJoinBtn");
+        const noZoomMsg = document.getElementById("detailNoZoomMsg");
+        const zoomUrl = (props.zoom_url || "").trim();
+        if (zoomBtn) {
+            if (zoomUrl) {
+                zoomBtn.href = zoomUrl;
+                zoomBtn.classList.remove("d-none");
+            } else {
+                zoomBtn.classList.add("d-none");
+            }
+        }
+        if (noZoomMsg) {
+            const showNoZoom =
+                props.counseling_method === "REMOTE" && !zoomUrl;
+            noZoomMsg.classList.toggle("d-none", !showNoZoom);
+        }
+
+        detailModal.show();
+    }
+
+    const calendar = new FullCalendar.Calendar(calendarEl, {
+        locale: "ko",
+        timeZone: "local",
+        initialView: "dayGridMonth",
+        height: "auto",
+        expandRows: true,
+        nowIndicator: true,
+        slotMinTime: "08:00:00",
+        slotMaxTime: "23:00:00",
+        slotDuration: "00:30:00",
+        allDaySlot: false,
+        headerToolbar: {
+            left: "prev,next today",
+            center: "title",
+            right: "dayGridMonth,timeGridWeek,timeGridDay",
+        },
+        buttonText: {
+            today: "오늘",
+            month: "월",
+            week: "주",
+            day: "일",
+        },
+        events: function (info, successCallback, failureCallback) {
+            const url = useMock && mockUrl ? mockUrl : eventsUrl;
+            if (!url) {
+                successCallback([]);
+                return;
+            }
+            const params = new URLSearchParams({
+                start: info.startStr,
+                end: info.endStr,
+            });
+            fetch(`${url}?${params.toString()}`, {
+                headers: { Accept: "application/json" },
+                credentials: "same-origin",
+            })
+                .then(function (response) {
+                    if (!response.ok) {
+                        throw new Error("일정을 불러오지 못했습니다.");
+                    }
+                    return response.json();
+                })
+                .then(function (data) {
+                    successCallback(data.events || []);
+                })
+                .catch(function (err) {
+                    console.error(err);
+                    failureCallback(err);
+                });
+        },
+        eventClick: function (info) {
+            info.jsEvent.preventDefault();
+            openDetailModal(info.event);
+        },
+        eventDidMount: function (info) {
+            const props = info.event.extendedProps || {};
+            const parts = [info.event.title];
+            if (props.counselor_name) {
+                parts.push(`상담사: ${props.counselor_name}`);
+            }
+            if (props.zoom_host_label) {
+                parts.push(props.zoom_host_label);
+            }
+            info.el.title = parts.join(" · ");
+        },
+    });
+
+    calendar.render();
+})();

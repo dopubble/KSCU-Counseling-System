@@ -1,0 +1,88 @@
+.admin-calendar-page .fc {
+    --fc-border-color: #e2e8f0;
+    --fc-today-bg-color: rgba(79, 70, 229, 0.06);
+    --fc-event-border-color: transparent;
+    font-size: 0.9rem;
+}
+
+.admin-calendar-shell {
+    background: #fff;
+    border-radius: 0.75rem;
+    box-shadow: 0 0.125rem 0.25rem rgba(15, 23, 42, 0.06);
+    padding: 1rem 1rem 1.25rem;
+}
+
+.admin-calendar-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+}
+
+.admin-calendar-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1rem;
+    margin-bottom: 1rem;
+}
+
+.admin-calendar-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8125rem;
+    color: #475569;
+}
+
+.admin-calendar-legend-swatch {
+    width: 0.85rem;
+    height: 0.85rem;
+    border-radius: 0.2rem;
+    border: 1px solid rgba(15, 23, 42, 0.12);
+}
+
+.admin-calendar-page .fc .fc-toolbar-title {
+    font-size: 1.15rem;
+    font-weight: 600;
+}
+
+.admin-calendar-page .fc .fc-button-primary {
+    background-color: #4f46e5;
+    border-color: #4f46e5;
+}
+
+.admin-calendar-page .fc .fc-button-primary:not(:disabled).fc-button-active,
+.admin-calendar-page .fc .fc-button-primary:not(:disabled):active,
+.admin-calendar-page .fc .fc-button-primary:hover {
+    background-color: #4338ca;
+    border-color: #4338ca;
+}
+
+.admin-calendar-page .fc-timegrid-event {
+    border-radius: 0.35rem;
+    padding: 0.15rem 0.35rem;
+}
+
+.admin-calendar-page .fc-event-title {
+    font-weight: 600;
+}
+
+#adminAppointmentDetailModal .detail-label {
+    width: 7.5rem;
+    color: #64748b;
+    flex-shrink: 0;
+}
+
+#adminAppointmentDetailModal .detail-row {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 0.65rem;
+}
+
+@media (max-width: 767.98px) {
+    .admin-calendar-shell {
+        padding: 0.75rem;
+    }
+}

@@ -8,10 +8,12 @@
        href="{% url 'admin_panel:counseling_management' %}">상담 통합 관리</a>
 </li>
 <li class="nav-item">
-    <a class="nav-link {% if ns == 'admin_panel' and url_name == 'counselor_list' %}active{% endif %}"
-       href="{% url 'admin_panel:counselor_list' %}">상담사 명단</a>
+    <a class="nav-link {% if ns == 'admin_panel' and url_name == 'appointment_calendar' %}active{% endif %}"
+       href="{% url 'admin_panel:appointment_calendar' %}">예약 캘린더</a>
 </li>
 <li class="nav-item">
+    <a class="nav-link {% if ns == 'admin_panel' and url_name == 'counselor_list' %}active{% endif %}"
+       href="{% url 'admin_panel:counselor_list' %}">상담사 명단</a>
 </li>
 <li class="nav-item">
     <a class="nav-link {% if ns == 'admin_panel' and url_name == 'cancel_pending_list' %}active{% endif %}"

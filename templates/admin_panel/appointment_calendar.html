@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% load static ui_tags %}
+
+{% block title %}예약 관리 캘린더{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet">
+<link href="{% static 'css/admin_calendar.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="admin-calendar-page">
+    {% page_header title="예약 관리 캘린더" heading_tag="h2" header_class="site-page-header mb-3" c1_label="예약 캘린더" c1_icon="bi-calendar3" %}
+
+    <div class="admin-calendar-toolbar">
+        <div>
+            <p class="text-muted mb-0 small">
+                확정된 예약만 표시합니다. 비대면 일정은 Zoom 호스트 풀 기준으로 색상이 구분됩니다.
+            </p>
+            {% if use_mock %}
+            <span class="badge text-bg-warning mt-2">데모 모드 — 가상 데이터</span>
+            {% endif %}
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            {% if use_mock %}
+            <a href="{% url 'admin_panel:appointment_calendar' %}" class="btn btn-sm btn-outline-primary">
+                실제 데이터 보기
+            </a>
+            {% else %}
+            <a href="{% url 'admin_panel:appointment_calendar' %}?mock=1" class="btn btn-sm btn-outline-secondary">
+                데모 데이터
+            </a>
+            {% endif %}
+            <a href="{% url 'admin_panel:dashboard' %}" class="btn btn-sm btn-outline-secondary">
+                대시보드
+            </a>
+        </div>
+    </div>
+
+    <div class="admin-calendar-legend" aria-label="캘린더 범례">
+        {% for host in zoom_host_pool %}
+        <span class="admin-calendar-legend-item">
+            <span class="admin-calendar-legend-swatch" style="background-color: {{ host.color }};"></span>
+            {{ host.label }}
+        </span>
+        {% endfor %}
+        <span class="admin-calendar-legend-item">
+            <span class="admin-calendar-legend-swatch" style="background-color: #64748b;"></span>
+            대면 상담
+        </span>
+    </div>
+
+    <div class="admin-calendar-shell">
+        <div id="adminAppointmentCalendar"
+             data-events-url="{% url 'admin_panel:appointment_calendar_events' %}"
+             data-mock-url="{% url 'admin_panel:appointment_calendar_events' %}?mock=1"
+             data-use-mock="{% if use_mock %}1{% else %}0{% endif %}"></div>
+    </div>
+</div>
+
+<div class="modal fade" id="adminAppointmentDetailModal" tabindex="-1" aria-labelledby="adminAppointmentDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow">
+            <div class="modal-header">
+                <h5 class="modal-title" id="adminAppointmentDetailModalLabel">예약 상세</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+            </div>
+            <div class="modal-body">
+                <div class="detail-row" id="detailClient">
+                    <span class="detail-label">내담자</span>
+                    <span class="fw-semibold" data-detail-value>—</span>
+                </div>
+                <div class="detail-row" id="detailCounselor">
+                    <span class="detail-label">담당 상담사</span>
+                    <span data-detail-value>—</span>
+                </div>
+                <div class="detail-row" id="detailSession">
+                    <span class="detail-label">상담 회차</span>
+                    <span data-detail-value>—</span>
+                </div>
+                <div class="detail-row" id="detailMethod">
+                    <span class="detail-label">상담 방식</span>
+                    <span data-detail-value>—</span>
+                </div>
+                <div class="detail-row" id="detailStatus">
+                    <span class="detail-label">예약 상태</span>
+                    <span data-detail-value>—</span>
+                </div>
+                <div class="detail-row" id="detailCase">
+                    <span class="detail-label">사례 번호</span>
+                    <span class="text-muted small" data-detail-value>—</span>
+                </div>
+                <div class="detail-row" id="detailZoomHost">
+                    <span class="detail-label">줌 호스트</span>
+                    <span class="badge text-bg-primary" data-detail-value>—</span>
+                </div>
+                <p id="detailNoZoomMsg" class="small text-warning mb-0 d-none">
+                    비대면 예약이지만 Zoom 링크가 아직 연결되지 않았습니다.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">닫기</button>
+                <a id="detailZoomJoinBtn"
+                   href="#"
+                   target="_blank"
+                   rel="noopener noreferrer"
+                   class="btn btn-primary d-none">
+                    <i class="bi bi-camera-video me-1"></i>줌 회의 입장
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.15/locales/ko.global.min.js"></script>
+<script src="{% static 'js/admin_appointment_calendar.js' %}"></script>
+{% endblock %}
