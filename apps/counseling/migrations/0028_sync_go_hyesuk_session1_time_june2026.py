@@ -1,0 +1,44 @@
+"""김상연/고혜숙 1회기 일시 2026-06-26 17:30(비대면) 동기화."""
+
+from pathlib import Path
+
+from django.conf import settings
+from django.db import migrations
+
+
+def sync_go_hyesuk_session1_time(apps, schema_editor):
+    from django.db import connection
+
+    engine = connection.settings_dict.get("ENGINE", "")
+    if "sqlite" in engine:
+        return
+
+    from apps.counseling.session1_bulk_import import (
+        load_session1_matches,
+        sync_session1_times_from_roster,
+    )
+
+    path = Path(settings.BASE_DIR) / "data" / "import" / "session1_matches_bulk_202606.json"
+    rows = load_session1_matches(path)
+    results = sync_session1_times_from_roster(
+        rows,
+        dry_run=False,
+        skip_availability=True,
+        counselor_name="김상연",
+        client_names=frozenset({"고혜숙"}),
+    )
+    errors = [r for r in results if r.status == "error"]
+    if errors:
+        messages = "; ".join(f"{r.client_name}: {r.detail}" for r in errors)
+        raise RuntimeError(f"고혜숙 1회기 일시 동기화 실패: {messages}")
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ("counseling", "0027_sync_cheon_session1_times_june2026"),
+    ]
+
+    operations = [
+        migrations.RunPython(sync_go_hyesuk_session1_time, migrations.RunPython.noop),
+    ]
