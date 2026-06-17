@@ -569,7 +569,7 @@ def build_termination_record_pdf(
         ("3. 종결(중단) 사유", record.termination_reason),
         ("4. 내담자에 대한 상담자 소견", record.counselor_opinion),
         ("5. 종결 후 계획 또는 후속조치", record.post_termination_plan),
-        ("8. 기타", record.other_notes),
+        ("6. 기타", record.other_notes),
     ]
     for heading, content in sections:
         story.append(_para(heading, section_style))

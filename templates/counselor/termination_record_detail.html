@@ -34,9 +34,14 @@
         </div>
     </div>
 
+    <div class="text-center mb-4 termination-record-doc-title">
+        <p class="text-muted small mb-1">숭실사이버대학교 | 평생교육원</p>
+        <h2 class="h4 fw-bold mb-0 termination-record-title-spaced">종 결 기 록 지</h2>
+    </div>
+
     <div class="card border-0 shadow-sm section-spacing">
         <div class="card-header bg-white py-3 border-bottom">
-            <h2 class="h6 fw-semibold mb-0 text-kscu">내담자 기본정보</h2>
+            <h2 class="h6 fw-semibold mb-0 text-kscu">1. 내담자 기본정보</h2>
         </div>
         <div class="card-body p-0">
             <div class="table-container">
@@ -68,7 +73,7 @@
 
     <div class="card border-0 shadow-sm section-spacing">
         <div class="card-header bg-white py-3 border-bottom">
-            <h2 class="h6 fw-semibold mb-0 text-kscu">상담 기본정보</h2>
+            <h2 class="h6 fw-semibold mb-0 text-kscu">2. 상담 기본정보</h2>
         </div>
         <div class="card-body p-4 p-md-5">
             <dl class="initial-record-detail-list">
@@ -87,7 +92,7 @@
                 <dt>5. 종결 후 계획 또는 후속조치</dt>
                 <dd class="client-pre-wrap">{% if record.post_termination_plan %}{{ record.post_termination_plan }}{% else %}—{% endif %}</dd>
 
-                <dt>8. 기타</dt>
+                <dt>6. 기타</dt>
                 <dd class="client-pre-wrap">{% if record.other_notes %}{{ record.other_notes }}{% else %}—{% endif %}</dd>
             </dl>
         </div>

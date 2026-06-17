@@ -311,6 +311,14 @@
     }
 }
 
+.termination-record-title-spaced {
+    letter-spacing: 0.35em;
+}
+
+.termination-record-doc-title {
+    padding-top: 0.25rem;
+}
+
 .journal-section {
     padding-bottom: 0.5rem;
 }

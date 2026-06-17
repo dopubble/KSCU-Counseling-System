@@ -2726,6 +2726,21 @@ def _get_case_termination_record(request, case_pk):
     return case, record
 
 
+def _default_termination_counseling_period(case) -> str:
+    """종결기록지 — 확정·완료된 회기 일시 목록."""
+    lines: list[str] = []
+    for apt in case.appointments.filter(
+        status__in=(AppointmentStatus.CONFIRMED, AppointmentStatus.COMPLETED),
+    ).order_by("session_number", "scheduled_at"):
+        label = (
+            f"{apt.session_number}회기"
+            if apt.session_number
+            else apt.scheduled_at.strftime("%Y-%m-%d")
+        )
+        lines.append(f"{label}: {apt.scheduled_at:%Y-%m-%d %H:%M}")
+    return "\n".join(lines)
+
+
 def _termination_record_client_summary(case):
     return _initial_record_client_summary(case)
 
@@ -2777,7 +2792,11 @@ def termination_record_create(request, pk):
             return redirect("counselor:case_detail", pk=case.pk)
         messages.error(request, "입력 내용을 확인해 주세요.")
     else:
-        form = TerminationCounselingRecordForm()
+        form = TerminationCounselingRecordForm(
+            initial={
+                "counseling_period": _default_termination_counseling_period(case),
+            }
+        )
 
     return _render_termination_record_form(request, case, form, is_edit=False)
 

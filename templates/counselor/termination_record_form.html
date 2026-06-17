@@ -27,10 +27,15 @@
         </div>
     </div>
 
+    <div class="text-center mb-4 termination-record-doc-title">
+        <p class="text-muted small mb-1">숭실사이버대학교 | 평생교육원</p>
+        <h2 class="h4 fw-bold mb-0 termination-record-title-spaced">종 결 기 록 지</h2>
+    </div>
+
     <div class="card border-0 shadow-sm client-info-card section-spacing">
         <div class="card-header bg-white py-3 border-bottom">
             <h2 class="h6 fw-semibold mb-0 text-kscu">
-                <i class="bi bi-person-vcard me-2"></i>내담자 기본정보
+                <i class="bi bi-person-vcard me-2"></i>1. 내담자 기본정보
                 <span class="badge bg-light text-muted ms-2 fw-normal">자동 입력 · 수정 불가</span>
             </h2>
         </div>
@@ -65,7 +70,7 @@
     <div class="card border-0 shadow-sm section-spacing">
         <div class="card-header bg-white py-3 border-bottom">
             <h2 class="h6 fw-semibold mb-0 text-kscu">
-                <i class="bi bi-pencil-square me-2"></i>상담 기본정보
+                <i class="bi bi-pencil-square me-2"></i>2. 상담 기본정보
             </h2>
         </div>
         <div class="card-body p-4 p-md-5">
@@ -85,18 +90,53 @@
                 </div>
                 {% endif %}
 
-                {% for field in form %}
                 <div class="journal-section mb-4">
-                    <h3 class="journal-section-title">
-                        {% if field.name == 'other_notes' %}8.{% else %}{{ forloop.counter }}.{% endif %}
-                        {{ field.label }}
-                    </h3>
-                    {{ field }}
-                    {% if field.errors %}
-                    <div class="text-danger small mt-1">{{ field.errors.0 }}</div>
+                    <h3 class="journal-section-title">1. {{ form.counseling_period.label }}</h3>
+                    {{ form.counseling_period }}
+                    {% if form.counseling_period.errors %}
+                    <div class="text-danger small mt-1">{{ form.counseling_period.errors.0 }}</div>
                     {% endif %}
                 </div>
-                {% endfor %}
+
+                <div class="journal-section mb-4">
+                    <h3 class="journal-section-title">2. {{ form.main_topics.label }}</h3>
+                    {{ form.main_topics }}
+                    {% if form.main_topics.errors %}
+                    <div class="text-danger small mt-1">{{ form.main_topics.errors.0 }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="journal-section mb-4">
+                    <h3 class="journal-section-title">3. {{ form.termination_reason.label }}</h3>
+                    {{ form.termination_reason }}
+                    {% if form.termination_reason.errors %}
+                    <div class="text-danger small mt-1">{{ form.termination_reason.errors.0 }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="journal-section mb-4">
+                    <h3 class="journal-section-title">4. {{ form.counselor_opinion.label }}</h3>
+                    {{ form.counselor_opinion }}
+                    {% if form.counselor_opinion.errors %}
+                    <div class="text-danger small mt-1">{{ form.counselor_opinion.errors.0 }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="journal-section mb-4">
+                    <h3 class="journal-section-title">5. {{ form.post_termination_plan.label }}</h3>
+                    {{ form.post_termination_plan }}
+                    {% if form.post_termination_plan.errors %}
+                    <div class="text-danger small mt-1">{{ form.post_termination_plan.errors.0 }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="journal-section mb-4">
+                    <h3 class="journal-section-title">6. {{ form.other_notes.label }}</h3>
+                    {{ form.other_notes }}
+                    {% if form.other_notes.errors %}
+                    <div class="text-danger small mt-1">{{ form.other_notes.errors.0 }}</div>
+                    {% endif %}
+                </div>
 
                 <div class="d-flex flex-wrap gap-2 justify-content-between pt-4 border-top">
                     <a href="{% url 'counselor:case_detail' case.pk %}" class="btn btn-outline-secondary btn-lg">
