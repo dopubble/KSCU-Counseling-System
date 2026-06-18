@@ -42,6 +42,18 @@
     font-weight: 600;
 }
 
+/* 날짜(일) 숫자 밑줄 제거 */
+.admin-calendar-page--gcal-ui .fc .fc-daygrid-day-number {
+    text-decoration: none;
+    color: var(--gcal-text);
+}
+
+.admin-calendar-page--gcal-ui .fc .fc-daygrid-day-number:hover,
+.admin-calendar-page--gcal-ui .fc .fc-daygrid-day-number:focus {
+    text-decoration: none;
+    color: var(--gcal-text);
+}
+
 /* 캘린더 좌·우 외곽 테두리 제거 */
 .admin-calendar-page--gcal-ui .fc-theme-standard .fc-scrollgrid {
     border-left: none;
