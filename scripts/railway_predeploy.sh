@@ -4,6 +4,9 @@ set -eu
 
 python manage.py migrate --noinput
 
+# 김아름 1회기 6/25 16:00 (마이그레이션 보조)
+python manage.py admin_force_session1 --client "김아름" --to "2026-06-25 16:00" --apply || true
+
 # 매칭 대기 테스트 내담자 삭제 (마이그레이션 보조, 이미 삭제됐으면 no-op)
 python manage.py purge_client_accounts --apply --ignore-missing || true
 
