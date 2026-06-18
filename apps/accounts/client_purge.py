@@ -34,6 +34,7 @@ WAITING_MATCH_PURGE_JUNE2026: tuple[ClientPurgeTarget, ...] = (
     ClientPurgeTarget("도진실", "25113031"),
     ClientPurgeTarget("최우형", "26106031"),
     ClientPurgeTarget("윤새미", "25113507"),
+    ClientPurgeTarget("김장서율", "261110004"),
 )
 
 
