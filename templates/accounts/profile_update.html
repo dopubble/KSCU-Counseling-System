@@ -8,9 +8,9 @@
     <div class="container site-container">
         <div class="{% if not is_counselor %}client-portal-stack{% endif %}">
             {% if is_counselor %}
-            {% page_header title="내정보 수정" subtitle="이메일·휴대폰·비밀번호만 변경할 수 있습니다. 가입 시 입력한 나머지 정보는 확인만 가능합니다." heading_tag="h1" title_class="h3 fw-semibold site-page-title mb-0" header_class="site-page-header mb-4" c1_label="대시보드" c1_url_name="counselor:dashboard" c1_icon="bi-briefcase" c2_label="내정보 수정" %}
+            {% page_header title="내정보 수정" subtitle="휴대폰·비밀번호만 변경할 수 있습니다. 이메일(로그인 아이디)과 가입 시 입력한 나머지 정보는 확인만 가능합니다." heading_tag="h1" title_class="h3 fw-semibold site-page-title mb-0" header_class="site-page-header mb-4" c1_label="대시보드" c1_url_name="counselor:dashboard" c1_icon="bi-briefcase" c2_label="내정보 수정" %}
             {% else %}
-            {% page_header title="내정보 수정" subtitle="이메일·휴대폰·비밀번호만 변경할 수 있습니다. 가입 시 입력한 나머지 정보는 확인만 가능합니다." heading_tag="h1" title_class="client-portal-title site-page-title" header_class="site-page-header mb-0" c1_label="내 상담실" c1_url_name="client:dashboard" c1_icon="bi-house-door" c2_label="내정보 수정" %}
+            {% page_header title="내정보 수정" subtitle="휴대폰·비밀번호만 변경할 수 있습니다. 이메일(로그인 아이디)과 가입 시 입력한 나머지 정보는 확인만 가능합니다." heading_tag="h1" title_class="client-portal-title site-page-title" header_class="site-page-header mb-0" c1_label="내 상담실" c1_url_name="client:dashboard" c1_icon="bi-house-door" c2_label="내정보 수정" %}
             {% endif %}
 
             <div class="card {% if not is_counselor %}client-dashboard-card{% else %}border-0 shadow-sm{% endif %} border-0">
@@ -34,10 +34,10 @@
                             {{ form.birth_date|as_crispy_field }}
                             {{ form.department|as_crispy_field }}
                         {% endif %}
+                        {{ form.email|as_crispy_field }}
 
                         <hr class="my-4">
                         <p class="small text-muted fw-semibold text-uppercase mb-3">변경 가능 정보</p>
-                        {{ form.email|as_crispy_field }}
                         {{ form.phone|as_crispy_field }}
 
                         <hr class="my-4" id="password-section">
@@ -55,7 +55,7 @@
                         </div>
                     </form>
                     <p class="small text-muted mt-3 mb-0">
-                        이메일을 변경하면 다음 로그인부터 변경된 이메일을 사용합니다.
+                        로그인 아이디(이메일) 변경이 필요하면 관리자에게 문의해 주세요.
                         비밀번호를 잊으셨다면 로그아웃 후
                         <a href="{% url 'accounts:password_reset' %}">비밀번호 찾기</a>를 이용해 주세요.
                     </p>

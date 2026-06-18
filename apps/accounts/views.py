@@ -147,6 +147,10 @@ def permission_denied_view(request, exception=None):
 
 def _profile_immutable_fields_tampered(request, user, profile) -> bool:
     """HTML/POST 조작으로 변경 불가 필드 수정 시도 여부 (내담자)."""
+    if "email" in request.POST and User.objects.normalize_email(
+        request.POST.get("email", "").strip()
+    ) != User.objects.normalize_email(user.email):
+        return True
     if "name" in request.POST and request.POST.get("name", "") != user.name:
         return True
     current_student_id = profile.student_id or ""
@@ -168,6 +172,10 @@ def _profile_immutable_fields_tampered(request, user, profile) -> bool:
 
 def _counselor_immutable_fields_tampered(request, user, profile) -> bool:
     """HTML/POST 조작으로 변경 불가 필드 수정 시도 여부 (상담사)."""
+    if "email" in request.POST and User.objects.normalize_email(
+        request.POST.get("email", "").strip()
+    ) != User.objects.normalize_email(user.email):
+        return True
     if "name" in request.POST and request.POST.get("name", "") != user.name:
         return True
     if "role_display" in request.POST and request.POST.get("role_display", "") != user.get_role_display():
@@ -186,15 +194,13 @@ def _counselor_immutable_fields_tampered(request, user, profile) -> bool:
 def _save_user_profile_contact(
     user,
     *,
-    email: str,
     phone: str,
     new_password: str | None = None,
     request=None,
 ) -> None:
-    """이메일·연락처·(선택) 비밀번호 저장."""
-    user.email = email
+    """연락처·(선택) 비밀번호 저장."""
     user.phone = phone or ""
-    update_fields = ["email", "phone", "updated_at"]
+    update_fields = ["phone", "updated_at"]
     if new_password:
         user.set_password(new_password)
         update_fields.append("password")
@@ -212,7 +218,7 @@ def _get_counselor_profile(user):
 
 @role_required(UserRole.CLIENT, UserRole.COUNSELOR)
 def profile_update(request):
-    """내정보 수정 — 이메일·휴대폰·비밀번호 변경 (역할별 가입 정보는 조회만)."""
+    """내정보 수정 — 휴대폰·비밀번호 변경 (역할별 가입 정보·로그인 이메일은 조회만)."""
     user = request.user
     is_counselor = user.role == UserRole.COUNSELOR
 
@@ -220,12 +226,12 @@ def profile_update(request):
         profile = _get_counselor_profile(user)
         form_class = CounselorProfileUpdateForm
         dashboard_url = "counselor:dashboard"
-        tamper_message = "이름·생년월일·성별 등 가입 시 확정된 정보는 변경할 수 없습니다."
+        tamper_message = "이름·이메일(로그인 아이디)·생년월일·성별 등 가입 시 확정된 정보는 변경할 수 없습니다."
     else:
         profile, _ = ClientProfile.objects.get_or_create(user=user)
         form_class = ProfileUpdateForm
         dashboard_url = "client:dashboard"
-        tamper_message = "이름·학번·생년월일·소속 학과 등 가입 시 확정된 정보는 변경할 수 없습니다."
+        tamper_message = "이름·이메일(로그인 아이디)·학번·생년월일·소속 학과 등 가입 시 확정된 정보는 변경할 수 없습니다."
 
     if request.method == "POST":
         if is_counselor:
@@ -240,7 +246,6 @@ def profile_update(request):
         if form.is_valid():
             _save_user_profile_contact(
                 user,
-                email=form.cleaned_data["email"],
                 phone=form.cleaned_data.get("phone", ""),
                 new_password=form.new_password,
                 request=request,

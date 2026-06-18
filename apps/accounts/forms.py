@@ -239,7 +239,7 @@ class OptionalPasswordChangeFieldsForm(forms.Form):
 
 
 class ProfileUpdateForm(OptionalPasswordChangeFieldsForm):
-    """내담자 내정보 수정 — 이메일·연락처·비밀번호 변경 가능."""
+    """내담자 내정보 수정 — 연락처·비밀번호 변경 가능 (이메일은 로그인 아이디로 변경 불가)."""
 
     name = forms.CharField(
         label="이름",
@@ -292,8 +292,13 @@ class ProfileUpdateForm(OptionalPasswordChangeFieldsForm):
     )
     email = forms.EmailField(
         label="이메일 (로그인 아이디)",
+        disabled=True,
         widget=forms.EmailInput(
-            attrs={"class": "form-control", "autocomplete": "email"},
+            attrs={
+                "class": "form-control",
+                "autocomplete": "email",
+                "readonly": "readonly",
+            },
         ),
     )
     phone = forms.CharField(
@@ -336,20 +341,13 @@ class ProfileUpdateForm(OptionalPasswordChangeFieldsForm):
         self._new_password = self._validate_optional_password_change()
         return cleaned
 
-    def clean_email(self):
-        email = User.objects.normalize_email(self.cleaned_data["email"].strip())
-        exists = User.objects.filter(email__iexact=email).exclude(pk=self.user.pk).exists()
-        if exists:
-            raise forms.ValidationError("이미 사용 중인 이메일입니다.")
-        return email
-
     @property
     def new_password(self) -> str | None:
         return getattr(self, "_new_password", None)
 
 
 class CounselorProfileUpdateForm(OptionalPasswordChangeFieldsForm):
-    """상담사 내정보 수정 — 이메일·연락처·비밀번호 변경 가능."""
+    """상담사 내정보 수정 — 연락처·비밀번호 변경 가능 (이메일은 로그인 아이디로 변경 불가)."""
 
     role_display = forms.CharField(
         label="가입 유형",
@@ -388,8 +386,13 @@ class CounselorProfileUpdateForm(OptionalPasswordChangeFieldsForm):
     )
     email = forms.EmailField(
         label="이메일 (로그인 아이디)",
+        disabled=True,
         widget=forms.EmailInput(
-            attrs={"class": "form-control", "autocomplete": "email"},
+            attrs={
+                "class": "form-control",
+                "autocomplete": "email",
+                "readonly": "readonly",
+            },
         ),
     )
     phone = forms.CharField(
@@ -424,13 +427,6 @@ class CounselorProfileUpdateForm(OptionalPasswordChangeFieldsForm):
             return cleaned
         self._new_password = self._validate_optional_password_change()
         return cleaned
-
-    def clean_email(self):
-        email = User.objects.normalize_email(self.cleaned_data["email"].strip())
-        exists = User.objects.filter(email__iexact=email).exclude(pk=self.user.pk).exists()
-        if exists:
-            raise forms.ValidationError("이미 사용 중인 이메일입니다.")
-        return email
 
     @property
     def new_password(self) -> str | None:
