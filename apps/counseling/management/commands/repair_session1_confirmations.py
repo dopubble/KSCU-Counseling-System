@@ -95,7 +95,7 @@ class Command(BaseCommand):
             if row.status in ("confirmed", "created", "rescheduled"):
                 repaired += 1
                 style = self.style.SUCCESS
-            elif row.status == "error":
+            elif row.status == "error" or row.status == "calendar_missing":
                 errors += 1
                 style = self.style.ERROR
             elif row.status == "ok":

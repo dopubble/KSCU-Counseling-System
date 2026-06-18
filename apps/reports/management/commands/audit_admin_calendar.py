@@ -1,16 +1,22 @@
 """관리자 캘린더 API와 DB 확정 예약 대조 — 누락·불일치 진단."""
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone as dt_timezone
 from pathlib import Path
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
-from django.db.models.functions import TruncDate
 from django.utils import timezone
 from zoneinfo import ZoneInfo
 
 from apps.counseling.session1_bulk_import import load_session1_matches
-from apps.reports.appointment_calendar import build_calendar_events, get_calendar_timezone_name
+from apps.reports.appointment_calendar import (
+    _calendar_localtime,
+    appointment_in_calendar_events,
+    build_calendar_events,
+    calendar_day_bounds,
+    get_calendar_timezone_name,
+    parse_calendar_bound,
+)
 from apps.scheduling.models import Appointment, AppointmentStatus
 
 DEFAULT_JSON = (
@@ -68,8 +74,10 @@ class Command(BaseCommand):
 
         db_qs = (
             Appointment.objects.filter(status=AppointmentStatus.CONFIRMED)
-            .annotate(local_day=TruncDate("scheduled_at", tzinfo=service_tz))
-            .filter(local_day__gte=from_date, local_day__lte=to_date)
+            .filter(
+                scheduled_at__gte=range_start.astimezone(dt_timezone.utc),
+                scheduled_at__lt=range_end.astimezone(dt_timezone.utc),
+            )
             .select_related("client", "counselor")
             .order_by("scheduled_at")
         )
@@ -113,26 +121,41 @@ class Command(BaseCommand):
                 raise CommandError(f"로스터 JSON 없음: {path}")
             rows = load_session1_matches(path)
             for row in rows:
-                if not (from_date <= timezone.localtime(row.first_session).date() <= to_date):
+                roster_day = _calendar_localtime(row.first_session).date()
+                if not (from_date <= roster_day <= to_date):
                     continue
                 apt = (
                     Appointment.objects.filter(
                         client__name=row.client_name,
+                        counselor__name=row.counselor_name,
                         session_number=1,
                     )
                     .order_by("-created_at")
                     .first()
+                )
+                expected_label = _calendar_localtime(row.first_session).strftime(
+                    "%Y-%m-%d %H:%M"
                 )
                 if apt is None:
                     not_confirmed_session1.append(f"{row.client_name}: 1회기 예약 없음")
                 elif apt.status != AppointmentStatus.CONFIRMED:
                     not_confirmed_session1.append(
                         f"{row.client_name}: {apt.get_status_display()} "
-                        f"({timezone.localtime(apt.scheduled_at):%Y-%m-%d %H:%M})"
+                        f"({_calendar_localtime(apt.scheduled_at):%Y-%m-%d %H:%M})"
                     )
-                elif str(apt.pk) not in event_ids:
+                elif _calendar_localtime(apt.scheduled_at).strftime("%Y-%m-%d %H:%M") != expected_label:
                     not_confirmed_session1.append(
-                        f"{row.client_name}: CONFIRMED이나 캘린더 미표시 id={apt.pk}"
+                        f"{row.client_name}: 일시 불일치 DB="
+                        f"{_calendar_localtime(apt.scheduled_at):%Y-%m-%d %H:%M} "
+                        f"기대={expected_label}"
+                    )
+                elif not appointment_in_calendar_events(apt.pk, local_day=roster_day):
+                    day_start, day_end = calendar_day_bounds(roster_day)
+                    fc_events = build_calendar_events(start=day_start, end=day_end)
+                    not_confirmed_session1.append(
+                        f"{row.client_name}: CONFIRMED·일치하나 "
+                        f"{roster_day:%Y-%m-%d} 캘린더 미표시 id={apt.pk} "
+                        f"(day events={len(fc_events)})"
                     )
 
             if not_confirmed_session1:

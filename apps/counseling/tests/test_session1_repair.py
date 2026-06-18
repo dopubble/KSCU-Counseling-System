@@ -106,6 +106,28 @@ class Session1RepairTests(TestCase):
         names = [event["extendedProps"]["client_name"] for event in events]
         self.assertIn(self.client_user.name, names)
 
+    def test_repair_detects_missing_session1_when_only_session2_exists(self):
+        Appointment.objects.filter(case=self.case, session_number=1).delete()
+        Appointment.objects.create(
+            case=self.case,
+            counselor=self.counselor,
+            client=self.client_user,
+            scheduled_at=timezone.make_aware(datetime(2026, 6, 24, 10, 0)),
+            duration_minutes=50,
+            status=AppointmentStatus.CONFIRMED,
+            session_number=2,
+        )
+        results = repair_session1_confirmations_from_roster(
+            [self.row],
+            dry_run=False,
+        )
+        self.assertEqual(results[0].status, "created")
+        june_17 = parse_calendar_bound("2026-06-17T00:00:00+09:00")
+        june_18 = parse_calendar_bound("2026-06-18T00:00:00+09:00")
+        events = build_calendar_events(start=june_17, end=june_18)
+        names = [event["extendedProps"]["client_name"] for event in events]
+        self.assertIn(self.client_user.name, names)
+
     def test_repair_dry_run_reports_pending_without_db_change(self):
         Appointment.objects.create(
             case=self.case,

@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from django.db import transaction
 from django.db.models import F
@@ -30,6 +31,8 @@ from apps.scheduling.forms import DEFAULT_APPOINTMENT_DURATION_MINUTES
 from apps.scheduling.models import Appointment, AppointmentStatus
 from apps.scheduling.services import confirm_appointment_with_zoom
 from apps.scheduling.utils import ZoomAPIError, ZoomNotConfiguredError
+
+ROSTER_TIMEZONE = ZoneInfo("Asia/Seoul")
 
 
 @dataclass
@@ -95,7 +98,7 @@ def load_session1_matches(path: Path) -> list[Session1MatchRow]:
             raise ValueError(
                 f"{line_no}번째 first_session 형식 오류: {first_session_raw!r} (YYYY-MM-DD HH:MM)"
             ) from exc
-        first_session = timezone.make_aware(naive, timezone.get_current_timezone())
+        first_session = timezone.make_aware(naive, ROSTER_TIMEZONE)
         counseling_method = _parse_counseling_method(item.get("counseling_method"))
         rows.append(
             Session1MatchRow(
@@ -242,6 +245,88 @@ def _active_case(client: User) -> Case | None:
         .order_by("-opened_at")
         .first()
     )
+
+
+def _roster_case(client: User, counselor_name: str) -> Case | None:
+    """로스터 상담사와 일치하는 활성 사례 (없으면 최신 활성 사례)."""
+    matched = (
+        Case.objects.filter(
+            client=client,
+            status=CaseStatus.ACTIVE,
+            counselor__name=counselor_name,
+        )
+        .select_related("application", "counselor")
+        .order_by("-opened_at")
+        .first()
+    )
+    if matched is not None:
+        return matched
+    return _active_case(client)
+
+
+def _local_slot_label(dt: datetime) -> str:
+    from apps.reports.appointment_calendar import _calendar_localtime
+
+    return _calendar_localtime(dt).strftime("%Y-%m-%d %H:%M")
+
+
+def _find_roster_session1_appointments(
+    client: User,
+    counselor_name: str,
+) -> list[Appointment]:
+    """로스터 상담사·내담자 기준 1회기 후보 (전 사례)."""
+    return list(
+        Appointment.objects.filter(
+            client=client,
+            counselor__name=counselor_name,
+            session_number=1,
+        )
+        .select_related("case", "counselor")
+        .order_by("-created_at")
+    )
+
+
+def _pick_canonical_session1(
+    appointments: list[Appointment],
+    *,
+    expected_at: datetime,
+) -> Appointment | None:
+    """로스터 일시·확정 상태에 가장 가까운 1회기 예약 선택."""
+    if not appointments:
+        return None
+    expected_label = _local_slot_label(expected_at)
+
+    def sort_key(apt: Appointment) -> tuple[int, int, float]:
+        label_match = _local_slot_label(apt.scheduled_at) == expected_label
+        confirmed = apt.status == AppointmentStatus.CONFIRMED
+        created = apt.created_at.timestamp() if apt.created_at else 0.0
+        return (0 if label_match else 1, 0 if confirmed else 1, -created)
+
+    return sorted(appointments, key=sort_key)[0]
+
+
+def _cancel_extra_session1_duplicates(
+    canonical: Appointment,
+    duplicates: list[Appointment],
+    *,
+    dry_run: bool,
+) -> int:
+    """동일 내담자·상담사의 중복 1회기 예약 정리."""
+    cancelled = 0
+    for apt in duplicates:
+        if apt.pk == canonical.pk:
+            continue
+        if apt.status in (AppointmentStatus.CANCELLED, AppointmentStatus.COMPLETED):
+            continue
+        if dry_run:
+            cancelled += 1
+            continue
+        apt.status = AppointmentStatus.CANCELLED
+        apt.cancelled_at = timezone.now()
+        apt.cancel_reason = "1회기 로스터 복구 — 중복 예약 정리"
+        apt.save(update_fields=["status", "cancelled_at", "cancel_reason", "updated_at"])
+        cancelled += 1
+    return cancelled
 
 
 def _import_one_row(
@@ -576,10 +661,6 @@ class Session1TimeSyncResult:
     detail: str = ""
 
 
-def _local_slot_label(dt: datetime) -> str:
-    return timezone.localtime(dt).strftime("%Y-%m-%d %H:%M")
-
-
 def sync_session1_times_from_roster(
     rows: list[Session1MatchRow],
     *,
@@ -752,6 +833,55 @@ def _ensure_session1_pending(appointment: Appointment) -> None:
     appointment.save(update_fields=["status", "confirmed_at", "updated_at"])
 
 
+def _append_session1_repair_result(
+    results: list[Session1RepairResult],
+    *,
+    row: Session1MatchRow,
+    appointment: Appointment | None,
+    session1_candidates: list[Appointment],
+    roster_day: date,
+    dry_run: bool,
+    status: str,
+    detail: str,
+) -> None:
+    from apps.reports.appointment_calendar import appointment_in_calendar_events
+
+    final_detail = detail
+    if appointment is not None and not dry_run:
+        dup_count = _cancel_extra_session1_duplicates(
+            appointment,
+            session1_candidates,
+            dry_run=False,
+        )
+        appointment.refresh_from_db()
+        if dup_count:
+            final_detail = f"{detail} · 중복 {dup_count}건 정리"
+
+    if (
+        appointment is not None
+        and appointment.status == AppointmentStatus.CONFIRMED
+        and not appointment_in_calendar_events(appointment.pk, local_day=roster_day)
+    ):
+        results.append(
+            Session1RepairResult(
+                row.client_name,
+                row.counselor_name,
+                "calendar_missing",
+                f"{roster_day:%Y-%m-%d} 캘린더 미표시 (id={appointment.pk}, {final_detail})",
+            )
+        )
+        return
+
+    results.append(
+        Session1RepairResult(
+            row.client_name,
+            row.counselor_name,
+            status,
+            final_detail,
+        )
+    )
+
+
 def repair_session1_confirmations_from_roster(
     rows: list[Session1MatchRow],
     *,
@@ -761,6 +891,7 @@ def repair_session1_confirmations_from_roster(
     client_names: frozenset[str] | None = None,
 ) -> list[Session1RepairResult]:
     """로스터 1회기 예약을 CONFIRMED·올바른 일시로 복구 (캘린더 누락 방지)."""
+    from apps.reports.appointment_calendar import appointment_in_calendar_events
     from apps.scheduling.services import (
         AppointmentServiceError,
         reschedule_confirmed_appointment,
@@ -787,7 +918,7 @@ def repair_session1_confirmations_from_roster(
             )
             continue
 
-        case = _active_case(client)
+        case = _roster_case(client, row.counselor_name)
         if not case or not case.counselor_id:
             results.append(
                 Session1RepairResult(
@@ -799,13 +930,42 @@ def repair_session1_confirmations_from_roster(
             )
             continue
 
-        appointment = (
-            Appointment.objects.filter(case=case, session_number=1)
-            .order_by("-created_at")
-            .first()
-        )
+        if (case.counselor.name or "").strip() != row.counselor_name:
+            results.append(
+                Session1RepairResult(
+                    row.client_name,
+                    row.counselor_name,
+                    "error",
+                    f"활성 배정 상담사 불일치 (DB: {case.counselor.name})",
+                )
+            )
+            continue
+
         expected_label = _local_slot_label(row.first_session)
+        expected_day = _local_slot_label(row.first_session).split()[0]
+        roster_day = datetime.strptime(expected_day, "%Y-%m-%d").date()
         is_remote = case.counseling_method == CounselingMethod.REMOTE
+
+        session1_candidates = _find_roster_session1_appointments(client, row.counselor_name)
+        appointment = _pick_canonical_session1(
+            session1_candidates,
+            expected_at=row.first_session,
+        )
+
+        if appointment and appointment.case_id != case.pk:
+            if dry_run:
+                results.append(
+                    Session1RepairResult(
+                        row.client_name,
+                        row.counselor_name,
+                        "reassign",
+                        f"다른 사례 1회기 → 현재 사례 ({_local_slot_label(appointment.scheduled_at)})",
+                    )
+                )
+                continue
+            appointment.case = case
+            appointment.counselor = case.counselor
+            appointment.save(update_fields=["case", "counselor", "updated_at"])
 
         if not appointment:
             if dry_run:
@@ -835,13 +995,18 @@ def repair_session1_confirmations_from_roster(
                     appointment.status = AppointmentStatus.CONFIRMED
                     appointment.confirmed_at = timezone.now()
                     appointment.save(update_fields=["status", "confirmed_at", "updated_at"])
-                results.append(
-                    Session1RepairResult(
-                        row.client_name,
-                        row.counselor_name,
-                        "created",
-                        f"1회기 생성·확정 ({expected_label})",
-                    )
+                session1_candidates = _find_roster_session1_appointments(
+                    client, row.counselor_name
+                )
+                _append_session1_repair_result(
+                    results,
+                    row=row,
+                    appointment=appointment,
+                    session1_candidates=session1_candidates,
+                    roster_day=roster_day,
+                    dry_run=False,
+                    status="created",
+                    detail=f"1회기 생성·확정 ({expected_label})",
                 )
             except (AppointmentServiceError, ZoomAPIError, ZoomNotConfiguredError) as exc:
                 results.append(
@@ -859,13 +1024,15 @@ def repair_session1_confirmations_from_roster(
 
         if appointment.status == AppointmentStatus.CONFIRMED:
             if not time_mismatch:
-                results.append(
-                    Session1RepairResult(
-                        row.client_name,
-                        row.counselor_name,
-                        "ok",
-                        "일치",
-                    )
+                _append_session1_repair_result(
+                    results,
+                    row=row,
+                    appointment=appointment,
+                    session1_candidates=session1_candidates,
+                    roster_day=roster_day,
+                    dry_run=dry_run,
+                    status="ok",
+                    detail="일치",
                 )
                 continue
             if dry_run:
@@ -887,13 +1054,18 @@ def repair_session1_confirmations_from_roster(
                 detail = f"{current_label} → {_local_slot_label(appointment.scheduled_at)}"
                 if zoom_warning:
                     detail += f" (Zoom: {zoom_warning})"
-                results.append(
-                    Session1RepairResult(
-                        row.client_name,
-                        row.counselor_name,
-                        "rescheduled",
-                        detail,
-                    )
+                session1_candidates = _find_roster_session1_appointments(
+                    client, row.counselor_name
+                )
+                _append_session1_repair_result(
+                    results,
+                    row=row,
+                    appointment=appointment,
+                    session1_candidates=session1_candidates,
+                    roster_day=roster_day,
+                    dry_run=False,
+                    status="rescheduled",
+                    detail=detail,
                 )
             except AppointmentServiceError as exc:
                 results.append(
@@ -909,6 +1081,9 @@ def repair_session1_confirmations_from_roster(
         if appointment.status not in (
             AppointmentStatus.PENDING,
             AppointmentStatus.SCHEDULED,
+            AppointmentStatus.CANCELLED,
+            AppointmentStatus.COMPLETED,
+            AppointmentStatus.NO_SHOW,
         ):
             results.append(
                 Session1RepairResult(
@@ -919,6 +1094,30 @@ def repair_session1_confirmations_from_roster(
                 )
             )
             continue
+
+        if appointment.status in (
+            AppointmentStatus.CANCELLED,
+            AppointmentStatus.COMPLETED,
+            AppointmentStatus.NO_SHOW,
+        ):
+            action_label = "reopen"
+            if dry_run:
+                results.append(
+                    Session1RepairResult(
+                        row.client_name,
+                        row.counselor_name,
+                        action_label,
+                        f"{appointment.get_status_display()} → CONFIRMED ({expected_label})",
+                    )
+                )
+                continue
+            _ensure_session1_pending(appointment)
+            appointment.scheduled_at = row.first_session
+            appointment.session_number = 1
+            appointment.save(
+                update_fields=["status", "confirmed_at", "scheduled_at", "session_number", "updated_at"]
+            )
+            time_mismatch = False
 
         action_label = "confirm"
         if time_mismatch:
@@ -948,13 +1147,18 @@ def repair_session1_confirmations_from_roster(
                 appointment.confirmed_at = timezone.now()
                 appointment.save(update_fields=["status", "confirmed_at", "updated_at"])
 
-            results.append(
-                Session1RepairResult(
-                    row.client_name,
-                    row.counselor_name,
-                    "confirmed",
-                    f"확정 ({_local_slot_label(appointment.scheduled_at)})",
-                )
+            session1_candidates = _find_roster_session1_appointments(
+                client, row.counselor_name
+            )
+            _append_session1_repair_result(
+                results,
+                row=row,
+                appointment=appointment,
+                session1_candidates=session1_candidates,
+                roster_day=roster_day,
+                dry_run=False,
+                status="confirmed",
+                detail=f"확정 ({_local_slot_label(appointment.scheduled_at)})",
             )
         except (AppointmentServiceError, ZoomAPIError, ZoomNotConfiguredError) as exc:
             results.append(

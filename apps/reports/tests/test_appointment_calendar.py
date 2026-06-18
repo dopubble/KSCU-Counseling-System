@@ -102,6 +102,32 @@ class AppointmentCalendarTests(TestCase):
         }
         self.assertFalse(event_ids & pending_ids)
 
+    def test_fullcalendar_utc_month_range_includes_june_17(self):
+        """FullCalendar month view가 UTC ISO로 전달해도 6/17 확정 일정이 포함되어야 한다."""
+        apt = Appointment.objects.filter(
+            client__name="이현옥",
+            status=AppointmentStatus.CONFIRMED,
+            session_number=1,
+        ).first()
+        if apt is None:
+            self.skipTest("로컬 DB에 이현옥 1회기 확정 예약 없음")
+
+        ranges = (
+            ("seoul", "2026-05-31T00:00:00+09:00", "2026-07-06T00:00:00+09:00"),
+            ("utc", "2026-05-30T15:00:00.000Z", "2026-07-05T15:00:00.000Z"),
+        )
+        for label, start_raw, end_raw in ranges:
+            events = build_calendar_events(
+                start=parse_calendar_bound(start_raw),
+                end=parse_calendar_bound(end_raw),
+            )
+            names = [event["extendedProps"]["client_name"] for event in events]
+            self.assertIn(
+                "이현옥",
+                names,
+                msg=f"{label} range {start_raw} ~ {end_raw}",
+            )
+
     def test_calendar_events_api_returns_confirmed_client(self):
         apt = Appointment.objects.filter(
             client__name="이현옥",

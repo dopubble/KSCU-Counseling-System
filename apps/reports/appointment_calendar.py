@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta, timezone as dt_timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
-from django.db.models.functions import TruncDate
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
@@ -84,14 +83,8 @@ def _calendar_localtime(value: datetime) -> datetime:
     return timezone.localtime(value, _calendar_service_tz())
 
 
-def _local_date_bound(value: datetime | None) -> date | None:
-    if value is None:
-        return None
-    return _calendar_localtime(value).date()
-
-
 def parse_calendar_bound(raw: str) -> datetime | None:
-    """FullCalendar start/end 쿼리를 timezone-aware datetime으로 변환."""
+    """FullCalendar start/end 쿼리를 Asia/Seoul 기준 aware datetime으로 변환."""
     text = (raw or "").strip()
     if not text:
         return None
@@ -99,8 +92,46 @@ def parse_calendar_bound(raw: str) -> datetime | None:
     if parsed is None:
         return None
     if timezone.is_naive(parsed):
-        parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
-    return parsed
+        parsed = timezone.make_aware(parsed, _calendar_service_tz())
+    return _calendar_localtime(parsed)
+
+
+def calendar_day_bounds(local_day: date) -> tuple[datetime, datetime]:
+    """로컬 날짜 하루 구간 [00:00, 다음날 00:00) — FullCalendar day view와 동일."""
+    service_tz = _calendar_service_tz()
+    start = timezone.make_aware(datetime.combine(local_day, time.min), service_tz)
+    end = start + timedelta(days=1)
+    return start, end
+
+
+def appointment_in_calendar_events(
+    appointment_id,
+    *,
+    local_day: date,
+) -> bool:
+    """해당 날짜 day view 범위에 예약 이벤트가 포함되는지."""
+    start, end = calendar_day_bounds(local_day)
+    event_ids = {event["id"] for event in build_calendar_events(start=start, end=end)}
+    return str(appointment_id) in event_ids
+
+
+def _db_query_bounds(
+    start: datetime | None,
+    end: datetime | None,
+) -> tuple[datetime | None, datetime | None]:
+    """FullCalendar 구간을 PostgreSQL timestamptz 비교용 UTC 경계로 변환."""
+    query_start = query_end = None
+    if start is not None:
+        query_start = _calendar_localtime(start) - timedelta(
+            minutes=CALENDAR_RANGE_BUFFER_MINUTES
+        )
+        query_start = query_start.astimezone(dt_timezone.utc)
+    if end is not None:
+        query_end = _calendar_localtime(end) + timedelta(
+            minutes=CALENDAR_RANGE_BUFFER_MINUTES
+        )
+        query_end = query_end.astimezone(dt_timezone.utc)
+    return query_start, query_end
 
 
 def appointment_overlaps_range(
@@ -251,19 +282,16 @@ def build_calendar_events(
     end: datetime | None = None,
 ) -> list[dict[str, Any]]:
     """확정(CONFIRMED) 예약만 FullCalendar 이벤트 JSON으로 변환."""
-    service_tz = _calendar_service_tz()
+    query_start, query_end = _db_query_bounds(start, end)
     qs = (
         Appointment.objects.filter(status=AppointmentStatus.CONFIRMED)
-        .annotate(local_day=TruncDate("scheduled_at", tzinfo=service_tz))
         .select_related("client", "counselor", "case", "zoom_meeting")
         .order_by("scheduled_at")
     )
-    range_start_date = _local_date_bound(start)
-    range_end_date = _local_date_bound(end)
-    if range_end_date is not None:
-        qs = qs.filter(local_day__lt=range_end_date)
-    if range_start_date is not None:
-        qs = qs.filter(local_day__gte=range_start_date)
+    if query_end is not None:
+        qs = qs.filter(scheduled_at__lt=query_end)
+    if query_start is not None:
+        qs = qs.filter(scheduled_at__gte=query_start)
 
     appointments: list[Appointment] = []
     intervals: list[CalendarInterval] = []
@@ -275,6 +303,10 @@ def build_calendar_events(
             if duration <= 0:
                 duration = 50
             end_at = start_at + timedelta(minutes=duration)
+            if not appointment_overlaps_range(
+                start_at, end_at, range_start=start, range_end=end
+            ):
+                continue
             appointments.append(apt)
             intervals.append(
                 CalendarInterval(
