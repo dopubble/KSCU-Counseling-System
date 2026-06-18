@@ -28,8 +28,10 @@ from apps.reports.table_sort import (
     sort_queryset,
 )
 from apps.reports.appointment_calendar import (
+    GCAL_HOST_COLORS,
     HOST_COLORS,
     build_calendar_events,
+    calendar_gcal_ui_enabled,
     get_calendar_timezone_name,
     get_mock_calendar_events,
     get_zoom_host_pool,
@@ -398,11 +400,16 @@ def counselor_list(request):
 
 
 def _calendar_legend_hosts() -> list[dict[str, str]]:
+    use_gcal = calendar_gcal_ui_enabled()
     return [
         {
             "id": host_id,
             "label": zoom_host_label(host_id),
-            "color": HOST_COLORS.get(host_id, {}).get("bg", "#4f46e5"),
+            "color": (
+                GCAL_HOST_COLORS.get(host_id, {}).get("bg", "#ede9fe")
+                if use_gcal
+                else HOST_COLORS.get(host_id, {}).get("bg", "#4f46e5")
+            ),
         }
         for host_id in get_zoom_host_pool()
     ]
@@ -424,6 +431,7 @@ def appointment_calendar(request):
             "use_mock": use_mock,
             "zoom_host_pool": _calendar_legend_hosts(),
             "calendar_timezone": get_calendar_timezone_name(),
+            "calendar_gcal_ui": calendar_gcal_ui_enabled(),
         },
     )
 

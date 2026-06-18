@@ -14,6 +14,7 @@
     const mockUrl = calendarEl.dataset.mockUrl || "";
     const useMock = calendarEl.dataset.useMock === "1";
     const calendarTimeZone = calendarEl.dataset.timezone || "Asia/Seoul";
+    const gcalUi = calendarEl.dataset.gcalUi === "1";
     const detailModalEl = document.getElementById("adminAppointmentDetailModal");
     const detailModal = detailModalEl
         ? window.bootstrap.Modal.getOrCreateInstance(detailModalEl)
@@ -85,6 +86,14 @@
         dayMaxEvents: false,
         dayMaxEventRows: false,
         eventOrder: "start",
+        eventDisplay: gcalUi ? "block" : "auto",
+        displayEventTime: true,
+        eventTimeFormat: {
+            hour: "numeric",
+            minute: "2-digit",
+            meridiem: "short",
+            hour12: true,
+        },
         headerToolbar: {
             left: "prev,next today",
             center: "title",

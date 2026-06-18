@@ -1,0 +1,110 @@
+/**
+ * 테스트 서버 전용 — Google Calendar 스타일 (KSCU_DEPLOY_ENV=test)
+ * 운영(production)에는 CALENDAR_GCAL_UI=False 이므로 이 파일이 로드되지 않습니다.
+ */
+
+.admin-calendar-page--gcal-ui {
+    --gcal-text: #202124;
+    --gcal-header-bg: #f1f3f4;
+    --gcal-btn-bg: #202124;
+    --gcal-btn-hover: #3c4043;
+}
+
+.admin-calendar-page--gcal-ui .fc {
+    --fc-today-bg-color: rgba(32, 33, 36, 0.06);
+    --fc-event-text-color: var(--gcal-text);
+}
+
+/* 툴바·버튼 — 기본 파랑 → 검정 */
+.admin-calendar-page--gcal-ui .fc .fc-toolbar-title {
+    color: var(--gcal-text);
+}
+
+.admin-calendar-page--gcal-ui .fc .fc-button-primary {
+    background-color: var(--gcal-btn-bg);
+    border-color: var(--gcal-btn-bg);
+    color: #fff;
+}
+
+.admin-calendar-page--gcal-ui .fc .fc-button-primary:not(:disabled).fc-button-active,
+.admin-calendar-page--gcal-ui .fc .fc-button-primary:not(:disabled):active,
+.admin-calendar-page--gcal-ui .fc .fc-button-primary:hover {
+    background-color: var(--gcal-btn-hover);
+    border-color: var(--gcal-btn-hover);
+}
+
+/* 요일 헤더 — 옅은 그레이 배경 */
+.admin-calendar-page--gcal-ui .fc .fc-col-header-cell {
+    background-color: var(--gcal-header-bg);
+}
+
+.admin-calendar-page--gcal-ui .fc .fc-col-header-cell-cushion {
+    color: var(--gcal-text);
+    font-weight: 600;
+}
+
+/* 캘린더 좌·우 외곽 테두리 제거 */
+.admin-calendar-page--gcal-ui .fc-theme-standard .fc-scrollgrid {
+    border-left: none;
+    border-right: none;
+}
+
+.admin-calendar-page--gcal-ui .fc-theme-standard td:first-child,
+.admin-calendar-page--gcal-ui .fc-theme-standard th:first-child {
+    border-left: none;
+}
+
+.admin-calendar-page--gcal-ui .fc-theme-standard td:last-child,
+.admin-calendar-page--gcal-ui .fc-theme-standard th:last-child {
+    border-right: none;
+}
+
+.admin-calendar-page--gcal-ui .admin-calendar-shell {
+    box-shadow: none;
+    padding-left: 0;
+    padding-right: 0;
+}
+
+/* 이벤트 — 동그라미(dot) 대신 배경색 블록 */
+.admin-calendar-page--gcal-ui .fc-daygrid-event-dot {
+    display: none;
+}
+
+.admin-calendar-page--gcal-ui .fc-daygrid-block-event,
+.admin-calendar-page--gcal-ui .fc-daygrid-dot-event {
+    border-radius: 4px;
+    margin-top: 2px;
+    padding: 1px 4px;
+}
+
+.admin-calendar-page--gcal-ui .fc-daygrid-block-event .fc-event-time,
+.admin-calendar-page--gcal-ui .fc-daygrid-block-event .fc-event-title,
+.admin-calendar-page--gcal-ui .fc-daygrid-dot-event .fc-event-time,
+.admin-calendar-page--gcal-ui .fc-daygrid-dot-event .fc-event-title {
+    color: var(--gcal-text);
+    font-weight: 500;
+}
+
+.admin-calendar-page--gcal-ui .fc-daygrid-block-event .fc-event-time {
+    font-weight: 600;
+}
+
+.admin-calendar-page--gcal-ui .fc-h-event {
+    border-width: 0 0 0 3px;
+    border-style: solid;
+}
+
+.admin-calendar-page--gcal-ui .fc-timegrid-event {
+    border-radius: 4px;
+    border-width: 0 0 0 3px;
+    padding: 0.15rem 0.35rem;
+}
+
+.admin-calendar-page--gcal-ui .fc-timegrid-event .fc-event-time,
+.admin-calendar-page--gcal-ui .fc-timegrid-event .fc-event-title {
+    color: var(--gcal-text);
+}
+
+.admin-calendar-page--gcal-ui .admin-calendar-legend-item {
+    color: var(--gcal-text);
+}

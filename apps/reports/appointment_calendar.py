@@ -29,6 +29,44 @@ HOST_COLORS: dict[str, dict[str, str]] = {
 IN_PERSON_COLORS = {"bg": "#64748b", "border": "#475569"}
 REMOTE_NO_ZOOM_COLORS = {"bg": "#0891b2", "border": "#0e7490"}
 
+# Google Calendar 스타일(테스트 서버) — 옅은 배경 + 검정 글자
+GCAL_HOST_COLORS: dict[str, dict[str, str]] = {
+    "host_01": {"bg": "#ede9fe", "border": "#7c3aed", "text": "#202124"},
+    "host_02": {"bg": "#d1fae5", "border": "#059669", "text": "#202124"},
+    "host_03": {"bg": "#ffedd5", "border": "#d97706", "text": "#202124"},
+    "host_04": {"bg": "#fce7f3", "border": "#db2777", "text": "#202124"},
+}
+GCAL_IN_PERSON_COLORS = {"bg": "#f1f3f4", "border": "#9aa0a6", "text": "#202124"}
+GCAL_REMOTE_NO_ZOOM_COLORS = {"bg": "#e0f2fe", "border": "#0284c7", "text": "#202124"}
+GCAL_EVENT_TEXT = "#202124"
+
+
+def calendar_gcal_ui_enabled() -> bool:
+    return getattr(settings, "CALENDAR_GCAL_UI", False)
+
+
+def _resolve_event_colors(
+    *,
+    host_id: str,
+    is_remote: bool,
+) -> dict[str, str]:
+    if calendar_gcal_ui_enabled():
+        if not is_remote:
+            return dict(GCAL_IN_PERSON_COLORS)
+        if host_id:
+            palette = GCAL_HOST_COLORS.get(host_id)
+            if palette:
+                return dict(palette)
+            idx = hash(host_id) % len(GCAL_HOST_COLORS)
+            return dict(list(GCAL_HOST_COLORS.values())[idx])
+        return dict(GCAL_REMOTE_NO_ZOOM_COLORS)
+
+    if not is_remote:
+        return dict(IN_PERSON_COLORS)
+    if host_id:
+        return dict(_host_colors(host_id))
+    return dict(REMOTE_NO_ZOOM_COLORS)
+
 # DB 선필터용 — 최장 상담 시간보다 넉넉한 버퍼(분)
 CALENDAR_RANGE_BUFFER_MINUTES = 180
 
@@ -242,17 +280,12 @@ def _serialize_event_row(row: dict[str, Any]) -> dict[str, Any]:
     zoom_url = (row.get("zoom_url") or "").strip()
     is_remote = method == CounselingMethod.REMOTE
 
-    if not is_remote:
-        colors = IN_PERSON_COLORS
-    elif host_id:
-        colors = _host_colors(host_id)
-    else:
-        colors = REMOTE_NO_ZOOM_COLORS
+    colors = _resolve_event_colors(host_id=host_id, is_remote=is_remote)
 
     status = row.get("status") or AppointmentStatus.CONFIRMED
     status_label = dict(AppointmentStatus.choices).get(status, status)
 
-    return {
+    payload: dict[str, Any] = {
         "id": str(row["id"]),
         "title": row["title"],
         "start": row["start"],
@@ -274,6 +307,11 @@ def _serialize_event_row(row: dict[str, Any]) -> dict[str, Any]:
             "is_mock": str(row.get("id", "")).startswith("mock-"),
         },
     }
+    if calendar_gcal_ui_enabled():
+        payload["textColor"] = colors.get("text", GCAL_EVENT_TEXT)
+        payload["classNames"] = ["gcal-event-block"]
+        payload["display"] = "block"
+    return payload
 
 
 def build_calendar_events(
