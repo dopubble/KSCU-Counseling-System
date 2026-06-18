@@ -166,14 +166,6 @@ def _counselor_immutable_fields_tampered(request, user, profile) -> bool:
         return True
     if "role_display" in request.POST and request.POST.get("role_display", "") != user.get_role_display():
         return True
-    if profile is None:
-        return False
-    posted_birth = request.POST.get("birth_date", "")
-    expected_birth = profile.birth_date.isoformat() if profile.birth_date else ""
-    if "birth_date" in request.POST and posted_birth != expected_birth:
-        return True
-    if "gender" in request.POST and request.POST.get("gender", "") != (profile.gender or ""):
-        return True
     return False
 
 
@@ -212,11 +204,11 @@ def _save_client_profile(profile: ClientProfile, form: ProfileUpdateForm) -> Non
     )
 
 
-def _get_counselor_profile(user):
-    try:
-        return user.counselor_profile
-    except CounselorProfile.DoesNotExist:
-        return None
+def _save_counselor_profile(profile: CounselorProfile, form: CounselorProfileUpdateForm) -> None:
+    """상담사 개인 정보 저장."""
+    profile.birth_date = form.cleaned_data["birth_date"]
+    profile.gender = form.cleaned_data.get("gender", "")
+    profile.save(update_fields=["birth_date", "gender", "updated_at"])
 
 
 @role_required(UserRole.CLIENT, UserRole.COUNSELOR)
@@ -226,10 +218,10 @@ def profile_update(request):
     is_counselor = user.role == UserRole.COUNSELOR
 
     if is_counselor:
-        profile = _get_counselor_profile(user)
+        profile, _ = CounselorProfile.objects.get_or_create(user=user)
         form_class = CounselorProfileUpdateForm
         dashboard_url = "counselor:dashboard"
-        tamper_message = "이름·이메일(로그인 아이디)·생년월일·성별 등 가입 시 확정된 정보는 변경할 수 없습니다."
+        tamper_message = "이름·이메일(로그인 아이디) 등 변경할 수 없는 정보를 수정할 수 없습니다."
     else:
         profile, _ = ClientProfile.objects.get_or_create(user=user)
         form_class = ProfileUpdateForm
@@ -255,6 +247,8 @@ def profile_update(request):
             )
             if not is_counselor:
                 _save_client_profile(profile, form)
+            else:
+                _save_counselor_profile(profile, form)
             if form.new_password:
                 messages.success(request, "내정보와 비밀번호가 저장되었습니다.")
             else:

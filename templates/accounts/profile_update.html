@@ -12,7 +12,7 @@
     <div class="container site-container">
         <div class="{% if not is_counselor %}client-portal-stack{% endif %}">
             {% if is_counselor %}
-            {% page_header title="내정보 수정" subtitle="휴대폰·비밀번호만 변경할 수 있습니다. 이메일(로그인 아이디)과 가입 시 입력한 나머지 정보는 확인만 가능합니다." heading_tag="h1" title_class="h3 fw-semibold site-page-title mb-0" header_class="site-page-header mb-4" c1_label="대시보드" c1_url_name="counselor:dashboard" c1_icon="bi-briefcase" c2_label="내정보 수정" %}
+            {% page_header title="내정보 수정" subtitle="생년월일·성별·휴대폰·비밀번호를 변경할 수 있습니다. 이름과 이메일(로그인 아이디)은 확인만 가능합니다." heading_tag="h1" title_class="h3 fw-semibold site-page-title mb-0" header_class="site-page-header mb-4" c1_label="대시보드" c1_url_name="counselor:dashboard" c1_icon="bi-briefcase" c2_label="내정보 수정" %}
             {% else %}
             {% page_header title="내정보 수정" subtitle="학적 정보·휴대폰·비밀번호를 변경할 수 있습니다. 이름과 이메일(로그인 아이디)은 확인만 가능합니다." heading_tag="h1" title_class="client-portal-title site-page-title" header_class="site-page-header mb-0" c1_label="내 상담실" c1_url_name="client:dashboard" c1_icon="bi-house-door" c2_label="내정보 수정" %}
             {% endif %}
@@ -29,8 +29,6 @@
                         {% if is_counselor %}
                             {{ form.role_display|as_crispy_field }}
                             {{ form.name|as_crispy_field }}
-                            {{ form.birth_date|as_crispy_field }}
-                            {{ form.gender|as_crispy_field }}
                         {% else %}
                             {{ form.name|as_crispy_field }}
                         {% endif %}
@@ -38,7 +36,10 @@
 
                         <hr class="my-4">
                         <p class="small text-muted fw-semibold text-uppercase mb-3">변경 가능 정보</p>
-                        {% if not is_counselor %}
+                        {% if is_counselor %}
+                            {{ form.birth_date|as_crispy_field }}
+                            {{ form.gender|as_crispy_field }}
+                        {% else %}
                             {{ form.is_kcu_student|as_crispy_field }}
                             {{ form.student_id|as_crispy_field }}
                             {{ form.birth_date|as_crispy_field }}

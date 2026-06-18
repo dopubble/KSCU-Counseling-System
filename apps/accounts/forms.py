@@ -402,7 +402,7 @@ class ProfileUpdateForm(OptionalPasswordChangeFieldsForm):
 
 
 class CounselorProfileUpdateForm(OptionalPasswordChangeFieldsForm):
-    """상담사 내정보 수정 — 연락처·비밀번호 변경 가능 (이메일은 로그인 아이디로 변경 불가)."""
+    """상담사 내정보 수정 — 생년월일·성별·연락처·비밀번호 변경 가능 (이메일·이름은 변경 불가)."""
 
     role_display = forms.CharField(
         label="가입 유형",
@@ -426,18 +426,15 @@ class CounselorProfileUpdateForm(OptionalPasswordChangeFieldsForm):
     birth_date = forms.DateField(
         label="생년월일",
         required=False,
-        disabled=True,
-        widget=forms.DateInput(
-            attrs={"class": "form-control", "type": "date", "readonly": "readonly"},
-        ),
+        widget=BIRTH_DATE_INPUT_WIDGET,
+        input_formats=["%Y-%m-%d"],
+        help_text="숫자 8자리만 입력해 주세요. (예: 19950825)",
     )
-    gender = forms.CharField(
+    gender = forms.ChoiceField(
         label="성별",
         required=False,
-        disabled=True,
-        widget=forms.TextInput(
-            attrs={"class": "form-control", "readonly": "readonly"},
-        ),
+        choices=[("", "선택"), ("남", "남"), ("여", "여")],
+        widget=forms.Select(attrs={"class": "form-select"}),
     )
     email = forms.EmailField(
         label="이메일 (로그인 아이디)",
@@ -473,15 +470,26 @@ class CounselorProfileUpdateForm(OptionalPasswordChangeFieldsForm):
                 profile = None
             if profile is not None:
                 if profile.birth_date:
-                    self.fields["birth_date"].initial = profile.birth_date
-                self.fields["gender"].initial = profile.gender or ""
+                    self.fields["birth_date"].initial = profile.birth_date.strftime("%Y-%m-%d")
+                gender = (profile.gender or "").strip()
+                if gender in {"남", "남성", "M", "m", "male"}:
+                    self.fields["gender"].initial = "남"
+                elif gender in {"여", "여성", "F", "f", "female"}:
+                    self.fields["gender"].initial = "여"
 
     def clean(self):
         cleaned = super().clean()
         if self.errors:
             return cleaned
+
+        if not cleaned.get("birth_date"):
+            self.add_error("birth_date", "생년월일을 입력해 주세요.")
+
         self._new_password = self._validate_optional_password_change()
         return cleaned
+
+    def clean_birth_date(self):
+        return clean_birth_date_field(self.cleaned_data.get("birth_date"))
 
     @property
     def new_password(self) -> str | None:
