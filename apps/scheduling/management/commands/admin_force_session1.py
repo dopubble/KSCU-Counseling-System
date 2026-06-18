@@ -30,6 +30,7 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--client", required=True, help="내담자 이름(정확히)")
+        parser.add_argument("--email", default="", help="내담자 이메일(동명이인 구분)")
         parser.add_argument("--to", dest="to_dt", required=True, help="일시 YYYY-MM-DD HH:MM")
         parser.add_argument(
             "--force",
@@ -58,6 +59,7 @@ class Command(BaseCommand):
 
         result = force_client_session1_schedule(
             client_name=client_name,
+            client_email=(options.get("email") or "").strip(),
             scheduled_at=to_aware,
             dry_run=not options["apply"],
             skip_availability=options["force"] or True,

@@ -248,6 +248,35 @@ def _active_case(client: User) -> Case | None:
     )
 
 
+def _case_for_session1_fix(client: User) -> Case | None:
+    """활성 사례가 없어도 배정된 사례면 1회기 일정 수정 가능."""
+    case = _active_case(client)
+    if case and case.counselor_id:
+        return case
+    return (
+        Case.objects.filter(client=client, counselor__isnull=False)
+        .exclude(status=CaseStatus.CLOSED)
+        .select_related("application", "counselor")
+        .order_by("-opened_at")
+        .first()
+    )
+
+
+def _resolve_client_for_ops(
+    *,
+    client_name: str,
+    client_email: str = "",
+    client_index: dict[str, list[User]] | None = None,
+) -> tuple[User | None, str]:
+    email = (client_email or "").strip()
+    if email:
+        user = User.objects.filter(role=UserRole.CLIENT, email__iexact=email).first()
+        if user:
+            return user, ""
+        return None, f"이메일로 내담자를 찾을 수 없습니다: {email}"
+    return resolve_client_by_name(client_name, client_index=client_index)
+
+
 def _roster_case(client: User, counselor_name: str) -> Case | None:
     """로스터 상담사와 일치하는 활성 사례 (없으면 최신 활성 사례)."""
     matched = (
@@ -1341,33 +1370,36 @@ def force_client_session1_schedule(
     *,
     client_name: str,
     scheduled_at: datetime,
+    client_email: str = "",
     dry_run: bool = True,
     skip_availability: bool = True,
 ) -> ForceSession1Result:
-    """활성 사례 기준 1회기 일정 강제 설정 — 로스터 상담사명과 무관하게 동작."""
-    from apps.scheduling.services import reschedule_confirmed_appointment
-
+    """내담자 활성·배정 사례 기준 1회기 일정 강제 설정(기존 1회기 전부 정리 후 확정)."""
     client_index = _build_name_index(UserRole.CLIENT)
-    client, client_err = resolve_client_by_name(client_name, client_index=client_index)
+    client, client_err = _resolve_client_for_ops(
+        client_name=client_name,
+        client_email=client_email,
+        client_index=client_index,
+    )
     if client_err or not client:
         return ForceSession1Result(client_name, "error", client_err or "내담자 없음")
 
-    case = _active_case(client)
+    case = _case_for_session1_fix(client)
     if not case or not case.counselor_id:
-        return ForceSession1Result(client_name, "error", "활성 사례·상담사 없음")
+        return ForceSession1Result(client_name, "error", "배정된 사례·상담사 없음")
 
     if timezone.is_naive(scheduled_at):
         scheduled_at = timezone.make_aware(scheduled_at, timezone.get_current_timezone())
 
     expected_label = _local_slot_label(scheduled_at)
-    session1_rows = list(
-        Appointment.objects.filter(case=case, session_number=1)
+    all_session1 = list(
+        Appointment.objects.filter(client=client, session_number=1)
         .select_related("counselor", "case")
         .order_by("-created_at")
     )
     active = [
         apt
-        for apt in session1_rows
+        for apt in all_session1
         if apt.status
         not in (
             AppointmentStatus.CANCELLED,
@@ -1375,77 +1407,50 @@ def force_client_session1_schedule(
             AppointmentStatus.NO_SHOW,
         )
     ]
-    canonical = _pick_canonical_session1(active, expected_at=scheduled_at) if active else None
-    extras = [apt for apt in active if not canonical or apt.pk != canonical.pk]
 
     if dry_run:
+        on_case = [a for a in active if a.case_id == case.pk]
+        current = on_case[0] if on_case else (active[0] if active else None)
         if (
-            canonical
-            and _local_slot_label(canonical.scheduled_at) == expected_label
-            and canonical.status == AppointmentStatus.CONFIRMED
+            current
+            and current.case_id == case.pk
+            and _local_slot_label(current.scheduled_at) == expected_label
+            and current.status == AppointmentStatus.CONFIRMED
         ):
             return ForceSession1Result(client_name, "ok", f"이미 확정 ({expected_label})")
-        if canonical:
-            detail = (
-                f"{canonical.get_status_display()} · "
-                f"{_local_slot_label(canonical.scheduled_at)} → {expected_label}"
-            )
-        else:
-            detail = f"생성·확정 ({expected_label})"
-        if extras:
-            detail += f" · 중복 {len(extras)}건 취소"
+        cancel_n = len(active)
+        detail = f"기존 1회기 {cancel_n}건 취소 → {expected_label} 확정 (사례 {case.case_number})"
         return ForceSession1Result(client_name, "dry_run", detail)
 
     with transaction.atomic():
-        for apt in extras:
+        cancelled = 0
+        for apt in active:
             apt.status = AppointmentStatus.CANCELLED
             apt.cancelled_at = timezone.now()
-            apt.cancel_reason = "1회기 일정 강제 변경 — 중복 정리"
+            apt.cancel_reason = "1회기 일정 강제 변경 — 기존 일정 삭제"
             apt.save(update_fields=["status", "cancelled_at", "cancel_reason", "updated_at"])
+            cancelled += 1
 
-        if canonical:
-            if canonical.status == AppointmentStatus.CONFIRMED:
-                if _local_slot_label(canonical.scheduled_at) != expected_label:
-                    canonical, _zoom_warning = reschedule_confirmed_appointment(
-                        canonical,
-                        new_scheduled_at=scheduled_at,
-                        skip_availability=skip_availability,
-                    )
-                detail = f"확정 ({_local_slot_label(canonical.scheduled_at)})"
-            else:
-                canonical.scheduled_at = scheduled_at
-                canonical.counselor = case.counselor
-                canonical.client = client
-                canonical.save(
-                    update_fields=["scheduled_at", "counselor", "client", "updated_at"]
-                )
-                if case.counseling_method == CounselingMethod.REMOTE:
-                    confirm_appointment_with_zoom(canonical, notify=False)
-                else:
-                    canonical.status = AppointmentStatus.CONFIRMED
-                    canonical.confirmed_at = timezone.now()
-                    canonical.save(update_fields=["status", "confirmed_at", "updated_at"])
-                detail = f"확정 ({_local_slot_label(canonical.scheduled_at)})"
+        appointment = Appointment.objects.create(
+            case=case,
+            counselor=case.counselor,
+            client=client,
+            scheduled_at=scheduled_at,
+            duration_minutes=DEFAULT_APPOINTMENT_DURATION_MINUTES,
+            status=AppointmentStatus.PENDING,
+            session_number=1,
+            request_message="1회기 일정 강제 설정",
+        )
+        if case.counseling_method == CounselingMethod.REMOTE:
+            confirm_appointment_with_zoom(appointment, notify=False)
         else:
-            canonical = Appointment.objects.create(
-                case=case,
-                counselor=case.counselor,
-                client=client,
-                scheduled_at=scheduled_at,
-                duration_minutes=DEFAULT_APPOINTMENT_DURATION_MINUTES,
-                status=AppointmentStatus.PENDING,
-                session_number=1,
-                request_message="1회기 일정 강제 설정",
-            )
-            if case.counseling_method == CounselingMethod.REMOTE:
-                confirm_appointment_with_zoom(canonical, notify=False)
-            else:
-                canonical.status = AppointmentStatus.CONFIRMED
-                canonical.confirmed_at = timezone.now()
-                canonical.save(update_fields=["status", "confirmed_at", "updated_at"])
-            detail = f"생성·확정 ({expected_label})"
+            appointment.status = AppointmentStatus.CONFIRMED
+            appointment.confirmed_at = timezone.now()
+            appointment.save(update_fields=["status", "confirmed_at", "updated_at"])
 
-        if extras:
-            detail += f" · 중복 {len(extras)}건 취소"
+        detail = (
+            f"기존 {cancelled}건 취소 · 확정 {_local_slot_label(appointment.scheduled_at)} "
+            f"(사례 {case.case_number})"
+        )
 
     return ForceSession1Result(client_name, "ok", detail)

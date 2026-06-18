@@ -54,6 +54,79 @@ def _student_id_filter(student_id: str) -> Q:
     return Q(client_profile__student_id="") | Q(client_profile__student_id__isnull=True)
 
 
+def _student_id_variants(student_id: str) -> tuple[str, ...]:
+    """학번 표기 차이(261110004 vs 26111004) 대응."""
+    normalized = (student_id or "").strip()
+    if not normalized:
+        return ("",)
+    variants: list[str] = [normalized]
+    if normalized.isdigit():
+        variants.append(normalized.lstrip("0") or "0")
+        if len(normalized) < 8:
+            variants.append(normalized.zfill(8))
+        if len(normalized) < 9:
+            variants.append(normalized.zfill(9))
+    deduped: list[str] = []
+    for item in variants:
+        if item not in deduped:
+            deduped.append(item)
+    return tuple(deduped)
+
+
+def _users_for_purge_target(target: ClientPurgeTarget) -> list[User]:
+    base_qs = User.objects.filter(role=UserRole.CLIENT, name=target.name).select_related(
+        "client_profile"
+    )
+    if not (target.student_id or "").strip():
+        return list(base_qs.order_by("created_at"))
+
+    for sid in _student_id_variants(target.student_id):
+        users = list(base_qs.filter(_student_id_filter(sid)).order_by("created_at"))
+        if users:
+            return users
+
+    # 학번이 DB와 다를 때 이름이 유일하면 이름만으로 삭제
+    by_name = list(base_qs.order_by("created_at"))
+    if len(by_name) == 1:
+        return by_name
+    return []
+
+
+def purge_clients_by_name(
+    name: str,
+    *,
+    student_id_variants: tuple[str, ...] = (),
+    dry_run: bool = True,
+) -> ClientPurgeResult:
+    """이름·학번 후보로 내담자를 찾아 완전 삭제."""
+    variants = student_id_variants or ("",)
+    users: list[User] = []
+    seen: set = set()
+    for sid in variants:
+        for user in _users_for_purge_target(ClientPurgeTarget(name, sid)):
+            if user.pk in seen:
+                continue
+            seen.add(user.pk)
+            users.append(user)
+
+    if not users:
+        return ClientPurgeResult(0, 0, 0, dry_run)
+
+    matches: list[ClientPurgeMatch] = []
+    for user in users:
+        cases = Case.objects.filter(client=user)
+        matches.append(
+            ClientPurgeMatch(
+                target=ClientPurgeTarget(name, ""),
+                user=user,
+                application_count=CounselingApplication.objects.filter(client=user).count(),
+                case_count=cases.count(),
+                active_case_count=cases.filter(status="ACTIVE").count(),
+            )
+        )
+    return purge_client_users(matches, dry_run=dry_run)
+
+
 def find_client_users_for_purge(
     targets: Iterable[ClientPurgeTarget],
 ) -> tuple[list[ClientPurgeMatch], list[ClientPurgeTarget]]:
@@ -63,13 +136,7 @@ def find_client_users_for_purge(
     seen_user_ids: set = set()
 
     for target in targets:
-        qs = (
-            User.objects.filter(role=UserRole.CLIENT, name=target.name)
-            .filter(_student_id_filter(target.student_id))
-            .select_related("client_profile")
-            .order_by("created_at")
-        )
-        users = list(qs)
+        users = _users_for_purge_target(target)
         if not users:
             missing.append(target)
             continue

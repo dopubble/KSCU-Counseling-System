@@ -1,6 +1,5 @@
 """내담자 계정 및 연관 데이터 완전 삭제."""
 
-from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection
 
@@ -122,23 +121,9 @@ class Command(BaseCommand):
 
     def _ensure_database_ready(self) -> None:
         engine = connection.settings_dict.get("ENGINE", "")
-        if "sqlite" in engine:
-            raise CommandError(
-                "로컬 SQLite에서는 기본적으로 실행하지 않습니다. "
-                "운영 DB(Railway Public URL) 또는 Railway Shell에서 실행하거나 "
-                "--allow-local 을 사용하세요."
-            )
-
-        db = settings.DATABASES["default"]
-        host = (db.get("HOST") or "").lower()
-        if "internal" in host and "sqlite" not in engine:
-            # Railway preDeploy·Shell 내부 DB는 허용, PC에서 internal URL만 차단
-            import socket
-
-            try:
-                socket.gethostbyname(host)
-            except socket.gaierror:
-                raise CommandError(
-                    "postgres.railway.internal 은 Railway 서비스 안에서만 접속됩니다. "
-                    "Railway Shell에서 실행하거나 Postgres Public URL을 사용하세요."
-                ) from None
+        if "sqlite" not in engine:
+            return
+        raise CommandError(
+            "로컬 SQLite에서는 기본적으로 실행하지 않습니다. "
+            "운영 DB(Railway)에서 실행하거나 --allow-local 을 사용하세요."
+        )
