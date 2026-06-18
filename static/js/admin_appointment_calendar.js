@@ -105,6 +105,9 @@
             week: "주",
             day: "일",
         },
+        dayCellContent: function (arg) {
+            return { html: String(arg.date.getDate()) };
+        },
         events: function (info, successCallback, failureCallback) {
             const url = useMock && mockUrl ? mockUrl : eventsUrl;
             if (!url) {
