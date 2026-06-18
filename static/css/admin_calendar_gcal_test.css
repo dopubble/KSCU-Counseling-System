@@ -1,6 +1,5 @@
 /**
- * 테스트 서버 전용 — Google Calendar 스타일 (KSCU_DEPLOY_ENV=test)
- * 운영(production)에는 CALENDAR_GCAL_UI=False 이므로 이 파일이 로드되지 않습니다.
+ * Google Calendar 스타일 — 예약 캘린더 (배경색 블록·검정 UI)
  */
 
 .admin-calendar-page--gcal-ui {

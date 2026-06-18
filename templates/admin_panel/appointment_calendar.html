@@ -6,13 +6,11 @@
 {% block extra_css %}
 <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet">
 <link href="{% static 'css/admin_calendar.css' %}" rel="stylesheet">
-{% if calendar_gcal_ui %}
 <link href="{% static 'css/admin_calendar_gcal_test.css' %}" rel="stylesheet">
-{% endif %}
 {% endblock %}
 
 {% block content %}
-<div class="admin-calendar-page{% if calendar_gcal_ui %} admin-calendar-page--gcal-ui{% endif %}">
+<div class="admin-calendar-page admin-calendar-page--gcal-ui">
     {% page_header title="예약 관리 캘린더" heading_tag="h2" header_class="site-page-header mb-3" c1_label="예약 캘린더" c1_icon="bi-calendar3" %}
 
     <div class="admin-calendar-toolbar">
@@ -20,9 +18,6 @@
             <p class="text-muted mb-0 small">
                 확정(CONFIRMED)된 예약만 표시합니다. 비대면 일정은 Zoom 호스트 풀 기준으로 색상이 구분됩니다.
             </p>
-            {% if calendar_gcal_ui %}
-            <span class="badge text-bg-secondary mt-2">테스트 UI — Google Calendar 스타일</span>
-            {% endif %}
             {% if use_mock %}
             <span class="badge text-bg-warning mt-2">데모 모드 — 가상 데이터</span>
             {% endif %}
@@ -51,7 +46,7 @@
         </span>
         {% endfor %}
         <span class="admin-calendar-legend-item">
-            <span class="admin-calendar-legend-swatch" style="background-color: {% if calendar_gcal_ui %}#f1f3f4{% else %}#64748b{% endif %};"></span>
+            <span class="admin-calendar-legend-swatch" style="background-color: #f1f3f4;"></span>
             대면 상담
         </span>
     </div>
@@ -62,7 +57,7 @@
              data-mock-url="{% url 'admin_panel:appointment_calendar_events' %}?mock=1"
              data-use-mock="{% if use_mock %}1{% else %}0{% endif %}"
              data-timezone="{{ calendar_timezone }}"
-             data-gcal-ui="{% if calendar_gcal_ui %}1{% else %}0{% endif %}"></div>
+             data-gcal-ui="1"></div>
     </div>
 </div>
 

@@ -431,7 +431,6 @@ def appointment_calendar(request):
             "use_mock": use_mock,
             "zoom_host_pool": _calendar_legend_hosts(),
             "calendar_timezone": get_calendar_timezone_name(),
-            "calendar_gcal_ui": calendar_gcal_ui_enabled(),
         },
     )
 
