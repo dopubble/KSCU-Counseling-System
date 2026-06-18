@@ -3,6 +3,10 @@
 
 {% block title %}내정보 수정{% endblock %}
 
+{% block extra_css %}
+<link href="{% static 'css/birth_date_input.css' %}" rel="stylesheet">
+{% endblock %}
+
 {% block content %}
 <section class="site-page {% if is_counselor %}counselor-page{% else %}client-portal-page{% endif %} py-4 py-lg-5">
     <div class="container site-container">
@@ -89,5 +93,6 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="{% static 'js/birth_date_input.js' %}"></script>
 <script src="{% static 'js/profile_update_form.js' %}"></script>
 {% endblock %}

@@ -8,8 +8,29 @@ from django.contrib.auth.forms import (
     UserCreationForm,
 )
 from django.contrib.auth.password_validation import validate_password
+from datetime import date
 
 from .models import CounselorProfile, ClientProfile, User, UserRole, UserStatus
+
+BIRTH_DATE_INPUT_WIDGET = forms.TextInput(
+    attrs={
+        "class": "form-control birth-date-input",
+        "type": "tel",
+        "inputmode": "numeric",
+        "placeholder": "19950825",
+        "maxlength": "10",
+        "autocomplete": "bday",
+        "data-birth-date-input": "1",
+    }
+)
+
+
+def clean_birth_date_field(value):
+    if value is None:
+        return value
+    if value > date.today():
+        raise forms.ValidationError("올바른 생년월일을 입력해 주세요.")
+    return value
 
 
 class SignUpForm(UserCreationForm):
@@ -30,11 +51,9 @@ class SignUpForm(UserCreationForm):
     birth_date = forms.DateField(
         label="생년월일",
         required=False,
-        widget=forms.DateInput(
-            attrs={"class": "form-control", "type": "date"},
-            format="%Y-%m-%d",
-        ),
+        widget=BIRTH_DATE_INPUT_WIDGET,
         input_formats=["%Y-%m-%d"],
+        help_text="숫자 8자리만 입력해 주세요. (예: 19950825)",
     )
     is_kcu_student = forms.ChoiceField(
         label="숭실사이버대학교 학생 여부",
@@ -121,6 +140,9 @@ class SignUpForm(UserCreationForm):
 
         cleaned["student_id"] = (cleaned.get("student_id") or "").strip()
         return cleaned
+
+    def clean_birth_date(self):
+        return clean_birth_date_field(self.cleaned_data.get("birth_date"))
 
     def save(self, commit=True):
         user = super().save(commit=False)
@@ -280,11 +302,9 @@ class ProfileUpdateForm(OptionalPasswordChangeFieldsForm):
     birth_date = forms.DateField(
         label="생년월일",
         required=False,
-        widget=forms.DateInput(
-            attrs={"class": "form-control", "type": "date"},
-            format="%Y-%m-%d",
-        ),
+        widget=BIRTH_DATE_INPUT_WIDGET,
         input_formats=["%Y-%m-%d"],
+        help_text="숫자 8자리만 입력해 주세요. (예: 19950825)",
     )
     department = forms.CharField(
         label="소속 학과",
@@ -333,7 +353,7 @@ class ProfileUpdateForm(OptionalPasswordChangeFieldsForm):
                 profile.student_id if profile is not None else ""
             )
             if profile is not None and profile.birth_date:
-                self.fields["birth_date"].initial = profile.birth_date
+                self.fields["birth_date"].initial = profile.birth_date.strftime("%Y-%m-%d")
             self.fields["department"].initial = (
                 profile.department if profile is not None else ""
             )
@@ -372,6 +392,9 @@ class ProfileUpdateForm(OptionalPasswordChangeFieldsForm):
         cleaned["student_id"] = (cleaned.get("student_id") or "").strip()
         self._new_password = self._validate_optional_password_change()
         return cleaned
+
+    def clean_birth_date(self):
+        return clean_birth_date_field(self.cleaned_data.get("birth_date"))
 
     @property
     def new_password(self) -> str | None:
