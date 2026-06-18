@@ -131,9 +131,20 @@ def purge_client_users(
     )
 
 
-def purge_waiting_match_clients_june2026(*, dry_run: bool = True) -> ClientPurgeResult:
+def purge_waiting_match_clients_june2026(
+    *,
+    dry_run: bool = True,
+    ignore_missing: bool = False,
+) -> ClientPurgeResult:
     matches, missing = find_client_users_for_purge(WAITING_MATCH_PURGE_JUNE2026)
-    if missing:
+    if missing and not ignore_missing:
         labels = ", ".join(t.label() for t in missing)
         raise LookupError(f"DB에서 찾지 못한 내담자: {labels}")
+    if not matches:
+        return ClientPurgeResult(
+            deleted_users=0,
+            deleted_applications=0,
+            deleted_cases=0,
+            dry_run=dry_run,
+        )
     return purge_client_users(matches, dry_run=dry_run)

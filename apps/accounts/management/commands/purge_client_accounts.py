@@ -131,8 +131,14 @@ class Command(BaseCommand):
 
         db = settings.DATABASES["default"]
         host = (db.get("HOST") or "").lower()
-        if "internal" in host:
-            raise CommandError(
-                "postgres.railway.internal 은 Railway 서비스 안에서만 접속됩니다. "
-                "Railway Shell에서 실행하거나 Postgres Public URL을 사용하세요."
-            )
+        if "internal" in host and "sqlite" not in engine:
+            # Railway preDeploy·Shell 내부 DB는 허용, PC에서 internal URL만 차단
+            import socket
+
+            try:
+                socket.gethostbyname(host)
+            except socket.gaierror:
+                raise CommandError(
+                    "postgres.railway.internal 은 Railway 서비스 안에서만 접속됩니다. "
+                    "Railway Shell에서 실행하거나 Postgres Public URL을 사용하세요."
+                ) from None
