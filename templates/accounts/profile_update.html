@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load crispy_forms_tags ui_tags %}
+{% load crispy_forms_tags ui_tags static %}
 
 {% block title %}내정보 수정{% endblock %}
 
@@ -10,7 +10,7 @@
             {% if is_counselor %}
             {% page_header title="내정보 수정" subtitle="휴대폰·비밀번호만 변경할 수 있습니다. 이메일(로그인 아이디)과 가입 시 입력한 나머지 정보는 확인만 가능합니다." heading_tag="h1" title_class="h3 fw-semibold site-page-title mb-0" header_class="site-page-header mb-4" c1_label="대시보드" c1_url_name="counselor:dashboard" c1_icon="bi-briefcase" c2_label="내정보 수정" %}
             {% else %}
-            {% page_header title="내정보 수정" subtitle="휴대폰·비밀번호만 변경할 수 있습니다. 이메일(로그인 아이디)과 가입 시 입력한 나머지 정보는 확인만 가능합니다." heading_tag="h1" title_class="client-portal-title site-page-title" header_class="site-page-header mb-0" c1_label="내 상담실" c1_url_name="client:dashboard" c1_icon="bi-house-door" c2_label="내정보 수정" %}
+            {% page_header title="내정보 수정" subtitle="학적 정보·휴대폰·비밀번호를 변경할 수 있습니다. 이름과 이메일(로그인 아이디)은 확인만 가능합니다." heading_tag="h1" title_class="client-portal-title site-page-title" header_class="site-page-header mb-0" c1_label="내 상담실" c1_url_name="client:dashboard" c1_icon="bi-house-door" c2_label="내정보 수정" %}
             {% endif %}
 
             <div class="card {% if not is_counselor %}client-dashboard-card{% else %}border-0 shadow-sm{% endif %} border-0">
@@ -29,15 +29,17 @@
                             {{ form.gender|as_crispy_field }}
                         {% else %}
                             {{ form.name|as_crispy_field }}
-                            {{ form.is_kcu_student_display|as_crispy_field }}
-                            {{ form.student_id|as_crispy_field }}
-                            {{ form.birth_date|as_crispy_field }}
-                            {{ form.department|as_crispy_field }}
                         {% endif %}
                         {{ form.email|as_crispy_field }}
 
                         <hr class="my-4">
                         <p class="small text-muted fw-semibold text-uppercase mb-3">변경 가능 정보</p>
+                        {% if not is_counselor %}
+                            {{ form.is_kcu_student|as_crispy_field }}
+                            {{ form.student_id|as_crispy_field }}
+                            {{ form.birth_date|as_crispy_field }}
+                            {{ form.department|as_crispy_field }}
+                        {% endif %}
                         {{ form.phone|as_crispy_field }}
 
                         <hr class="my-4" id="password-section">
@@ -64,4 +66,10 @@
         </div>
     </div>
 </section>
+{% endblock %}
+
+{% block extra_js %}
+{% if not is_counselor %}
+<script src="{% static 'js/profile_update_form.js' %}"></script>
+{% endif %}
 {% endblock %}

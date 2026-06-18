@@ -138,13 +138,13 @@ class ClientProfile(models.Model):
         "학번",
         max_length=20,
         blank=True,
-        help_text="선택 사항. 회원가입·상담 신청 시 확정되며 이후 변경할 수 없습니다.",
+        help_text="선택 사항. 내담자 내정보에서 수정할 수 있습니다.",
     )
     birth_date = models.DateField(
         "생년월일",
         null=True,
         blank=True,
-        help_text="회원가입 시 확정되며 이후 변경할 수 없습니다.",
+        help_text="내담자 내정보에서 수정할 수 있습니다.",
     )
     is_kcu_student = models.BooleanField(
         "숭실사이버대학교 학생 여부",

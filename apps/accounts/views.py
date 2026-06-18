@@ -153,20 +153,6 @@ def _profile_immutable_fields_tampered(request, user, profile) -> bool:
         return True
     if "name" in request.POST and request.POST.get("name", "") != user.name:
         return True
-    current_student_id = profile.student_id or ""
-    if "student_id" in request.POST and request.POST.get("student_id", "") != current_student_id:
-        return True
-    posted_birth = request.POST.get("birth_date", "")
-    expected_birth = profile.birth_date.isoformat() if profile.birth_date else ""
-    if "birth_date" in request.POST and posted_birth != expected_birth:
-        return True
-    current_department = profile.department or ""
-    if "department" in request.POST and request.POST.get("department", "") != current_department:
-        return True
-    if "is_kcu_student_display" in request.POST:
-        expected = "예" if profile.is_kcu_student else "아니오"
-        if request.POST.get("is_kcu_student_display", "") != expected:
-            return True
     return False
 
 
@@ -209,6 +195,23 @@ def _save_user_profile_contact(
         update_session_auth_hash(request, user)
 
 
+def _save_client_profile(profile: ClientProfile, form: ProfileUpdateForm) -> None:
+    """내담자 학적·개인 정보 저장."""
+    profile.birth_date = form.cleaned_data["birth_date"]
+    profile.is_kcu_student = form.cleaned_data["is_kcu_student"] == "yes"
+    profile.student_id = form.cleaned_data.get("student_id", "")
+    profile.department = form.cleaned_data.get("department", "")
+    profile.save(
+        update_fields=[
+            "birth_date",
+            "is_kcu_student",
+            "student_id",
+            "department",
+            "updated_at",
+        ]
+    )
+
+
 def _get_counselor_profile(user):
     try:
         return user.counselor_profile
@@ -218,7 +221,7 @@ def _get_counselor_profile(user):
 
 @role_required(UserRole.CLIENT, UserRole.COUNSELOR)
 def profile_update(request):
-    """내정보 수정 — 휴대폰·비밀번호 변경 (역할별 가입 정보·로그인 이메일은 조회만)."""
+    """내정보 수정 — 휴대폰·비밀번호 변경 (상담사). 내담자는 학적 정보 포함."""
     user = request.user
     is_counselor = user.role == UserRole.COUNSELOR
 
@@ -231,7 +234,7 @@ def profile_update(request):
         profile, _ = ClientProfile.objects.get_or_create(user=user)
         form_class = ProfileUpdateForm
         dashboard_url = "client:dashboard"
-        tamper_message = "이름·이메일(로그인 아이디)·학번·생년월일·소속 학과 등 가입 시 확정된 정보는 변경할 수 없습니다."
+        tamper_message = "이름·이메일(로그인 아이디) 등 변경할 수 없는 정보를 수정할 수 없습니다."
 
     if request.method == "POST":
         if is_counselor:
@@ -250,6 +253,8 @@ def profile_update(request):
                 new_password=form.new_password,
                 request=request,
             )
+            if not is_counselor:
+                _save_client_profile(profile, form)
             if form.new_password:
                 messages.success(request, "내정보와 비밀번호가 저장되었습니다.")
             else:
