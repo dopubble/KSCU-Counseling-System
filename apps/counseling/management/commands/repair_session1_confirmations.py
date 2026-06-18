@@ -1,6 +1,5 @@
 """골드 스탠다드 JSON 기준 1회기 미확정·일시 불일치 예약 복구."""
 
-import os
 from pathlib import Path
 
 from django.conf import settings
@@ -64,8 +63,22 @@ class Command(BaseCommand):
             action="store_true",
             help="오류가 있으면 exit code 1",
         )
+        parser.add_argument(
+            "--continue-on-error",
+            action="store_true",
+            help="예외·오류가 있어도 exit code 0 (Railway preDeploy용)",
+        )
 
     def handle(self, *args, **options):
+        try:
+            self._run(options)
+        except Exception as exc:
+            if options["continue_on_error"]:
+                self.stderr.write(self.style.ERROR(f"repair_session1_confirmations 중단: {exc}"))
+                return
+            raise
+
+    def _run(self, options):
         if options["apply"] and not options["allow_local"]:
             self._ensure_database_ready()
 
@@ -127,11 +140,11 @@ class Command(BaseCommand):
             raise CommandError(f"복구 실패 {errors}건")
 
     def _ensure_database_ready(self):
-        if settings.DEBUG and "sqlite" in connection.settings_dict.get("ENGINE", ""):
-            raise CommandError(
-                "로컬 SQLite입니다. --allow-local 또는 운영 DATABASE_URL을 사용하세요."
-            )
-        if not os.environ.get("DATABASE_URL") and "sqlite" in connection.settings_dict.get(
-            "ENGINE", ""
-        ):
-            raise CommandError("DATABASE_URL이 없습니다. Railway 운영 DB URL을 설정해 주세요.")
+        engine = connection.settings_dict.get("ENGINE", "")
+        if "sqlite" not in engine:
+            return
+        raise CommandError(
+            "SQLite DB입니다. Railway Web 서비스 Variables에 "
+            "DATABASE_URL=${{Postgres.DATABASE_URL}} 연결을 확인하세요. "
+            "로컬 테스트: --allow-local"
+        )

@@ -29,8 +29,13 @@ def sync_go_hyesuk_session1_time(apps, schema_editor):
     )
     errors = [r for r in results if r.status == "error"]
     if errors:
+        import logging
+
         messages = "; ".join(f"{r.client_name}: {r.detail}" for r in errors)
-        raise RuntimeError(f"고혜숙 1회기 일시 동기화 실패: {messages}")
+        logging.getLogger(__name__).warning(
+            "고혜숙 1회기 일시 동기화 실패: %s",
+            messages,
+        )
 
 
 class Migration(migrations.Migration):

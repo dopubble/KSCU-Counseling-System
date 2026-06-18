@@ -10,6 +10,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from django.db import transaction
+from django.db.utils import IntegrityError
 from django.db.models import F
 from django.utils import timezone
 
@@ -1008,7 +1009,12 @@ def repair_session1_confirmations_from_roster(
                     status="created",
                     detail=f"1회기 생성·확정 ({expected_label})",
                 )
-            except (AppointmentServiceError, ZoomAPIError, ZoomNotConfiguredError) as exc:
+            except (
+                AppointmentServiceError,
+                ZoomAPIError,
+                ZoomNotConfiguredError,
+                IntegrityError,
+            ) as exc:
                 results.append(
                     Session1RepairResult(
                         row.client_name,
@@ -1067,7 +1073,7 @@ def repair_session1_confirmations_from_roster(
                     status="rescheduled",
                     detail=detail,
                 )
-            except AppointmentServiceError as exc:
+            except (AppointmentServiceError, IntegrityError) as exc:
                 results.append(
                     Session1RepairResult(
                         row.client_name,
@@ -1160,7 +1166,12 @@ def repair_session1_confirmations_from_roster(
                 status="confirmed",
                 detail=f"확정 ({_local_slot_label(appointment.scheduled_at)})",
             )
-        except (AppointmentServiceError, ZoomAPIError, ZoomNotConfiguredError) as exc:
+        except (
+            AppointmentServiceError,
+            ZoomAPIError,
+            ZoomNotConfiguredError,
+            IntegrityError,
+        ) as exc:
             results.append(
                 Session1RepairResult(
                     row.client_name,

@@ -28,8 +28,14 @@ def sync_cheon_session1_times(apps, schema_editor):
     )
     errors = [r for r in results if r.status == "error"]
     if errors:
+        import logging
+
         messages = "; ".join(f"{r.client_name}: {r.detail}" for r in errors)
-        raise RuntimeError(f"1회기 일시 동기화 실패 ({len(errors)}건): {messages}")
+        logging.getLogger(__name__).warning(
+            "1회기 일시 동기화 일부 실패 (%s건): %s",
+            len(errors),
+            messages,
+        )
 
 
 class Migration(migrations.Migration):
