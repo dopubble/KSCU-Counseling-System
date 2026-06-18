@@ -18,7 +18,7 @@
                     <i class="bi bi-person-gear me-1"></i>회원 정보
                 </div>
                 <div class="card-body p-4 p-md-5">
-                    <form method="post" class="profile-update-form" novalidate>
+                    <form method="post" class="profile-update-form" novalidate autocomplete="off">
                         {% csrf_token %}
 
                         <p class="small text-muted fw-semibold text-uppercase mb-3">가입 정보 (변경 불가)</p>
@@ -43,11 +43,31 @@
                         {{ form.phone|as_crispy_field }}
 
                         <hr class="my-4" id="password-section">
-                        <p class="small text-muted fw-semibold text-uppercase mb-3">비밀번호 변경</p>
-                        <p class="small text-muted mb-3">비밀번호를 바꾸지 않으려면 아래 칸을 모두 비워 두세요.</p>
-                        {{ form.old_password|as_crispy_field }}
-                        {{ form.new_password1|as_crispy_field }}
-                        {{ form.new_password2|as_crispy_field }}
+                        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                            <p class="small text-muted fw-semibold text-uppercase mb-0">비밀번호 변경 (선택)</p>
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-outline-secondary"
+                                data-bs-toggle="collapse"
+                                data-bs-target="#profilePasswordSection"
+                                aria-expanded="{% if form.old_password.errors or form.new_password1.errors or form.new_password2.errors %}true{% else %}false{% endif %}"
+                                aria-controls="profilePasswordSection"
+                            >
+                                비밀번호 변경하기
+                            </button>
+                        </div>
+                        <div
+                            id="profilePasswordSection"
+                            class="collapse{% if form.old_password.errors or form.new_password1.errors or form.new_password2.errors %} show{% endif %}"
+                        >
+                            <p class="small text-muted mb-3">
+                                다른 정보만 수정할 때는 이 섹션을 열지 않아도 됩니다.
+                                비밀번호를 바꿀 때만 아래를 입력해 주세요.
+                            </p>
+                            {{ form.old_password|as_crispy_field }}
+                            {{ form.new_password1|as_crispy_field }}
+                            {{ form.new_password2|as_crispy_field }}
+                        </div>
 
                         <div class="d-flex flex-wrap gap-2 mt-4">
                             <button type="submit" class="btn {% if is_counselor %}btn-primary{% else %}client-dashboard-action-btn{% endif %}">
@@ -69,7 +89,5 @@
 {% endblock %}
 
 {% block extra_js %}
-{% if not is_counselor %}
 <script src="{% static 'js/profile_update_form.js' %}"></script>
-{% endif %}
 {% endblock %}

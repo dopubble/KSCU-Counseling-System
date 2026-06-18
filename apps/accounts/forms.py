@@ -194,22 +194,31 @@ class OptionalPasswordChangeFieldsForm(forms.Form):
         label="현재 비밀번호",
         required=False,
         widget=forms.PasswordInput(
-            attrs={"class": "form-control", "autocomplete": "current-password"},
+            attrs={
+                "class": "form-control",
+                "autocomplete": "off",
+            },
         ),
     )
     new_password1 = forms.CharField(
         label="새 비밀번호",
         required=False,
         widget=forms.PasswordInput(
-            attrs={"class": "form-control", "autocomplete": "new-password"},
+            attrs={
+                "class": "form-control",
+                "autocomplete": "off",
+            },
         ),
-        help_text="변경하지 않으려면 비워 두세요.",
+        help_text="비밀번호를 바꿀 때만 입력하세요.",
     )
     new_password2 = forms.CharField(
         label="새 비밀번호 확인",
         required=False,
         widget=forms.PasswordInput(
-            attrs={"class": "form-control", "autocomplete": "new-password"},
+            attrs={
+                "class": "form-control",
+                "autocomplete": "off",
+            },
         ),
     )
 
