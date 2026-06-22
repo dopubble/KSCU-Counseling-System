@@ -11,6 +11,7 @@ from django.utils import timezone
 from apps.counseling.models import Case, CounselingMethod
 from apps.reports.appointment_calendar import _calendar_localtime, _intervals_overlap
 from apps.scheduling.availability import (
+    counselor_has_recurring_allow_rules,
     get_counselor_blocked_dates,
     is_counselor_slot_available,
     local_timezone,
@@ -124,6 +125,7 @@ class MonthBookingContext:
         "blocked_exception_dates",
         "specific_by_date",
         "recurring_by_dow",
+        "has_recurring_allow_rules",
         "counselor_peers",
         "venue_peers",
         "venue_limit",
@@ -184,6 +186,9 @@ class MonthBookingContext:
         self.recurring_by_dow: dict[int, list] = {}
         for rule in recurring_rules:
             self.recurring_by_dow.setdefault(rule.day_of_week, []).append(rule)
+        self.has_recurring_allow_rules = counselor_has_recurring_allow_rules(
+            case.counselor_id
+        )
 
         peer_qs = Appointment.objects.filter(
             counselor_id=case.counselor_id,
@@ -265,6 +270,8 @@ class MonthBookingContext:
 
         recurring = self.recurring_by_dow.get(local_date.weekday(), [])
         if not recurring:
+            if self.has_recurring_allow_rules:
+                return False
             return True
 
         for rule in recurring:

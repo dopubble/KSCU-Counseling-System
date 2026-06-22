@@ -165,6 +165,16 @@ def counselor_has_availability_rules(counselor_id) -> bool:
     ).exists()
 
 
+def counselor_has_recurring_allow_rules(counselor_id) -> bool:
+    """매주 반복 상담 가능 시간이 등록되어 있는지."""
+    return CounselorAvailability.objects.filter(
+        counselor_id=counselor_id,
+        is_recurring=True,
+        is_available=True,
+        is_active=True,
+    ).exists()
+
+
 def get_counselor_recurring_availabilities(counselor):
     """
     내담자 안내용 — 매주 반복·상담 가능 시간(월~일, 시간순).
@@ -199,6 +209,7 @@ def is_counselor_slot_available(
     내담자 예약 가능 여부.
     - 특정일 차단(is_available=False)이 정기 가용시간보다 우선
     - 가용 규칙이 없으면 기존과 동일하게 허용
+    - 매주 반복 가용 시간이 등록된 경우, 해당 요일 규칙이 없으면 불가 (예: 월~금만 등록 시 주말 불가)
     - require_full_duration=False(기본): 시작 시각만 가용 구간에 포함되면 허용 (예약 요청)
     - require_full_duration=True: 상담 시간(분)까지 포함해 구간 안인지 검사 (확정 등)
     """
@@ -252,6 +263,8 @@ def is_counselor_slot_available(
         is_active=True,
     )
     if not recurring_rules.exists():
+        if counselor_has_recurring_allow_rules(counselor_id):
+            return False, "해당 요일은 상담 가능 시간이 등록되어 있지 않습니다."
         return True, ""
 
     for rule in recurring_rules.filter(is_available=False):

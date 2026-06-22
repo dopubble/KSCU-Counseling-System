@@ -1,6 +1,6 @@
 """예약 캘린더 슬롯 API·상태 계산 테스트."""
 
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 
 from django.test import Client as HttpClient, TestCase
 from django.urls import reverse
@@ -14,10 +14,15 @@ from apps.counseling.models import (
     CounselingApplication,
     CounselingMethod,
 )
-from apps.scheduling.availability import local_timezone
-from apps.scheduling.booking_slots import build_booking_slots_for_date, resolve_slot_state
+from apps.scheduling.availability import is_counselor_slot_available, local_timezone
+from apps.scheduling.booking_slots import (
+    build_available_dates_for_month,
+    build_booking_slots_for_date,
+    month_date_bounds,
+    resolve_slot_state,
+)
 from apps.scheduling.constants import DEFAULT_APPOINTMENT_DURATION_MINUTES
-from apps.scheduling.models import Appointment, AppointmentStatus
+from apps.scheduling.models import Appointment, AppointmentStatus, CounselorAvailability
 
 
 class BookingSlotsTests(TestCase):
@@ -149,3 +154,77 @@ class BookingSlotsTests(TestCase):
         slots = build_booking_slots_for_date(case=case, on_date=self.on_date)
         labels = [slot.label for slot in slots]
         self.assertTrue(any(label.startswith("09:00") for label in labels))
+
+    def _add_weekday_availability(self, start: time, end: time) -> None:
+        for day in range(5):
+            CounselorAvailability.objects.create(
+                counselor=self.counselor,
+                is_recurring=True,
+                day_of_week=day,
+                start_time=start,
+                end_time=end,
+                is_available=True,
+                is_active=True,
+            )
+
+    def _next_weekday(self, weekday: int) -> date:
+        cursor = timezone.localdate() + timedelta(days=1)
+        while cursor.weekday() != weekday:
+            cursor += timedelta(days=1)
+        return cursor
+
+    def test_weekend_blocked_when_only_weekday_recurring_rules(self):
+        self._add_weekday_availability(time(14, 0), time(22, 41))
+        case = self._create_case(CounselingMethod.REMOTE)
+        saturday = self._next_weekday(5)
+        tz = local_timezone()
+        slot_start = timezone.make_aware(datetime.combine(saturday, time(15, 0)), tz)
+
+        available, message = is_counselor_slot_available(
+            self.counselor.pk,
+            slot_start,
+            require_full_duration=True,
+        )
+        self.assertFalse(available)
+        self.assertIn("요일", message)
+
+        slots = build_booking_slots_for_date(case=case, on_date=saturday)
+        self.assertFalse(any(slot.state == "available" for slot in slots))
+
+    def test_weekday_allowed_within_recurring_window(self):
+        self._add_weekday_availability(time(14, 0), time(22, 41))
+        case = self._create_case(CounselingMethod.REMOTE)
+        monday = self._next_weekday(0)
+        tz = local_timezone()
+        slot_start = timezone.make_aware(datetime.combine(monday, time(15, 0)), tz)
+
+        available, _message = is_counselor_slot_available(
+            self.counselor.pk,
+            slot_start,
+            require_full_duration=True,
+        )
+        self.assertTrue(available)
+
+        slots = build_booking_slots_for_date(
+            case=case,
+            on_date=monday,
+            require_full_duration=True,
+        )
+        available_slots = [slot for slot in slots if slot.state == "available"]
+        self.assertTrue(available_slots)
+        self.assertTrue(all(slot.start.hour >= 14 for slot in available_slots))
+
+    def test_available_dates_for_month_excludes_weekends(self):
+        self._add_weekday_availability(time(14, 0), time(22, 41))
+        case = self._create_case(CounselingMethod.REMOTE)
+        anchor = self._next_weekday(0)
+        month_start, month_end = month_date_bounds(anchor.year, anchor.month)
+        dates = build_available_dates_for_month(
+            case=case,
+            month_start=month_start,
+            month_end=month_end,
+            require_full_duration=True,
+        )
+        for date_text in dates:
+            parsed = date.fromisoformat(date_text)
+            self.assertLess(parsed.weekday(), 5, date_text)
