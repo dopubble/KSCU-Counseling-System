@@ -5,6 +5,7 @@
 
 {% block extra_css %}
 <link href="{% static 'css/counselor.css' %}" rel="stylesheet">
+{% include "includes/schedule_picker_css.html" %}
 {% endblock %}
 
 {% block layout %}
@@ -36,6 +37,20 @@
                     {% if case.counseling_method == 'REMOTE' and not zoom_configured %}
                     <div class="alert alert-warning small">
                         Zoom API가 설정되지 않았습니다. 비대면 예약 확정을 위해 .env에 Zoom 자격 증명을 입력해 주세요.
+                    </div>
+                    {% endif %}
+                    {% if schedule_picker_enabled %}
+                    <div class="client-schedule-calendar-legend mb-3" aria-hidden="false">
+                        <span class="client-schedule-calendar-legend-item client-schedule-calendar-legend-item--available">
+                            <span class="client-schedule-calendar-legend-swatch"></span>상담 가능
+                        </span>
+                        <span class="client-schedule-calendar-legend-item client-schedule-calendar-legend-item--blocked">
+                            <span class="client-schedule-calendar-legend-swatch"></span>상담 불가(차단)
+                        </span>
+                        {% include "includes/schedule_picker_zoom_legend.html" %}
+                        {% if schedule_picker_remote %}
+                        <span class="small text-muted d-block mt-1 mb-0">비대면 만석 시간은 회색으로 표시되며 선택할 수 없습니다.</span>
+                        {% endif %}
                     </div>
                     {% endif %}
                     <form method="post" id="appointmentManageForm" class="appointment-manage-form">
@@ -76,10 +91,13 @@
     </div>
     </div>
 </div>
+{% include "includes/schedule_picker_data.html" %}
 {% endblock %}
 {% endblock %}
 
 {% block extra_js %}
+{% include "includes/schedule_picker_scripts.html" %}
+<script src="{% static 'js/schedule_picker_page.js' %}?v=1"></script>
 <script>
 (function () {
     const form = document.getElementById("appointmentManageForm");

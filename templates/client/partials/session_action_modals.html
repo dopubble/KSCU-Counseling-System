@@ -23,7 +23,8 @@
                         <span class="client-schedule-calendar-legend-item client-schedule-calendar-legend-item--blocked">
                             <span class="client-schedule-calendar-legend-swatch"></span>상담 불가(차단)
                         </span>
-                        <span class="small text-muted d-block mt-1 mb-0">특정일 예외는 정기 일정보다 우선 표시됩니다.</span>
+                        {% include "includes/schedule_picker_zoom_legend.html" %}
+                        <span class="small text-muted d-block mt-1 mb-0">특정일 예외는 정기 일정보다 우선 표시됩니다.{% if schedule_picker_remote %} 비대면 만석 시간은 선택할 수 없습니다.{% endif %}</span>
                     </div>
                     <div class="mb-3">
                         <label for="sessionSchedulePreferredDatetime" class="form-label fw-semibold" id="sessionSchedulePreferredDatetimeLabel">희망 일시</label>

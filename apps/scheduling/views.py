@@ -1,8 +1,10 @@
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 
 import logging
 
@@ -10,6 +12,7 @@ from apps.accounts.decorators import counselor_required
 
 logger = logging.getLogger(__name__)
 
+from apps.reports.appointment_calendar import parse_calendar_bound
 from .display import group_availabilities_for_display
 from .forms import (
     AppointmentScheduleForm,
@@ -18,7 +21,13 @@ from .forms import (
     SETTING_RECURRING,
 )
 from apps.counseling.models import CounselingMethod
+from .constants import DEFAULT_APPOINTMENT_DURATION_MINUTES
 from .models import Appointment, AppointmentStatus, CounselorAvailability
+from .remote_zoom_capacity import (
+    get_remote_zoom_busy_intervals,
+    remote_zoom_capacity_limit,
+)
+from .schedule_picker import build_schedule_picker_context
 from .services import (
     AppointmentServiceError,
     confirm_appointment_with_zoom,
@@ -143,6 +152,7 @@ def appointment_manage(request, pk):
             request.POST,
             instance=appointment,
             counselor_label=True,
+            calendar_picker=True,
         )
         action = request.POST.get("action", "confirm")
 
@@ -216,7 +226,11 @@ def appointment_manage(request, pk):
         else:
             messages.error(request, "잘못된 요청입니다.")
     else:
-        form = AppointmentScheduleForm(instance=appointment, counselor_label=True)
+        form = AppointmentScheduleForm(
+            instance=appointment,
+            counselor_label=True,
+            calendar_picker=True,
+        )
 
     return render(
         request,
@@ -226,5 +240,33 @@ def appointment_manage(request, pk):
             "case": case,
             "form": form,
             "zoom_configured": is_zoom_configured(),
+            **build_schedule_picker_context(case, appointment=appointment),
         },
+    )
+
+
+@login_required
+@require_GET
+def remote_zoom_busy_intervals(request):
+    """비대면 확정 예약 구간 — 달력 만석 표시용."""
+    range_start = parse_calendar_bound(request.GET.get("start", ""))
+    range_end = parse_calendar_bound(request.GET.get("end", ""))
+    if range_start is None or range_end is None:
+        return JsonResponse(
+            {"error": "start, end 쿼리가 필요합니다."},
+            status=400,
+        )
+
+    exclude_id = (request.GET.get("exclude_appointment_id") or "").strip() or None
+    intervals = get_remote_zoom_busy_intervals(
+        range_start,
+        range_end,
+        exclude_appointment_id=exclude_id,
+    )
+    return JsonResponse(
+        {
+            "capacity": remote_zoom_capacity_limit(),
+            "default_duration_minutes": DEFAULT_APPOINTMENT_DURATION_MINUTES,
+            "intervals": intervals,
+        }
     )

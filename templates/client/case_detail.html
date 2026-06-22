@@ -6,7 +6,7 @@
 {% block extra_css %}
 <link href="{% static 'css/counselor.css' %}" rel="stylesheet">
 <link href="{% static 'css/case_chat.css' %}?v=2" rel="stylesheet">
-<link href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" rel="stylesheet">
+{% include "includes/schedule_picker_css.html" %}
 {% endblock %}
 
 {% block layout %}
@@ -210,8 +210,7 @@
 </section>
 {% include "client/partials/cancel_request_modal.html" %}
 {% include "client/partials/session_action_modals.html" %}
-{{ counselor_blocked_dates|json_script:"counselor-blocked-dates" }}
-{{ counselor_availability_rules|json_script:"counselor-availability-rules" }}
+{% include "includes/schedule_picker_data.html" %}
 {% if case.counselor %}
 {% url 'client:case_chat_messages' case.pk as chat_messages_url %}
 {% url 'client:case_chat_send' case.pk as chat_send_url %}
@@ -222,9 +221,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ko.js"></script>
-<script src="{% static 'js/client_schedule_calendar.js' %}?v=6"></script>
+{% include "includes/schedule_picker_scripts.html" %}
 {% if case.counselor %}
 <script src="{% static 'js/case_chat.js' %}?v=3"></script>
 {% endif %}
@@ -265,6 +262,10 @@
     const counselorAvailabilityRules = rulesEl
         ? JSON.parse(rulesEl.textContent)
         : [];
+    const pickerConfigEl = document.getElementById("schedule-picker-config");
+    const schedulePickerConfig = pickerConfigEl
+        ? JSON.parse(pickerConfigEl.textContent)
+        : {};
     const BLOCKED_DATE_ALERT =
         "상담가능 시간이 아닙니다. 파란색 날짜를 선택해주세요.";
 
@@ -374,6 +375,60 @@
         });
     }
 
+    function buildZoomPickerOptions() {
+        if (!schedulePickerConfig.remote || !window.RemoteZoomSchedule) {
+            return null;
+        }
+        return {
+            enabled: true,
+            url: schedulePickerConfig.zoomIntervalsUrl,
+            capacity: schedulePickerConfig.zoomCapacity || 2,
+            durationMinutes: schedulePickerConfig.durationMinutes || 60,
+            excludeAppointmentId: schedulePickerConfig.excludeAppointmentId || "",
+            onFull: function () {
+                alert(window.RemoteZoomSchedule.FULL_MESSAGE);
+            },
+        };
+    }
+
+    function guardZoomCapacity(value, input) {
+        if (!schedulePickerConfig.remote || !window.RemoteZoomSchedule || !value) {
+            return false;
+        }
+        const parsed = window.ClientScheduleCalendar
+            ? ClientScheduleCalendar.formatDatetimeForServer(value)
+            : value;
+        const match = parsed.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})/);
+        if (!match) {
+            return false;
+        }
+        const slot = new Date(
+            Number(match[1]),
+            Number(match[2]) - 1,
+            Number(match[3]),
+            Number(match[4]),
+            Number(match[5]),
+            0,
+            0
+        );
+        const zoomState =
+            input && input._flatpickr ? input._flatpickr._scheduleZoomState : null;
+        const intervals = zoomState ? zoomState.intervals || [] : [];
+        const duration = schedulePickerConfig.durationMinutes || 60;
+        if (
+            !RemoteZoomSchedule.isSlotAvailable(
+                slot,
+                duration,
+                intervals,
+                schedulePickerConfig.zoomCapacity || 2
+            )
+        ) {
+            alert(RemoteZoomSchedule.FULL_MESSAGE);
+            return true;
+        }
+        return false;
+    }
+
     function initScheduleDatePickers() {
         if (!window.ClientScheduleCalendar || !window.flatpickr) {
             document.querySelectorAll('[name="preferred_datetime"], [name="scheduled_at"]').forEach(bindBlockedDateGuard);
@@ -382,12 +437,19 @@
         const onBlockedSelect = function () {
             alert(BLOCKED_DATE_ALERT);
         };
+        const zoomOptions = buildZoomPickerOptions();
         document.querySelectorAll(".client-schedule-datetime-input, #appointment-request [name='scheduled_at']").forEach(function (input) {
             ClientScheduleCalendar.initPicker(
                 input,
                 counselorAvailabilityRules,
                 counselorBlockedDates,
-                { onBlockedSelect: onBlockedSelect }
+                {
+                    zoom: zoomOptions,
+                    onBlockedSelect: onBlockedSelect,
+                    onZoomFull: function () {
+                        alert(RemoteZoomSchedule.FULL_MESSAGE);
+                    },
+                }
             );
             bindBlockedDateGuard(input);
         });
@@ -737,6 +799,11 @@
         }
 
         if (guardInvalidCounselorSlot(normalized)) {
+            event.preventDefault();
+            return;
+        }
+
+        if (guardZoomCapacity(normalized, datetimeInput)) {
             event.preventDefault();
             return;
         }

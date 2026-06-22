@@ -12,4 +12,9 @@ urlpatterns = [
         views.availability_delete,
         name="availability_delete",
     ),
+    path(
+        "api/remote-zoom-busy-intervals/",
+        views.remote_zoom_busy_intervals,
+        name="remote_zoom_busy_intervals",
+    ),
 ]

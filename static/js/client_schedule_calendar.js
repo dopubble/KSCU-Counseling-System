@@ -601,7 +601,82 @@
         }
         input.dataset.schedulePickerBound = "1";
 
-        const config = Object.assign(
+        var zoomState = null;
+        if (options && options.zoom && options.zoom.enabled && global.RemoteZoomSchedule) {
+            zoomState = options.zoom;
+            zoomState.intervals = zoomState.intervals || [];
+        }
+
+        function getZoomDurationMinutes() {
+            if (zoomState && typeof zoomState.getDurationMinutes === "function") {
+                return zoomState.getDurationMinutes();
+            }
+            return (zoomState && zoomState.durationMinutes) || 60;
+        }
+
+        function refreshZoomIntervals(instance) {
+            if (!zoomState || !global.RemoteZoomSchedule) {
+                return;
+            }
+            global.RemoteZoomSchedule.refreshIntervalsForInstance(instance, zoomState);
+        }
+
+        function guardZoomCapacity(selectedDates, dateStr, instance) {
+            if (!zoomState || !selectedDates.length || !global.RemoteZoomSchedule) {
+                return false;
+            }
+            if (
+                global.RemoteZoomSchedule.isZoomSlotBlocked(
+                    selectedDates[0],
+                    zoomState
+                )
+            ) {
+                if (typeof options.onZoomFull === "function") {
+                    options.onZoomFull(dateStr, selectedDates[0]);
+                } else if (zoomState.onFull) {
+                    zoomState.onFull();
+                }
+                instance.clear();
+                instance._scheduleUserPickedDay = false;
+                decorateFlatpickrDays(instance, rules, blockedDates);
+                bindTimeInteractionGuard(instance, rules, blockedDates);
+                return true;
+            }
+            return false;
+        }
+
+        var extraFlatpickr = (options && options.flatpickr) || {};
+        var userDisable = extraFlatpickr.disable;
+        var disableRules = [
+            function (date) {
+                if (zoomState && global.RemoteZoomSchedule) {
+                    var duration = getZoomDurationMinutes();
+                    if (
+                        !global.RemoteZoomSchedule.isSlotAvailable(
+                            date,
+                            duration,
+                            zoomState.intervals,
+                            zoomState.capacity
+                        )
+                    ) {
+                        return true;
+                    }
+                }
+                if (typeof userDisable === "function") {
+                    return userDisable(date);
+                }
+                if (Array.isArray(userDisable)) {
+                    for (var i = 0; i < userDisable.length; i++) {
+                        if (typeof userDisable[i] === "function" && userDisable[i](date)) {
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            },
+        ];
+
+        var config = Object.assign(
             {
                 enableTime: true,
                 time_24hr: true,
@@ -609,23 +684,29 @@
                 altInput: false,
                 allowInput: true,
                 minuteIncrement: 1,
+                disable: disableRules,
                 locale: global.flatpickr.l10ns.ko || undefined,
                 onReady: function (_selected, _str, instance) {
                     instance._scheduleRules = rules;
                     instance._scheduleBlockedDates = blockedDates;
+                    instance._scheduleZoomState = zoomState;
                     decorateFlatpickrDays(instance, rules, blockedDates);
                     bindTimeInteractionGuard(instance, rules, blockedDates);
+                    refreshZoomIntervals(instance);
                 },
                 onMonthChange: function (_selected, _str, instance) {
                     decorateFlatpickrDays(instance, rules, blockedDates);
+                    refreshZoomIntervals(instance);
                 },
                 onYearChange: function (_selected, _str, instance) {
                     decorateFlatpickrDays(instance, rules, blockedDates);
+                    refreshZoomIntervals(instance);
                 },
                 onOpen: function (_selected, _str, instance) {
                     decorateFlatpickrDays(instance, rules, blockedDates);
                     confirmScheduleDayIfValidOnOpen(instance, rules, blockedDates);
                     bindTimeInteractionGuard(instance, rules, blockedDates);
+                    refreshZoomIntervals(instance);
                 },
                 onDayCreate: function (dObj, _dStr, instance, dayElem) {
                     applyDayAvailabilityClass(dayElem, dObj, rules, blockedDates);
@@ -644,6 +725,9 @@
                         rejectUnavailableSelection(selectedDates, dateStr, instance, rules, blockedDates, options);
                         return;
                     }
+                    if (guardZoomCapacity(selectedDates, dateStr, instance)) {
+                        return;
+                    }
                     if (instance.input) {
                         instance.input.value = formatDatetimeForServer(
                             dateStr,
@@ -656,7 +740,7 @@
                     decorateFlatpickrDays(instance, rules, blockedDates);
                 },
             },
-            options && options.flatpickr ? options.flatpickr : {}
+            extraFlatpickr
         );
 
         const instance = global.flatpickr(input, config);

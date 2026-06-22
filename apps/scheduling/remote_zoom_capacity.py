@@ -105,3 +105,38 @@ def ensure_remote_zoom_capacity(
         from apps.scheduling.services import AppointmentServiceError
 
         raise AppointmentServiceError(message)
+
+
+def get_remote_zoom_busy_intervals(
+    range_start: datetime,
+    range_end: datetime,
+    *,
+    exclude_appointment_id=None,
+) -> list[dict[str, str]]:
+    """캘린더 UI용 — 구간과 겹치는 확정 비대면 예약 목록."""
+    range_start = _calendar_localtime(range_start)
+    range_end = _calendar_localtime(range_end)
+
+    peers = Appointment.objects.filter(
+        status=AppointmentStatus.CONFIRMED,
+        case__counseling_method=CounselingMethod.REMOTE,
+        scheduled_at__lt=range_end,
+    )
+    if exclude_appointment_id:
+        peers = peers.exclude(pk=exclude_appointment_id)
+
+    intervals: list[dict[str, str]] = []
+    for appointment in peers.iterator():
+        peer_start = _calendar_localtime(appointment.scheduled_at)
+        peer_end = peer_start + timedelta(
+            minutes=appointment_duration_minutes(appointment)
+        )
+        if peer_start < range_end and peer_end > range_start:
+            intervals.append(
+                {
+                    "id": str(appointment.pk),
+                    "start": peer_start.isoformat(),
+                    "end": peer_end.isoformat(),
+                }
+            )
+    return intervals

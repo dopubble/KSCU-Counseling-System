@@ -705,6 +705,18 @@ a.table-text-link:focus {
     border-color: rgba(220, 53, 69, 0.28);
 }
 
+.client-schedule-calendar-legend-item--zoom-full .client-schedule-calendar-legend-swatch {
+    background-color: rgba(108, 117, 125, 0.2);
+    border-color: rgba(108, 117, 125, 0.45);
+}
+
+.flatpickr-day.flatpickr-disabled,
+.flatpickr-time .flatpickr-am-pm.flatpickr-disabled,
+.flatpickr-time input.flatpickr-minute[disabled],
+.flatpickr-time input.flatpickr-hour[disabled] {
+    opacity: 0.45;
+}
+
 .flatpickr-day.counselor-day-available {
     background: rgba(13, 110, 253, 0.12) !important;
     border-color: rgba(13, 110, 253, 0.28) !important;

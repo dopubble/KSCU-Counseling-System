@@ -62,6 +62,7 @@ from apps.scheduling.availability import (
     is_counselor_slot_available,
     serialize_counselor_availability_rules,
 )
+from apps.scheduling.schedule_picker import build_schedule_picker_context
 from apps.scheduling.display import group_availabilities_for_display
 from apps.scheduling.forms import (
     AppointmentRejectForm,
@@ -872,9 +873,7 @@ def client_case_detail(request, pk):
     )
     show_header_cancel = can_request_cancel and not has_session_level_cancel
     shared_materials = get_case_shared_materials(case)
-    counselor_blocked_dates = (
-        get_counselor_blocked_dates(case.counselor_id) if case.counselor_id else []
-    )
+    picker_context = build_schedule_picker_context(case)
     counselor = case.counselor
     if counselor:
         counselor_availability_groups = group_availabilities_for_display(
@@ -882,10 +881,8 @@ def client_case_detail(request, pk):
                 "specific_date", "day_of_week", "start_time"
             )
         )
-        counselor_availability_rules = serialize_counselor_availability_rules(counselor)
     else:
         counselor_availability_groups = []
-        counselor_availability_rules = []
 
     return render(
         request,
@@ -910,9 +907,8 @@ def client_case_detail(request, pk):
             "cancel_within_penalty": cancel_within_penalty,
             "change_blocked": confirmed_appointment_blocks_client_change(application),
             "shared_materials": shared_materials,
-            "counselor_blocked_dates": counselor_blocked_dates,
             "counselor_availability_groups": counselor_availability_groups,
-            "counselor_availability_rules": counselor_availability_rules,
+            **picker_context,
         },
     )
 
@@ -2250,7 +2246,11 @@ def counselor_session_appointment_book(request, case_pk, session_number):
         return redirect("counselor:case_detail", pk=case.pk)
 
     if request.method == "POST":
-        form = AppointmentScheduleForm(request.POST, counselor_label=True)
+        form = AppointmentScheduleForm(
+            request.POST,
+            counselor_label=True,
+            calendar_picker=True,
+        )
         if not form.is_valid():
             messages.error(request, "입력 내용을 확인해 주세요.")
         elif (
@@ -2304,7 +2304,7 @@ def counselor_session_appointment_book(request, case_pk, session_number):
                     "예약 확정 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
                 )
     else:
-        form = AppointmentScheduleForm(counselor_label=True)
+        form = AppointmentScheduleForm(counselor_label=True, calendar_picker=True)
 
     return render(
         request,
@@ -2314,6 +2314,7 @@ def counselor_session_appointment_book(request, case_pk, session_number):
             "session_number": session_number,
             "form": form,
             "zoom_configured": is_zoom_configured(),
+            **build_schedule_picker_context(case),
         },
     )
 

@@ -187,10 +187,18 @@ class AppointmentScheduleForm(forms.ModelForm):
             "duration_minutes": "상담 시간(분)",
         }
 
-    def __init__(self, *args, counselor_label=False, **kwargs):
+    def __init__(self, *args, counselor_label=False, calendar_picker=False, **kwargs):
         super().__init__(*args, **kwargs)
         if counselor_label:
             self.fields["scheduled_at"].label = "상담 일시"
+        if calendar_picker:
+            self.fields["scheduled_at"].widget = forms.TextInput(
+                attrs={
+                    "class": "form-control client-schedule-datetime-input schedule-datetime-picker",
+                    "autocomplete": "off",
+                    "placeholder": "날짜와 시간을 선택해 주세요",
+                }
+            )
         if not self.instance.pk:
             self.fields["duration_minutes"].initial = DEFAULT_APPOINTMENT_DURATION_MINUTES
         if self.is_bound and self.errors:
