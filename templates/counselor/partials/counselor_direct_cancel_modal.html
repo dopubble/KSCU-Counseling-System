@@ -1,0 +1,36 @@
+<div class="modal fade" id="counselorDirectCancelModal" tabindex="-1" aria-labelledby="counselorDirectCancelModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="post" id="counselorDirectCancelForm" action="">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title" id="counselorDirectCancelModalLabel">예약 취소</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">
+                        <span id="counselorDirectCancelTarget" class="fw-semibold"></span> 확정 예약을 취소합니다.
+                        내담자에게 취소 안내 이메일이 발송되며, 내담자 회기 차감은 적용되지 않습니다.
+                    </p>
+                    <div class="mb-0">
+                        <label for="counselorDirectCancelReason" class="form-label fw-semibold">취소 사유</label>
+                        <textarea name="cancel_reason"
+                                  id="counselorDirectCancelReason"
+                                  class="form-control"
+                                  rows="4"
+                                  required
+                                  minlength="5"
+                                  maxlength="1000"
+                                  placeholder="내담자에게 전달할 취소 사유를 입력해 주세요."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">닫기</button>
+                    <button type="submit" class="btn btn-danger">
+                        <i class="bi bi-x-circle me-1" aria-hidden="true"></i>예약 취소
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

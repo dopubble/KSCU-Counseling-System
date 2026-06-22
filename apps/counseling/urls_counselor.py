@@ -40,6 +40,11 @@ urlpatterns = [
         name="session_cancel_approve",
     ),
     path(
+        "case/<uuid:case_pk>/session/<uuid:appointment_pk>/cancel/",
+        views.counselor_session_appointment_cancel,
+        name="session_appointment_cancel",
+    ),
+    path(
         "case/<uuid:case_pk>/session/<uuid:appointment_pk>/cancel/reject/",
         views.counselor_session_cancel_reject,
         name="session_cancel_reject",

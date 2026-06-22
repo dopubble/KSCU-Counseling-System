@@ -20,6 +20,7 @@ from apps.accounts.models import ClientProfile, User, UserRole, UserStatus
 
 from .emailing import (
     send_cancel_approval_notification,
+    send_counselor_direct_cancel_notification,
     send_cancel_rejection_notification,
     send_cancel_request_notification,
     send_new_application_notification,
@@ -131,6 +132,7 @@ from .services import (
     request_appointment_cancel,
     approve_appointment_cancel_request,
     approve_session_schedule_change_request,
+    cancel_confirmed_appointment_by_counselor,
     reject_appointment_cancel_request,
     reject_session_schedule_change_request,
     get_schedule_change_requests_for_counselor,
@@ -2029,6 +2031,54 @@ def counselor_session_cancel_reject(request, case_pk, appointment_pk):
         else "상담"
     )
     success_msg = f"{session_label} 취소 요청을 반려했습니다. 예약이 유지됩니다."
+    if _is_ajax_request(request):
+        response = _counselor_session_card_response(request, case, session_number)
+        response["X-Session-Message"] = success_msg
+        return response
+    messages.success(request, success_msg)
+    return redirect("counselor:case_detail", pk=case.pk)
+
+
+@counselor_required
+@require_POST
+def counselor_session_appointment_cancel(request, case_pk, appointment_pk):
+    """상담사 — 확정 예약 직접 취소."""
+    case, appointment = _get_counselor_case_appointment(
+        request, case_pk, appointment_pk
+    )
+    session_number = appointment.session_number or 1
+
+    form = CancelRequestForm(request.POST)
+    if not form.is_valid():
+        err = _ajax_error_response(request, "취소 사유를 확인해 주세요.")
+        if err:
+            return err
+        messages.error(request, "취소 사유를 확인해 주세요.")
+        return redirect("counselor:case_detail", pk=case.pk)
+
+    cancel_reason = form.cleaned_data["cancel_reason"]
+    try:
+        appointment = cancel_confirmed_appointment_by_counselor(
+            appointment,
+            cancel_reason=cancel_reason,
+        )
+    except AppointmentOperationError as exc:
+        err = _ajax_error_response(request, exc.message)
+        if err:
+            return err
+        messages.error(request, exc.message)
+        return redirect("counselor:case_detail", pk=case.pk)
+
+    send_counselor_direct_cancel_notification(
+        appointment,
+        cancel_reason=cancel_reason,
+    )
+    session_label = (
+        f"{appointment.session_number}회기"
+        if appointment.session_number
+        else "상담"
+    )
+    success_msg = f"{session_label} 예약을 취소했습니다."
     if _is_ajax_request(request):
         response = _counselor_session_card_response(request, case, session_number)
         response["X-Session-Message"] = success_msg

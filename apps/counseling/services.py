@@ -22,6 +22,7 @@ from .cancellation_policy import (
     cancel_triggers_session_penalty,
     client_cancel_blocked,
     client_change_blocked,
+    is_appointment_in_past,
     is_same_day_as_appointment,
 )
 from .constants import REMOTE_CLIENT_NAMES
@@ -267,6 +268,55 @@ def approve_appointment_cancel_request(appointment: Appointment) -> Appointment:
     appointment.status = AppointmentStatus.CANCELLED
     appointment.cancelled_at = now
     appointment.save(update_fields=["status", "cancelled_at", "updated_at"])
+    return appointment
+
+
+@transaction.atomic
+def cancel_confirmed_appointment_by_counselor(
+    appointment: Appointment,
+    *,
+    cancel_reason: str,
+) -> Appointment:
+    """상담사: 확정 예약 직접 취소 (내담자 회기 차감·당일 취소 누적 미적용)."""
+    if appointment.status != AppointmentStatus.CONFIRMED:
+        raise AppointmentOperationError(
+            "not_confirmed",
+            "확정된 예약만 취소할 수 있습니다.",
+        )
+
+    if is_appointment_in_past(appointment):
+        raise AppointmentOperationError(
+            "past_appointment",
+            "이미 지난 상담 예약은 취소할 수 없습니다.",
+        )
+
+    reason = (cancel_reason or "").strip()
+    if len(reason) < 5:
+        raise AppointmentOperationError(
+            "cancel_reason_required",
+            "취소 사유를 5자 이상 입력해 주세요.",
+        )
+
+    if appointment.session_number:
+        SessionScheduleChangeRequest.objects.filter(
+            case_id=appointment.case_id,
+            session_number=appointment.session_number,
+        ).delete()
+
+    now = timezone.now()
+    appointment.status = AppointmentStatus.CANCELLED
+    appointment.cancel_reason = reason
+    appointment.cancelled_at = now
+    appointment.cancel_requested_at = None
+    appointment.save(
+        update_fields=[
+            "status",
+            "cancel_reason",
+            "cancelled_at",
+            "cancel_requested_at",
+            "updated_at",
+        ]
+    )
     return appointment
 
 
@@ -1068,6 +1118,17 @@ class CaseSessionCard:
     def show_counselor_cancel_review_actions(self) -> bool:
         """상담사 — 취소 요청 승인/반려."""
         return self.has_session_cancel_pending
+
+    @property
+    def show_counselor_direct_cancel(self) -> bool:
+        """상담사 — 확정 예약 직접 취소."""
+        if not self.counselor_assigned or not self.is_confirmed:
+            return False
+        if self.has_session_cancel_pending:
+            return False
+        if self.appointment and is_appointment_in_past(self.appointment):
+            return False
+        return True
 
     @property
     def show_counselor_schedule_change_review_actions(self) -> bool:

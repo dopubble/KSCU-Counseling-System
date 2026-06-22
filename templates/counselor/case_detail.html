@@ -215,6 +215,7 @@
         {% include "counselor/partials/session_cohort_journals_modal.html" %}
         {% include "counselor/partials/appointment_reject_modal.html" %}
         {% include "counselor/partials/cancel_reject_modal.html" %}
+        {% include "counselor/partials/counselor_direct_cancel_modal.html" %}
         {% include "counselor/partials/schedule_change_reject_modal.html" %}
         {% if zoom_host_key_configured %}
         {% include "counselor/partials/zoom_claim_host_guide_modal.html" %}
@@ -232,7 +233,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/counselor_session_actions.js' %}?v=9"></script>
+<script src="{% static 'js/counselor_session_actions.js' %}?v=10"></script>
 {% if case.counselor and request.user.id == case.counselor_id %}
 <script src="{% static 'js/case_chat.js' %}?v=3"></script>
 {% endif %}

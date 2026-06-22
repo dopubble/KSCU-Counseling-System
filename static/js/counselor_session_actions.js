@@ -12,6 +12,8 @@
         "일정 변경 요청을 승인하면 예약 일시가 변경됩니다. 계속하시겠습니까?";
     const CONFIRM_SCHEDULE_CHANGE_REJECT_MSG =
         "일정 변경 요청을 반려하시겠습니까? 기존 일정은 그대로 유지됩니다.";
+    const CONFIRM_DIRECT_CANCEL_MSG =
+        "이 확정 예약을 취소하시겠습니까? 내담자에게 취소 안내가 발송됩니다.";
 
     const modal = document.getElementById("appointmentRejectModal");
     const rejectForm = document.getElementById("appointmentRejectForm");
@@ -25,6 +27,10 @@
     const scheduleChangeRejectForm = document.getElementById("scheduleChangeRejectForm");
     const scheduleChangeRejectTarget = document.getElementById("scheduleChangeRejectTarget");
     const scheduleChangeRejectReason = document.getElementById("scheduleChangeRejectReason");
+    const counselorDirectCancelModal = document.getElementById("counselorDirectCancelModal");
+    const counselorDirectCancelForm = document.getElementById("counselorDirectCancelForm");
+    const counselorDirectCancelTarget = document.getElementById("counselorDirectCancelTarget");
+    const counselorDirectCancelReason = document.getElementById("counselorDirectCancelReason");
     let activeSessionNumber = "";
 
     function getCsrfToken() {
@@ -237,6 +243,40 @@
         }
     }
 
+    function openCounselorDirectCancelModal(trigger) {
+        if (!counselorDirectCancelModal || !counselorDirectCancelForm || !trigger) {
+            return;
+        }
+        counselorDirectCancelForm.action = trigger.getAttribute("data-cancel-url") || "";
+        activeSessionNumber =
+            trigger.getAttribute("data-session-number") ||
+            trigger.closest("[data-session-number]")?.getAttribute("data-session-number") ||
+            "";
+        if (counselorDirectCancelTarget) {
+            counselorDirectCancelTarget.textContent =
+                trigger.getAttribute("data-session-label") || "";
+        }
+        if (counselorDirectCancelReason) {
+            counselorDirectCancelReason.value = "";
+        }
+        if (window.bootstrap && window.bootstrap.Modal) {
+            window.bootstrap.Modal.getOrCreateInstance(counselorDirectCancelModal).show();
+        }
+    }
+
+    function handleCounselorDirectCancelClick(event, btn) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!btn.getAttribute("data-cancel-url")) {
+            showToast("연결된 예약 정보가 없습니다.", "error");
+            return;
+        }
+        if (!window.confirm(CONFIRM_DIRECT_CANCEL_MSG)) {
+            return;
+        }
+        openCounselorDirectCancelModal(btn);
+    }
+
     function handleCancelApproveClick(event, btn) {
         event.preventDefault();
         event.stopPropagation();
@@ -437,6 +477,12 @@
                 return;
             }
 
+            const directCancelBtn = event.target.closest(".counselor-direct-cancel-btn");
+            if (directCancelBtn) {
+                handleCounselorDirectCancelClick(event, directCancelBtn);
+                return;
+            }
+
             const scheduleChangeApproveBtn = event.target.closest(
                 ".counselor-schedule-change-approve-btn"
             );
@@ -522,6 +568,42 @@
             if (result.ok) {
                 if (cancelRejectModal && window.bootstrap && window.bootstrap.Modal) {
                     const bsModal = window.bootstrap.Modal.getInstance(cancelRejectModal);
+                    if (bsModal) {
+                        bsModal.hide();
+                    }
+                }
+                if (activeSessionNumber) {
+                    replaceSessionCard(result.html, activeSessionNumber);
+                }
+                showToast(result.message, "success");
+            } else {
+                showToast(result.message, "error");
+            }
+        });
+    }
+
+    if (counselorDirectCancelForm) {
+        counselorDirectCancelForm.addEventListener("submit", async function (event) {
+            event.preventDefault();
+            if (!counselorDirectCancelForm.action) {
+                return;
+            }
+            const formData = new FormData(counselorDirectCancelForm);
+            const csrf = getCsrfToken();
+            if (csrf && !formData.has("csrfmiddlewaretoken")) {
+                formData.append("csrfmiddlewaretoken", csrf);
+            }
+            const submitBtn = counselorDirectCancelForm.querySelector('button[type="submit"]');
+            if (submitBtn) {
+                submitBtn.disabled = true;
+            }
+            const result = await postSessionAction(counselorDirectCancelForm.action, formData);
+            if (submitBtn) {
+                submitBtn.disabled = false;
+            }
+            if (result.ok) {
+                if (counselorDirectCancelModal && window.bootstrap && window.bootstrap.Modal) {
+                    const bsModal = window.bootstrap.Modal.getInstance(counselorDirectCancelModal);
                     if (bsModal) {
                         bsModal.hide();
                     }

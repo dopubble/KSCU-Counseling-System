@@ -238,6 +238,36 @@ def send_cancel_approval_notification(appointment) -> bool:
     return _send(subject, message, [client.email])
 
 
+def send_counselor_direct_cancel_notification(
+    appointment,
+    *,
+    cancel_reason: str,
+) -> bool:
+    """상담사 직접 취소 — 내담자 알림."""
+    client = appointment.client
+    if not client.email:
+        return False
+
+    case = appointment.case
+    counselor = appointment.counselor
+    session_label = (
+        f"{appointment.session_number}회기"
+        if appointment.session_number
+        else "상담"
+    )
+    subject = "[KSCU 상담] 상담 예약 취소 안내"
+    message = (
+        f"{client.name}님, 안녕하세요.\n\n"
+        f"담당 상담사 {counselor.name if counselor else '—'}님이 "
+        f"{session_label} 예약을 취소했습니다.\n"
+        f"사례번호: {case.case_number}\n"
+        f"상담 일시: {appointment.scheduled_at:%Y-%m-%d %H:%M}\n\n"
+        f"취소 사유:\n{cancel_reason.strip()}\n\n"
+        "다른 시간으로 다시 예약하시려면 상담 상세 페이지를 이용해 주세요.\n"
+    )
+    return _send(subject, message, [client.email])
+
+
 def send_cancel_rejection_notification(appointment, *, reason: str) -> bool:
     """취소 요청 반려 — 내담자 알림 (예약 유지)."""
     client = appointment.client
