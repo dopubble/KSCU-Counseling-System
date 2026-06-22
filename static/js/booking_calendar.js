@@ -50,6 +50,49 @@
     let selectedSlotStart = null;
     let monthAvailableDates = new Set();
     let loadingSlots = false;
+    const isCounselorCalendar = config.role === "counselor";
+
+    function formatEventTime(date) {
+        if (!date) return "";
+        return FullCalendar.formatDate(date, {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+            timeZone: calendarTimeZone,
+        });
+    }
+
+    function buildCounselorEventContent(arg) {
+        const props = arg.event.extendedProps || {};
+        const clientName = (props.client_name || arg.event.title || "").trim();
+        const timeText = formatEventTime(arg.event.start);
+        const wrap = document.createElement("div");
+        wrap.className = "booking-cal-event";
+
+        if (timeText) {
+            const timeEl = document.createElement("span");
+            timeEl.className = "booking-cal-event-time";
+            timeEl.textContent = timeText;
+            wrap.appendChild(timeEl);
+        }
+        if (clientName) {
+            const nameEl = document.createElement("span");
+            nameEl.className = "booking-cal-event-name";
+            nameEl.textContent = clientName;
+            wrap.appendChild(nameEl);
+        }
+        return { domNodes: [wrap] };
+    }
+
+    function mountCounselorEvent(info) {
+        const props = info.event.extendedProps || {};
+        const timeText = formatEventTime(info.event.start);
+        const clientName = (props.client_name || info.event.title || "").trim();
+        const parts = [timeText, clientName].filter(Boolean);
+        if (parts.length) {
+            info.el.setAttribute("title", parts.join(" · "));
+        }
+    }
 
     function formatDateKey(date) {
         const y = date.getFullYear();
@@ -265,6 +308,17 @@
         datesSet: function (dateInfo) {
             refreshMonthAvailability(dateInfo);
         },
+        ...(isCounselorCalendar
+            ? {
+                  dayMaxEvents: false,
+                  dayMaxEventRows: false,
+                  eventDisplay: "block",
+                  eventOrder: "start",
+                  eventClassNames: ["booking-cal-counselor-event"],
+                  eventContent: buildCounselorEventContent,
+                  eventDidMount: mountCounselorEvent,
+              }
+            : {}),
         events: function (fetchInfo, successCallback, failureCallback) {
             if (config.role !== "counselor" || !config.eventsUrl) {
                 successCallback([]);

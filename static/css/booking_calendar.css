@@ -159,3 +159,34 @@
 .booking-calendar-counselor-event-inperson {
     opacity: 0.9;
 }
+
+/* 상담사 본인 확정 일정 — 시간 + 내담자명 */
+#bookingCalendar .booking-cal-counselor-event.fc-daygrid-block-event,
+#bookingCalendar .booking-cal-counselor-event.fc-daygrid-dot-event {
+    border-radius: 4px;
+    margin-top: 2px;
+    padding: 2px 4px;
+    white-space: normal;
+    overflow: visible;
+}
+
+#bookingCalendar .booking-cal-counselor-event .fc-daygrid-event-dot {
+    display: none;
+}
+
+#bookingCalendar .booking-cal-event {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    line-height: 1.25;
+    font-size: 0.6875rem;
+}
+
+#bookingCalendar .booking-cal-event-time {
+    font-weight: 700;
+}
+
+#bookingCalendar .booking-cal-event-name {
+    font-weight: 500;
+    overflow-wrap: anywhere;
+}
