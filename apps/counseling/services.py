@@ -446,6 +446,7 @@ def build_apply_initial_from_application(
         "clinical_diagnosis": application.clinical_diagnosis or "",
         "current_medication": application.current_medication or "",
         "occupation": application.occupation or "",
+        "counseling_method": counseling_method_for_application(application),
     }
 
     student_id = ps.get("student_id") or ""
@@ -594,6 +595,26 @@ def _counseling_method_for_client(client) -> str:
     return CounselingMethod.IN_PERSON
 
 
+def counseling_method_for_application(application: CounselingApplication) -> str:
+    """신청서에 저장된 상담 방식 (없으면 내담자 기본값)."""
+    method = (getattr(application, "counseling_method", None) or "").strip()
+    if method in CounselingMethod.values:
+        return method
+    return _counseling_method_for_client(application.client)
+
+
+def sync_case_counseling_method_from_application(application: CounselingApplication) -> None:
+    """신청서 상담 방식을 연결된 사례에 반영."""
+    try:
+        case = application.case
+    except Case.DoesNotExist:
+        return
+    method = counseling_method_for_application(application)
+    if case.counseling_method != method:
+        case.counseling_method = method
+        case.save(update_fields=["counseling_method"])
+
+
 @transaction.atomic
 def assign_counselor(
     application: CounselingApplication,
@@ -626,13 +647,14 @@ def assign_counselor(
             "status": CaseStatus.ACTIVE,
             "total_sessions": total_sessions,
             "remaining_sessions": total_sessions,
-            "counseling_method": _counseling_method_for_client(application.client),
+            "counseling_method": counseling_method_for_application(application),
         },
     )
     if not created:
         needs_session_reset = not case.counselor_id or case.total_sessions < 1
         case.counselor = counselor
         case.client = application.client
+        case.counseling_method = counseling_method_for_application(application)
         if case.status != CaseStatus.ACTIVE:
             case.status = CaseStatus.ACTIVE
             case.closed_at = None

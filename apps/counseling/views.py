@@ -134,6 +134,7 @@ from .services import (
     withdraw_appointment_cancel_request,
     withdraw_pending_session_appointment,
     serialize_apply_initial,
+    sync_case_counseling_method_from_application,
 )
 
 SESSION_APPLY_PREFILL = "counseling_apply_prefill"
@@ -251,6 +252,7 @@ def _save_counseling_application(user, data):
         current_medication=data["current_medication"],
         occupation=data.get("occupation", ""),
         preferred_schedule=preferred_schedule,
+        counseling_method=data["counseling_method"],
         status=ApplicationStatus.WAITING_MATCH,
     )
 
@@ -285,6 +287,7 @@ def _update_counseling_application(user, application, data):
     application.clinical_diagnosis = data["clinical_diagnosis"]
     application.current_medication = data["current_medication"]
     application.occupation = data.get("occupation", "")
+    application.counseling_method = data["counseling_method"]
     application.preferred_schedule = preferred_schedule
     if application.status == ApplicationStatus.CANCELLED:
         application.status = ApplicationStatus.WAITING_MATCH
@@ -296,11 +299,13 @@ def _update_counseling_application(user, application, data):
             "clinical_diagnosis",
             "current_medication",
             "occupation",
+            "counseling_method",
             "preferred_schedule",
             "status",
             "updated_at",
         ]
     )
+    sync_case_counseling_method_from_application(application)
     return application
 
 

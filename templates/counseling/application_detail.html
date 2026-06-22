@@ -90,6 +90,10 @@
                             <td>{{ application.counseling_type }}</td>
                         </tr>
                         <tr>
+                            <th class="table-light">상담 방식</th>
+                            <td>{{ application.get_counseling_method_display }}</td>
+                        </tr>
+                        <tr>
                             <th class="table-light">희망 상담 일시</th>
                             <td>
                                 {% if schedule.preferred_date %}

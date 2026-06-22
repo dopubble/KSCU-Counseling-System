@@ -82,6 +82,12 @@ class CounselingApplication(models.Model):
         default="",
     )
     preferred_schedule = models.JSONField("희망 일정", default=dict, blank=True)
+    counseling_method = models.CharField(
+        "상담 방식",
+        max_length=20,
+        choices=CounselingMethod.choices,
+        default=CounselingMethod.IN_PERSON,
+    )
     status = models.CharField(
         "상태",
         max_length=20,

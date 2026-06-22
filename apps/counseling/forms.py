@@ -8,6 +8,7 @@ from apps.counseling.constants import (
     COUNSELING_TYPE_VALUES,
     normalize_counseling_types,
 )
+from apps.counseling.models import CounselingMethod
 
 
 
@@ -107,6 +108,13 @@ class CounselingApplyForm(forms.Form):
             attrs={"class": "counseling-type-checkboxes"}
         ),
     )
+    counseling_method = forms.ChoiceField(
+        label="상담 방식",
+        choices=CounselingMethod.choices,
+        initial=CounselingMethod.IN_PERSON,
+        widget=forms.RadioSelect(attrs={"class": "counseling-method-radio"}),
+        help_text="대면은 상담실 방문, 비대면은 Zoom 화상 상담입니다.",
+    )
     preferred_date = forms.DateField(
         label="희망 상담일",
         input_formats=["%Y-%m-%d"],
@@ -148,6 +156,7 @@ class CounselingApplyForm(forms.Form):
         self.user = user
         super().__init__(*args, **kwargs)
         self.fields["counseling_types"].widget.attrs.update({"class": "form-check-input"})
+        self.fields["counseling_method"].widget.attrs.update({"class": "form-check-input"})
         if user is not None and user.is_authenticated:
             self._lock_identity_fields(user)
         if self.is_bound and self.errors:
