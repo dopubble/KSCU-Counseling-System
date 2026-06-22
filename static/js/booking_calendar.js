@@ -222,6 +222,10 @@
         height: "auto",
         expandRows: true,
         fixedWeekCount: false,
+        dayHeaders: false,
+        dayCellContent: function (arg) {
+            return { html: String(arg.date.getDate()) };
+        },
         headerToolbar: {
             left: "prev,next today",
             center: "title",
