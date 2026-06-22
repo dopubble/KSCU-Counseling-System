@@ -74,6 +74,17 @@
     font-weight: 500;
 }
 
+/* 날짜 숫자 — 링크 밑줄 제거, 숫자만 표시 */
+#bookingCalendar .fc-daygrid-day-number,
+#bookingCalendar a.fc-daygrid-day-number {
+    text-decoration: none;
+}
+
+#bookingCalendar .fc-daygrid-day-number:hover,
+#bookingCalendar .fc-daygrid-day-number:focus {
+    text-decoration: none;
+}
+
 #bookingCalendar .fc-daygrid-day.booking-day-available .fc-daygrid-day-number {
     color: #1d4ed8;
     font-weight: 700;
