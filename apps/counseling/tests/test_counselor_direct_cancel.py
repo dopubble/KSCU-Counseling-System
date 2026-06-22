@@ -16,7 +16,10 @@ from apps.counseling.models import (
     CounselingApplication,
     CounselingMethod,
 )
-from apps.counseling.services import cancel_confirmed_appointment_by_counselor
+from apps.counseling.services import (
+    build_case_session_cards,
+    cancel_confirmed_appointment_by_counselor,
+)
 from apps.scheduling.constants import DEFAULT_APPOINTMENT_DURATION_MINUTES
 from apps.scheduling.models import Appointment, AppointmentStatus
 
@@ -121,3 +124,13 @@ class CounselorDirectCancelTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.appointment.refresh_from_db()
         self.assertEqual(self.appointment.status, AppointmentStatus.CANCELLED)
+
+    def test_counselor_direct_cancel_shows_cancel_notice_not_rejection(self):
+        cancel_confirmed_appointment_by_counselor(
+            self.appointment,
+            cancel_reason="상담사 일정으로 취소합니다.",
+        )
+        card = build_case_session_cards(self.case)[1]
+        self.assertTrue(card.has_cancel_completed_notice)
+        self.assertFalse(card.has_rejection_notice)
+        self.assertEqual(card.client_status_label, "취소 완료")

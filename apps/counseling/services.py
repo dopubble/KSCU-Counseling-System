@@ -985,12 +985,26 @@ class CaseSessionCard:
         return bool(apt and apt.cancel_requested_at)
 
     @property
+    def is_counselor_direct_cancel_completed(self) -> bool:
+        """상담사가 확정 예약을 직접 취소한 회기."""
+        apt = self.rejected_appointment
+        if not apt or apt.cancel_requested_at:
+            return False
+        return bool(apt.confirmed_at)
+
+    @property
+    def has_cancel_completed_notice(self) -> bool:
+        return self.is_client_cancel_completed or self.is_counselor_direct_cancel_completed
+
+    @property
     def is_counselor_rejection_notice(self) -> bool:
         """상담사가 대기 중 예약을 반려한 회기."""
         apt = self.rejected_appointment
         if not apt or not (apt.cancel_reason or "").strip():
             return False
-        return apt.cancel_requested_at is None
+        if apt.cancel_requested_at or apt.confirmed_at:
+            return False
+        return True
 
     @property
     def has_rejection_notice(self) -> bool:
@@ -998,7 +1012,7 @@ class CaseSessionCard:
 
     @property
     def has_client_cancel_notice(self) -> bool:
-        return self.is_client_cancel_completed
+        return self.has_cancel_completed_notice
 
     @property
     def rejection_reason(self) -> str:
@@ -1008,7 +1022,7 @@ class CaseSessionCard:
 
     @property
     def client_cancel_reason(self) -> str:
-        if self.is_client_cancel_completed and self.rejected_appointment:
+        if self.has_cancel_completed_notice and self.rejected_appointment:
             return (self.rejected_appointment.cancel_reason or "").strip()
         return ""
 
@@ -1050,7 +1064,7 @@ class CaseSessionCard:
     @property
     def client_status_label(self) -> str:
         """내담자·상담사 상담 상세 회기 상태 배지 문구."""
-        if self.is_client_cancel_completed:
+        if self.has_cancel_completed_notice:
             return "취소 완료"
         if self.has_rejection_notice:
             return "반려"
@@ -1070,7 +1084,11 @@ class CaseSessionCard:
         """일정 변경·예약 요청 — 예정·확정·대기·취소 완료·반려 후 재예약."""
         if self.status_code in ("COMPLETED", "NO_SHOW"):
             return False
-        if self.is_client_cancel_completed or self.is_counselor_rejection_notice:
+        if (
+            self.is_client_cancel_completed
+            or self.is_counselor_direct_cancel_completed
+            or self.is_counselor_rejection_notice
+        ):
             return True
         if self.status_code in ("CANCELLED", "REJECTED"):
             return False
@@ -1197,7 +1215,11 @@ class CaseSessionCard:
         """미확정·취소 완료·반려 후 — 상담일정 예약 버튼."""
         if self.show_pending_session_actions:
             return False
-        if self.is_client_cancel_completed or self.is_counselor_rejection_notice:
+        if (
+            self.is_client_cancel_completed
+            or self.is_counselor_direct_cancel_completed
+            or self.is_counselor_rejection_notice
+        ):
             return True
         return self.show_schedule_change and not self.is_confirmed
 
@@ -1503,7 +1525,10 @@ def build_case_session_cards(case: Case) -> list[CaseSessionCard]:
             schedule_change_request=schedule_request,
         )
         if appointment is None and rejected_appointment:
-            if rejected_appointment.cancel_requested_at:
+            if (
+                rejected_appointment.cancel_requested_at
+                or rejected_appointment.confirmed_at
+            ):
                 status_code, status_label = "CANCELLED", "취소 완료"
             elif (rejected_appointment.cancel_reason or "").strip():
                 status_code, status_label = "REJECTED", "반려"

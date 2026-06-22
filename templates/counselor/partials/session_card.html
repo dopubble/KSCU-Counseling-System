@@ -78,6 +78,13 @@
             </div>
         </dl>
     </div>
+    {% elif session.has_client_cancel_notice %}
+    <div class="session-cancel-completed-notice alert alert-secondary border-0 py-2 px-3 mb-0 mx-3 mt-2">
+        <p class="small fw-semibold mb-1"><i class="bi bi-check-circle me-1" aria-hidden="true"></i>예약이 취소되었습니다.</p>
+        {% if session.client_cancel_reason %}
+        <p class="small mb-0 client-pre-wrap text-muted">{{ session.client_cancel_reason }}</p>
+        {% endif %}
+    </div>
     {% elif session.has_rejection_notice %}
     <div class="session-rejection-notice alert alert-danger border-0 py-2 px-3 mb-0 mx-3 mt-2">
         <p class="small fw-semibold mb-1"><i class="bi bi-x-circle me-1" aria-hidden="true"></i>예약이 반려되었습니다</p>

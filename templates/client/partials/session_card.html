@@ -89,7 +89,7 @@
         {% endif %}
         {% if session.has_client_cancel_notice %}
         <div class="alert alert-secondary border-0 py-2 px-3 mt-2 mb-0 mx-0 w-100">
-            <p class="small fw-semibold mb-1"><i class="bi bi-check-circle me-1" aria-hidden="true"></i>예약 취소가 완료되었습니다</p>
+            <p class="small fw-semibold mb-1"><i class="bi bi-check-circle me-1" aria-hidden="true"></i>예약이 취소되었습니다.</p>
             {% if session.client_cancel_reason %}
             <p class="small mb-0 client-pre-wrap text-muted">{{ session.client_cancel_reason }}</p>
             {% endif %}
