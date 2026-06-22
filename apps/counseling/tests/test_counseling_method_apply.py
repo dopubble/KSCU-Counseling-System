@@ -41,6 +41,23 @@ class CounselingMethodApplyTests(TestCase):
         )
         self.assertTrue(form.is_valid(), form.errors)
 
+    def test_apply_form_requires_counseling_method_selection(self):
+        form = CounselingApplyForm(
+            data={
+                "name": "신청자",
+                "residence_region": "서울",
+                "clinical_diagnosis": "없음",
+                "current_medication": "없음",
+                "counseling_types": ["진로상담"],
+                "preferred_date": "2026-07-01",
+                "preferred_time": "14:00",
+                "reason": "스트레스",
+            },
+            user=self.client_user,
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("counseling_method", form.errors)
+
     def test_assign_counselor_copies_application_counseling_method_to_case(self):
         application = CounselingApplication.objects.create(
             client=self.client_user,

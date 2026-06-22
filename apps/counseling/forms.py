@@ -111,9 +111,12 @@ class CounselingApplyForm(forms.Form):
     counseling_method = forms.ChoiceField(
         label="상담 방식",
         choices=CounselingMethod.choices,
-        initial=CounselingMethod.IN_PERSON,
+        required=True,
         widget=forms.RadioSelect(attrs={"class": "counseling-method-radio"}),
-        help_text="대면은 상담실 방문, 비대면은 Zoom 화상 상담입니다.",
+        help_text="대면은 상담실 방문, 비대면은 Zoom 화상 상담입니다. 원하시는 방식을 선택해 주세요.",
+        error_messages={
+            "required": "상담 방식을 선택해 주세요.",
+        },
     )
     preferred_date = forms.DateField(
         label="희망 상담일",
