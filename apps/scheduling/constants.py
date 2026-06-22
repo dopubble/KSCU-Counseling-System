@@ -1,0 +1,3 @@
+"""예약·상담 시간 공통 상수."""
+
+DEFAULT_APPOINTMENT_DURATION_MINUTES = 60

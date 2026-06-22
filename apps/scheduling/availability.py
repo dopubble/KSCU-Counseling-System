@@ -9,6 +9,7 @@ from django.conf import settings
 from django.db.models import Q
 from django.utils import timezone
 
+from .constants import DEFAULT_APPOINTMENT_DURATION_MINUTES
 from .models import AvailabilityException, CounselorAvailability
 
 
@@ -191,7 +192,7 @@ def is_counselor_slot_available(
     counselor_id,
     scheduled_at,
     *,
-    duration_minutes: int = 50,
+    duration_minutes: int = DEFAULT_APPOINTMENT_DURATION_MINUTES,
     require_full_duration: bool = False,
 ) -> tuple[bool, str]:
     """

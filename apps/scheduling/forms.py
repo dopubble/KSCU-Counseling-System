@@ -1,9 +1,8 @@
 from django import forms
 from django.utils import timezone
 
+from .constants import DEFAULT_APPOINTMENT_DURATION_MINUTES
 from .models import Appointment
-
-DEFAULT_APPOINTMENT_DURATION_MINUTES = 50
 
 WEEKDAY_CHOICES = (
     (0, "월요일"),

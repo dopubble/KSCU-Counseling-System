@@ -13,6 +13,7 @@ from apps.reports.appointment_calendar import (
     _calendar_localtime,
     assign_zoom_hosts,
 )
+from apps.scheduling.constants import DEFAULT_APPOINTMENT_DURATION_MINUTES
 from apps.scheduling.models import Appointment, AppointmentStatus
 
 DEFAULT_ZOOM_LICENSED_USERS = (
@@ -65,9 +66,9 @@ def email_for_host_id(host_id: str) -> str:
 
 def _appointment_interval(appointment: Appointment) -> CalendarInterval:
     start_at = _calendar_localtime(appointment.scheduled_at)
-    duration = appointment.duration_minutes or 50
+    duration = appointment.duration_minutes or DEFAULT_APPOINTMENT_DURATION_MINUTES
     if duration <= 0:
-        duration = 50
+        duration = DEFAULT_APPOINTMENT_DURATION_MINUTES
     end_at = start_at + timedelta(minutes=duration)
     is_remote = appointment.case.counseling_method == CounselingMethod.REMOTE
     return CalendarInterval(

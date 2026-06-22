@@ -21,6 +21,7 @@ from .utils import (
     update_zoom_meeting,
     update_zoom_meeting_participant_settings,
 )
+from .remote_zoom_capacity import ensure_remote_zoom_capacity
 from .zoom_hosts import (
     assign_host_emails_for_appointments,
     confirmed_remote_appointments_queryset,
@@ -212,6 +213,7 @@ def attach_zoom_meeting_to_confirmed_appointment(
     if existing and existing.join_url:
         return existing
 
+    ensure_remote_zoom_capacity(appointment)
     zoom_meeting, _launch_url = _create_zoom_meeting_for_appointment(appointment)
     return zoom_meeting
 
@@ -404,6 +406,7 @@ def confirm_appointment_with_zoom(
 
     zoom_meeting: ZoomMeeting | None = None
     if _appointment_uses_zoom(appointment):
+        ensure_remote_zoom_capacity(appointment)
         try:
             zoom_meeting, _launch_url = _create_zoom_meeting_for_appointment(appointment)
         except (ZoomAPIError, ZoomNotConfiguredError):
@@ -451,6 +454,13 @@ def reschedule_confirmed_appointment(
     ):
         raise AppointmentServiceError(
             "해당 시간에 이미 확정된 다른 상담이 있습니다. 다른 시간을 선택해 주세요."
+        )
+
+    if _appointment_uses_zoom(appointment):
+        ensure_remote_zoom_capacity(
+            appointment,
+            scheduled_at=new_scheduled_at,
+            exclude_appointment_id=appointment.pk,
         )
 
     appointment.scheduled_at = new_scheduled_at

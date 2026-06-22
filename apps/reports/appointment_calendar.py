@@ -13,6 +13,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from apps.counseling.models import CounselingMethod
+from apps.scheduling.constants import DEFAULT_APPOINTMENT_DURATION_MINUTES
 from apps.scheduling.models import Appointment, AppointmentStatus
 
 logger = logging.getLogger(__name__)
@@ -337,7 +338,7 @@ def build_calendar_events(
         try:
             is_remote = apt.case.counseling_method == CounselingMethod.REMOTE
             start_at = _calendar_localtime(apt.scheduled_at)
-            duration = apt.duration_minutes or 50
+            duration = apt.duration_minutes or DEFAULT_APPOINTMENT_DURATION_MINUTES
             if duration <= 0:
                 duration = 50
             end_at = start_at + timedelta(minutes=duration)

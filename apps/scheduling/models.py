@@ -3,6 +3,8 @@ import uuid
 from django.conf import settings
 from django.db import models
 
+from apps.scheduling.constants import DEFAULT_APPOINTMENT_DURATION_MINUTES
+
 
 class AppointmentStatus(models.TextChoices):
     PENDING = "PENDING", "대기"
@@ -116,7 +118,10 @@ class Appointment(models.Model):
         verbose_name="내담자",
     )
     scheduled_at = models.DateTimeField("예약 일시")
-    duration_minutes = models.PositiveIntegerField("상담 시간(분)", default=50)
+    duration_minutes = models.PositiveIntegerField(
+        "상담 시간(분)",
+        default=DEFAULT_APPOINTMENT_DURATION_MINUTES,
+    )
     status = models.CharField(
         "상태",
         max_length=20,
