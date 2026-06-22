@@ -14,11 +14,17 @@ from .utils import (
     ZoomNotConfiguredError,
     clear_zoom_token_cache,
     create_zoom_meeting,
+    delete_zoom_meeting,
     get_zoom_meeting,
     is_zoom_configured,
     pick_meeting_launch_url,
     update_zoom_meeting,
     update_zoom_meeting_participant_settings,
+)
+from .zoom_hosts import (
+    assign_host_emails_for_appointments,
+    confirmed_remote_appointments_queryset,
+    resolve_zoom_host_email_for_appointment,
 )
 
 logger = logging.getLogger(__name__)
@@ -149,15 +155,21 @@ def update_pending_appointment(
     return appointment
 
 
-def _create_zoom_meeting_for_appointment(appointment: Appointment) -> tuple[ZoomMeeting, str]:
+def _create_zoom_meeting_for_appointment(
+    appointment: Appointment,
+    *,
+    host_user_email: str | None = None,
+) -> tuple[ZoomMeeting, str]:
     """예약 1건에 Zoom 회의 생성·저장. join_url 반환."""
     case = appointment.case
     topic = f"[KSCU 상담] {case.client.name} · {case.case_number}"
+    host_email = (host_user_email or resolve_zoom_host_email_for_appointment(appointment)).strip()
 
     meeting_data = create_zoom_meeting(
         topic=topic,
         start_time=appointment.scheduled_at,
         duration_minutes=appointment.duration_minutes,
+        host_user_email=host_email or None,
     )
 
     join_url = (meeting_data.get("join_url") or "").strip()
@@ -172,6 +184,7 @@ def _create_zoom_meeting_for_appointment(appointment: Appointment) -> tuple[Zoom
             "join_url": join_url,
             "start_url": start_url,
             "password": meeting_data.get("password", "") or "",
+            "zoom_host_email": host_email,
         },
     )
 
@@ -248,6 +261,66 @@ def backfill_missing_zoom_meetings(
             logger.warning("Zoom backfill failed for appointment %s: %s", appointment.pk, exc)
 
     return created, skipped, errors
+
+
+def recreate_all_zoom_meetings(
+    *,
+    dry_run: bool = False,
+) -> tuple[int, int, list[str]]:
+    """
+    확정 비대면 예약 Zoom 회의를 Licensed 호스트 1/2에 재배정해 전부 재생성.
+    반환: (recreated, skipped, errors)
+    """
+    if not is_zoom_configured():
+        raise ZoomNotConfiguredError(
+            "Zoom API 설정이 없습니다. ZOOM_* 환경 변수를 확인해 주세요."
+        )
+
+    appointments = list(confirmed_remote_appointments_queryset())
+    if not appointments:
+        return 0, 0, []
+
+    host_emails = assign_host_emails_for_appointments(appointments)
+    recreated = skipped = 0
+    errors: list[str] = []
+
+    if dry_run:
+        for appointment in appointments:
+            host_email = host_emails.get(str(appointment.pk), "")
+            label = f"{appointment.case.client.name} {appointment.scheduled_at:%Y-%m-%d %H:%M}"
+            errors.append(f"[would recreate] {label} -> {host_email or '(default host)'}")
+            recreated += 1
+        return recreated, skipped, errors
+
+    for appointment in appointments:
+        client_name = appointment.case.client.name
+        label = f"{client_name} ({appointment.pk})"
+        host_email = host_emails.get(str(appointment.pk), "")
+
+        existing = getattr(appointment, "zoom_meeting", None)
+        if existing and existing.zoom_meeting_id:
+            delete_zoom_meeting(existing.zoom_meeting_id)
+            existing.delete()
+
+        appointment.case.zoom_meeting_url = ""
+        appointment.case.save(update_fields=["zoom_meeting_url"])
+
+        try:
+            _create_zoom_meeting_for_appointment(
+                appointment,
+                host_user_email=host_email,
+            )
+            recreated += 1
+        except (ZoomAPIError, ZoomNotConfiguredError, AppointmentServiceError) as exc:
+            clear_zoom_token_cache()
+            errors.append(f"{label} -> {host_email}: {exc}")
+            logger.warning(
+                "Zoom recreate failed for appointment %s: %s",
+                appointment.pk,
+                exc,
+            )
+
+    return recreated, skipped, errors
 
 
 @transaction.atomic

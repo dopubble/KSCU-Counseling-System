@@ -162,6 +162,13 @@ class ZoomMeeting(models.Model):
     join_url = models.URLField("참가 URL", max_length=2000)
     start_url = models.URLField("호스트 URL", max_length=2000, blank=True)
     password = models.CharField("비밀번호", max_length=50, blank=True)
+    zoom_host_email = models.EmailField(
+        "Zoom 호스트(Licensed 사용자)",
+        max_length=254,
+        blank=True,
+        default="",
+        help_text="회의를 생성한 Zoom Licensed 사용자 이메일",
+    )
     recording_url = models.URLField("녹화 URL", max_length=2000, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

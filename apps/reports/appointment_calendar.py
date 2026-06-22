@@ -84,9 +84,9 @@ def get_calendar_timezone_name() -> str:
 
 
 def get_zoom_host_pool() -> tuple[str, ...]:
-    raw = getattr(settings, "ZOOM_HOST_POOL", "") or ""
-    hosts = tuple(h.strip() for h in raw.split(",") if h.strip())
-    return hosts or DEFAULT_ZOOM_HOST_POOL
+    from apps.scheduling.zoom_hosts import get_zoom_host_pool as licensed_host_pool
+
+    return licensed_host_pool()
 
 
 def zoom_host_label(host_id: str) -> str:
@@ -376,7 +376,14 @@ def build_calendar_events(
             client_name = apt.client.name or "내담자"
             counselor_name = apt.counselor.name or "상담사"
 
-            host_id = host_assignments.get(str(apt.id), "") if is_remote else ""
+            host_id = ""
+            if is_remote:
+                if zoom_meeting and getattr(zoom_meeting, "zoom_host_email", ""):
+                    from apps.scheduling.zoom_hosts import host_id_for_email
+
+                    host_id = host_id_for_email(zoom_meeting.zoom_host_email)
+                if not host_id:
+                    host_id = host_assignments.get(str(apt.id), "")
 
             row = {
                 "id": str(apt.id),

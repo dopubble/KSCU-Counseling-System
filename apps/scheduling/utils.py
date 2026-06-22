@@ -136,14 +136,20 @@ def create_zoom_meeting(
     start_time: datetime,
     duration_minutes: int,
     timezone_name: str | None = None,
+    host_user_email: str | None = None,
 ) -> dict[str, Any]:
     """
-    Zoom 예약 회의 생성 (기관 계정).
-    반환: id, join_url, start_url, password 등 API JSON
-
-    내담자·상담사는 join_url로 입장 (기관 Zoom 사용자 등록 불필요).
+    Zoom 예약 회의 생성 (Licensed 사용자 계정).
+    host_user_email: Zoom 사용자 이메일 (미지정 시 첫 번째 Licensed 사용자).
     """
     _ensure_zoom_configured()
+    from apps.scheduling.zoom_hosts import get_zoom_licensed_user_emails
+
+    licensed = get_zoom_licensed_user_emails()
+    host_email = (host_user_email or "").strip()
+    if not host_email and licensed:
+        host_email = licensed[0]
+
     tz = timezone_name or settings.TIME_ZONE
     if timezone.is_naive(start_time):
         start_time = timezone.make_aware(start_time, timezone.get_current_timezone())
@@ -163,10 +169,12 @@ def create_zoom_meeting(
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
+    user_segment = host_email if host_email else "me"
+    create_url = f"{API_BASE}/users/{user_segment}/meetings"
 
     try:
         response = requests.post(
-            f"{API_BASE}/users/me/meetings",
+            create_url,
             json=payload,
             headers=headers,
             timeout=30,
@@ -301,6 +309,29 @@ def update_zoom_meeting_participant_settings(meeting_id: str) -> dict[str, Any]:
         meeting_id,
         {"settings": _zoom_meeting_settings()},
     )
+
+
+def delete_zoom_meeting(meeting_id: str) -> None:
+    """Zoom 회의 삭제 (계정 교체·재생성 시 best-effort)."""
+    _ensure_zoom_configured()
+    meeting_id = str(meeting_id).strip()
+    if not meeting_id:
+        return
+
+    token = get_zoom_access_token()
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        response = requests.delete(
+            f"{API_BASE}/meetings/{meeting_id}",
+            headers=headers,
+            timeout=30,
+        )
+        if response.status_code not in (204, 404):
+            response.raise_for_status()
+    except requests.HTTPError as exc:
+        logger.warning("Zoom meeting delete skipped id=%s: %s", meeting_id, exc)
+    except requests.RequestException as exc:
+        logger.warning("Zoom meeting delete failed id=%s: %s", meeting_id, exc)
 
 
 def pick_meeting_launch_url(meeting_data: dict[str, Any]) -> str:

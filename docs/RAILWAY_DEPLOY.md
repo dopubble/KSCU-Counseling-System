@@ -141,6 +141,15 @@ CSRF_TRUSTED_ORIGINS=https://your-app.up.railway.app,https://counseling.kcu.ac.k
 | `ZOOM_CLIENT_ID` | |
 | `ZOOM_CLIENT_SECRET` | |
 | `ZOOM_HOST_KEY` | 상담사 Claim Host 안내용 6자리 (Zoom Profile → Host Key 와 동일) |
+| `ZOOM_LICENSED_USERS` | Licensed 사용자 이메일 2개 (쉼표 구분). 동시간대 비대면 회의 host 1/2 자동 배정 |
+
+계정 교체 후 기존 확정 비대면 예약 Zoom 링크 재생성:
+
+```bash
+python manage.py recreate_zoom_meetings --apply
+```
+
+(Railway Shell 또는 Public DATABASE_URL 연결 PC에서 실행)
 
 ### Gmail SMTP
 
@@ -179,6 +188,7 @@ ZOOM_ACCOUNT_ID=
 ZOOM_CLIENT_ID=
 ZOOM_CLIENT_SECRET=
 ZOOM_HOST_KEY=
+ZOOM_LICENSED_USERS=sscukscu@gmail.com,sedulife@mail.kcu.ac
 
 EMAIL_HOST=smtp.gmail.com
 EMAIL_PORT=587
