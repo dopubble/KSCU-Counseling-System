@@ -134,3 +134,11 @@ class CounselorDirectCancelTests(TestCase):
         self.assertTrue(card.has_cancel_completed_notice)
         self.assertFalse(card.has_rejection_notice)
         self.assertEqual(card.client_status_label, "취소 완료")
+
+    def test_counselor_direct_cancel_allows_rebooking(self):
+        cancel_confirmed_appointment_by_counselor(
+            self.appointment,
+            cancel_reason="상담사 일정으로 취소합니다.",
+        )
+        card = build_case_session_cards(self.case)[1]
+        self.assertTrue(card.show_counselor_direct_booking)

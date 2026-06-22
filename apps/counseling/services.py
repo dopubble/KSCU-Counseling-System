@@ -944,7 +944,13 @@ class CaseSessionCard:
             AppointmentStatus.NO_SHOW,
         ):
             return False
-        if self.status_code == "CANCELLED" and not self.is_counselor_rejection_notice:
+        if (
+            self.is_counselor_direct_cancel_completed
+            or self.is_client_cancel_completed
+            or self.is_counselor_rejection_notice
+        ):
+            return True
+        if self.status_code == "CANCELLED":
             return False
         return self.show_session_actions
 

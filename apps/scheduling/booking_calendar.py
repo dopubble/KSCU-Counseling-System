@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from django.urls import reverse
-from django.utils import timezone
 
 from apps.counseling.models import Case, CounselingMethod
 from apps.scheduling.availability import (
@@ -15,10 +14,6 @@ from apps.scheduling.constants import (
     IN_PERSON_ROOM_CAPACITY,
 )
 from apps.scheduling.in_person_room_capacity import in_person_room_capacity_limit
-from apps.scheduling.booking_slots import (
-    build_available_dates_for_month,
-    month_date_bounds,
-)
 from apps.scheduling.models import Appointment
 from apps.scheduling.remote_zoom_capacity import remote_zoom_capacity_limit
 
@@ -39,21 +34,6 @@ def build_booking_calendar_context(
         else DEFAULT_APPOINTMENT_DURATION_MINUTES
     )
     exclude_id = str(appointment.pk) if appointment and appointment.pk else ""
-
-    initial_month = ""
-    initial_available_dates: list[str] = []
-    if counselor:
-        today = timezone.localdate()
-        month_start, month_end = month_date_bounds(today.year, today.month)
-        initial_month = f"{today.year}-{today.month:02d}"
-        initial_available_dates = build_available_dates_for_month(
-            case=case,
-            month_start=month_start,
-            month_end=month_end,
-            duration_minutes=duration,
-            exclude_appointment_id=exclude_id or None,
-            require_full_duration=(role == "counselor"),
-        )
 
     slots_url = reverse("scheduling:booking_slots")
     events_url = ""
@@ -84,8 +64,6 @@ def build_booking_calendar_context(
             "zoomCapacity": remote_zoom_capacity_limit(),
             "roomCapacity": in_person_room_capacity_limit(),
             "inPersonRoomCapacity": IN_PERSON_ROOM_CAPACITY,
-            "initialMonth": initial_month,
-            "initialAvailableDates": initial_available_dates,
         },
         "counselor_blocked_dates": (
             get_counselor_blocked_dates(counselor.pk) if counselor else []

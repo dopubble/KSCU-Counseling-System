@@ -49,8 +49,9 @@
 
     let selectedDate = null;
     let selectedSlotStart = null;
-    let monthAvailableDates = new Set(config.initialAvailableDates || []);
-    let loadedMonthKey = config.initialMonth || "";
+    let monthAvailableDates = new Set();
+    let loadedMonthKey = "";
+    let availabilityReady = false;
     let availabilityLoading = false;
     let loadingSlots = false;
     let calendar = null;
@@ -68,6 +69,13 @@
         if (calendar) {
             calendar.render();
         }
+    }
+
+    function finishAvailabilityLoad(monthKey, dates) {
+        monthAvailableDates = new Set(dates || []);
+        loadedMonthKey = monthKey;
+        availabilityReady = true;
+        setAvailabilityLoading(false);
     }
 
     function formatEventTime(date) {
@@ -274,14 +282,14 @@
                 headers: { Accept: "application/json" },
                 credentials: "same-origin",
             });
-            if (!response.ok) return;
+            if (!response.ok) {
+                finishAvailabilityLoad(monthKey, []);
+                return;
+            }
             const payload = await response.json();
-            monthAvailableDates = new Set(payload.available_dates || []);
-            loadedMonthKey = monthKey;
+            finishAvailabilityLoad(monthKey, payload.available_dates || []);
         } catch (_err) {
-            /* ignore */
-        } finally {
-            setAvailabilityLoading(false);
+            finishAvailabilityLoad(monthKey, []);
         }
     }
 
@@ -306,7 +314,7 @@
             if (counselorBlockedDates.includes(key)) {
                 return ["booking-day-blocked"];
             }
-            if (availabilityLoading) {
+            if (!availabilityReady || availabilityLoading) {
                 return ["booking-day-loading"];
             }
             if (monthAvailableDates.has(key)) {
@@ -315,7 +323,7 @@
             return ["booking-day-blocked"];
         },
         dateClick: function (info) {
-            if (availabilityLoading) {
+            if (!availabilityReady || availabilityLoading) {
                 return;
             }
             const key = formatDateKey(info.date);
