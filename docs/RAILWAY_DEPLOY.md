@@ -146,8 +146,14 @@ CSRF_TRUSTED_ORIGINS=https://your-app.up.railway.app,https://counseling.kcu.ac.k
 계정 교체 후 기존 확정 비대면 예약 Zoom 링크 재생성:
 
 ```bash
+# 1) Zoom 키·Licensed 이메일이 같은 계정인지 확인 (로컬에서 돌릴 때 ZOOM_* 도 함께 설정)
+python manage.py verify_zoom_setup
+
+# 2) 재생성
 python manage.py recreate_zoom_meetings --apply
 ```
+
+로컬 PC에서 운영 DB에 붙일 때는 `DATABASE_URL`만 넣으면 안 됩니다. Railway Variables의 `ZOOM_ACCOUNT_ID`, `ZOOM_CLIENT_ID`, `ZOOM_CLIENT_SECRET`을 **같은 PowerShell 세션**에 `$env:ZOOM_*`로 함께 설정하세요. 로컬 `.env`의 예전 Zoom 키가 쓰이면 `User does not exist` 오류가 납니다.
 
 (Railway Shell 또는 Public DATABASE_URL 연결 PC에서 실행)
 

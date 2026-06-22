@@ -4,7 +4,13 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import connection
 
 from apps.scheduling.services import recreate_all_zoom_meetings
-from apps.scheduling.utils import ZoomNotConfiguredError
+from apps.scheduling.utils import (
+    ZoomAPIError,
+    ZoomNotConfiguredError,
+    is_zoom_configured,
+    list_zoom_users,
+    verify_zoom_licensed_users,
+)
 from apps.scheduling.zoom_hosts import get_zoom_licensed_user_emails
 
 
@@ -41,6 +47,9 @@ class Command(BaseCommand):
         for index, email in enumerate(licensed, start=1):
             self.stdout.write(f"  host_{index:02d}: {email}")
 
+        if options["apply"]:
+            self._verify_zoom_account()
+
         dry_run = not options["apply"]
         try:
             recreated, skipped, messages = recreate_all_zoom_meetings(dry_run=dry_run)
@@ -65,3 +74,36 @@ class Command(BaseCommand):
             self.stdout.write("실제 반영: python manage.py recreate_zoom_meetings --apply")
         elif messages:
             raise CommandError(f"Zoom 재생성 실패 {len(messages)}건")
+
+    def _verify_zoom_account(self) -> None:
+        if not is_zoom_configured():
+            raise CommandError(
+                "ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET이 필요합니다.\n"
+                "DATABASE_URL만 설정하면 안 됩니다. Railway Variables의 Zoom 키 3개를 "
+                "같은 PowerShell 세션에 함께 넣어 주세요."
+            )
+        try:
+            matched, missing = verify_zoom_licensed_users()
+        except ZoomAPIError as exc:
+            raise CommandError(str(exc)) from exc
+
+        if missing:
+            users = list_zoom_users()
+            listed = "\n".join(
+                f"  - {(user.get('email') or '').strip()} "
+                f"({user.get('type', '')}, {user.get('status', '')})"
+                for user in users[:30]
+            )
+            raise CommandError(
+                "현재 Zoom API 계정에서 Licensed 사용자를 찾지 못했습니다:\n"
+                + "\n".join(f"  - {email}" for email in missing)
+                + "\n\n이 API 키가 새 줌 계정(sscukscu)의 Server-to-Server OAuth 앱인지 "
+                "확인하세요. 로컬 .env의 예전 키가 쓰이면 이 오류가 납니다.\n"
+                f"계정에 등록된 사용자(최대 30명):\n{listed or '  (없음)'}"
+            )
+
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Zoom 계정 확인 OK — Licensed 사용자 {len(matched)}명 매칭"
+            )
+        )

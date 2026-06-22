@@ -298,18 +298,17 @@ def recreate_all_zoom_meetings(
         host_email = host_emails.get(str(appointment.pk), "")
 
         existing = getattr(appointment, "zoom_meeting", None)
-        if existing and existing.zoom_meeting_id:
-            delete_zoom_meeting(existing.zoom_meeting_id)
-            existing.delete()
-
-        appointment.case.zoom_meeting_url = ""
-        appointment.case.save(update_fields=["zoom_meeting_url"])
+        old_meeting_id = (existing.zoom_meeting_id or "").strip() if existing else ""
 
         try:
             _create_zoom_meeting_for_appointment(
                 appointment,
                 host_user_email=host_email,
             )
+            new_meeting = getattr(appointment, "zoom_meeting", None)
+            new_meeting_id = (new_meeting.zoom_meeting_id or "").strip() if new_meeting else ""
+            if old_meeting_id and old_meeting_id != new_meeting_id:
+                delete_zoom_meeting(old_meeting_id)
             recreated += 1
         except (ZoomAPIError, ZoomNotConfiguredError, AppointmentServiceError) as exc:
             clear_zoom_token_cache()

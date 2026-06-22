@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 from typing import Any
+from urllib.parse import quote
 
 import requests
 from django.conf import settings
@@ -169,7 +170,7 @@ def create_zoom_meeting(
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
-    user_segment = host_email if host_email else "me"
+    user_segment = quote(host_email, safe="") if host_email else "me"
     create_url = f"{API_BASE}/users/{user_segment}/meetings"
 
     try:
@@ -309,6 +310,71 @@ def update_zoom_meeting_participant_settings(meeting_id: str) -> dict[str, Any]:
         meeting_id,
         {"settings": _zoom_meeting_settings()},
     )
+
+
+def list_zoom_users(*, page_size: int = 100) -> list[dict[str, Any]]:
+    """계정 내 Zoom 사용자 목록 (Server-to-Server OAuth)."""
+    _ensure_zoom_configured()
+    token = get_zoom_access_token()
+    headers = {"Authorization": f"Bearer {token}"}
+    users: list[dict[str, Any]] = []
+    next_page_token = ""
+
+    while True:
+        params: dict[str, Any] = {"page_size": page_size, "status": "active"}
+        if next_page_token:
+            params["next_page_token"] = next_page_token
+        try:
+            response = requests.get(
+                f"{API_BASE}/users",
+                headers=headers,
+                params=params,
+                timeout=30,
+            )
+            response.raise_for_status()
+            data = response.json()
+        except requests.HTTPError as exc:
+            detail = ""
+            if exc.response is not None:
+                try:
+                    detail = exc.response.json().get("message", exc.response.text)
+                except Exception:
+                    detail = exc.response.text
+            raise ZoomAPIError(
+                f"Zoom 사용자 목록 조회에 실패했습니다. {detail or 'API 오류'}"
+            ) from exc
+        except requests.RequestException as exc:
+            raise ZoomAPIError(
+                f"Zoom 사용자 목록 조회 중 오류가 발생했습니다: {exc}"
+            ) from exc
+
+        users.extend(data.get("users") or [])
+        next_page_token = (data.get("next_page_token") or "").strip()
+        if not next_page_token:
+            break
+
+    return users
+
+
+def verify_zoom_licensed_users() -> tuple[list[str], list[str]]:
+    """
+    ZOOM_LICENSED_USERS 이메일이 현재 API 계정에 존재하는지 확인.
+    반환: (matched_emails, missing_emails)
+    """
+    from apps.scheduling.zoom_hosts import get_zoom_licensed_user_emails
+
+    licensed = [email.strip().lower() for email in get_zoom_licensed_user_emails()]
+    if not licensed:
+        return [], []
+
+    account_emails = {
+        (user.get("email") or "").strip().lower()
+        for user in list_zoom_users()
+        if user.get("email")
+    }
+    matched = [email for email in licensed if email in account_emails]
+    missing = [email for email in licensed if email not in account_emails]
+    return matched, missing
 
 
 def delete_zoom_meeting(meeting_id: str) -> None:
