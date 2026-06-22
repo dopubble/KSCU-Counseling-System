@@ -63,6 +63,7 @@ from apps.scheduling.availability import (
     serialize_counselor_availability_rules,
 )
 from apps.scheduling.schedule_picker import build_schedule_picker_context
+from apps.scheduling.booking_calendar import build_booking_calendar_context
 from apps.scheduling.display import group_availabilities_for_display
 from apps.scheduling.forms import (
     AppointmentRejectForm,
@@ -70,6 +71,7 @@ from apps.scheduling.forms import (
     AppointmentScheduleForm,
 )
 from apps.scheduling.models import Appointment, AppointmentStatus, CounselorAvailability
+from apps.scheduling.constants import DEFAULT_APPOINTMENT_DURATION_MINUTES
 from apps.scheduling.services import (
     AppointmentServiceError,
     confirm_appointment_with_zoom,
@@ -995,6 +997,137 @@ def client_session_material_delete(request, case_pk, session_number, material_pk
         session_number,
         material_pk,
         redirect_to=reverse("client:case_detail", kwargs={"pk": case.pk}),
+    )
+
+
+@role_required(UserRole.CLIENT)
+def client_session_booking_calendar(request, case_pk, session_number):
+    """회기별 예약·일정 변경 — 전체 화면 예약 캘린더."""
+    case = _get_client_case(request, case_pk)
+    card = _get_session_card(case, session_number)
+    if not card or not card.show_schedule_change:
+        messages.error(request, "이 회기에는 일정을 예약하거나 변경할 수 없습니다.")
+        return redirect("client:case_detail", pk=case.pk)
+
+    if (
+        card.appointment
+        and card.appointment.status != AppointmentStatus.PENDING
+        and client_change_blocked(card.appointment)
+    ):
+        messages.error(
+            request,
+            "상담 예정일 24시간 이내에는 예약 변경이 불가합니다.",
+        )
+        return redirect("client:case_detail", pk=case.pk)
+
+    if request.method == "POST":
+        form = SessionScheduleChangeForm(request.POST)
+        if not form.is_valid():
+            messages.error(request, "요청 내용을 확인해 주세요.")
+            return redirect(
+                "client:session_booking_calendar",
+                case_pk=case.pk,
+                session_number=session_number,
+            )
+
+        preferred_datetime = form.cleaned_data.get("preferred_datetime")
+        if not preferred_datetime:
+            messages.error(request, "희망 일시를 선택해 주세요.")
+            return redirect(
+                "client:session_booking_calendar",
+                case_pk=case.pk,
+                session_number=session_number,
+            )
+
+        if case.counselor_id:
+            available, availability_message = is_counselor_slot_available(
+                case.counselor_id,
+                preferred_datetime,
+                require_full_duration=False,
+            )
+            if not available:
+                messages.error(request, availability_message)
+                return redirect(
+                    "client:session_booking_calendar",
+                    case_pk=case.pk,
+                    session_number=session_number,
+                )
+
+        message = (form.cleaned_data.get("message") or "").strip()
+
+        if card.is_confirmed and card.appointment:
+            SessionScheduleChangeRequest.objects.filter(
+                case=case,
+                session_number=session_number,
+            ).delete()
+            schedule_request = SessionScheduleChangeRequest.objects.create(
+                case=case,
+                session_number=session_number,
+                appointment=card.appointment,
+                client=request.user,
+                preferred_datetime=preferred_datetime,
+                message=message,
+            )
+            send_schedule_change_request_notification(schedule_request)
+            messages.success(
+                request,
+                f"{session_number}회기 일정 변경 요청이 접수되었습니다. 담당 상담사가 확인 후 안내해 드립니다.",
+            )
+            return redirect("client:case_detail", pk=case.pk)
+
+        ensure_pending_session_appointment(
+            case=case,
+            client=request.user,
+            session_number=session_number,
+            scheduled_at=preferred_datetime,
+            request_message=message,
+        )
+        had_pending = bool(
+            card.appointment and card.appointment.status == AppointmentStatus.PENDING
+        )
+        SessionScheduleChangeRequest.objects.filter(
+            case=case,
+            session_number=session_number,
+        ).delete()
+        if had_pending:
+            messages.success(
+                request,
+                f"{session_number}회기 예약 요청 일시가 변경되었습니다. 담당 상담사가 확인 후 확정해 드립니다.",
+            )
+        else:
+            messages.success(
+                request,
+                f"{session_number}회기 상담 일정 예약이 접수되었습니다. 담당 상담사가 확인 후 확정해 드립니다.",
+            )
+        return redirect("client:case_detail", pk=case.pk)
+
+    if card.is_confirmed:
+        page_title = f"{session_number}회기 일정 변경"
+        submit_label = "변경 요청 제출"
+    elif card.appointment and card.appointment.status == AppointmentStatus.PENDING:
+        page_title = f"{session_number}회기 일정 수정"
+        submit_label = "예약 일시 변경"
+    else:
+        page_title = f"{session_number}회기 상담일정 예약"
+        submit_label = "예약 요청 제출"
+
+    return render(
+        request,
+        "client/session_booking_calendar.html",
+        {
+            "case": case,
+            "session_number": session_number,
+            "card": card,
+            "page_title": page_title,
+            "submit_label": submit_label,
+            "is_confirmed_change": card.is_confirmed,
+            **build_booking_calendar_context(
+                case,
+                appointment=card.appointment,
+                session_number=session_number,
+                role="client",
+            ),
+        },
     )
 
 
@@ -2308,13 +2441,19 @@ def counselor_session_appointment_book(request, case_pk, session_number):
 
     return render(
         request,
-        "counselor/session_appointment_book.html",
+        "counselor/session_booking_calendar.html",
         {
             "case": case,
             "session_number": session_number,
             "form": form,
             "zoom_configured": is_zoom_configured(),
-            **build_schedule_picker_context(case),
+            "default_duration_minutes": form.fields["duration_minutes"].initial
+            or DEFAULT_APPOINTMENT_DURATION_MINUTES,
+            **build_booking_calendar_context(
+                case,
+                session_number=session_number,
+                role="counselor",
+            ),
         },
     )
 

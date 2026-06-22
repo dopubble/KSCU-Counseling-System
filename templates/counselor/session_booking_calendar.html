@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% load static ui_tags %}
+
+{% block title %}{{ session_number }}회기 예약 — {{ case.client.name }}{% endblock %}
+
+{% block extra_css %}
+<link href="{% static 'css/counselor.css' %}" rel="stylesheet">
+{% include "includes/booking_calendar_assets.html" %}
+{% endblock %}
+
+{% block layout %}
+<div class="site-page counselor-page py-4 py-lg-5">
+    <div class="container site-container">
+{% block content %}
+    {% page_header show_heading=False c1_label="대시보드" c1_url_name="counselor:dashboard" c1_icon="bi-briefcase" c2_label=case.client.name c2_url_name="counselor:case_detail" c2_url_arg=case.pk c3_label=session_number|stringformat:"s"|add:"회기 예약" %}
+    <div class="site-page-heading mt-4">
+        <h1 class="h4 fw-semibold site-page-title mb-1">{{ session_number }}회기 — 일정 입력 및 확정</h1>
+        <p class="text-muted small mb-0">
+            내담자 {{ case.client.name }} · {{ case.get_counseling_method_display }}
+        </p>
+    </div>
+
+    {% if case.counseling_method == 'REMOTE' and not zoom_configured %}
+    <div class="alert alert-warning small mt-3">
+        Zoom API가 설정되지 않았습니다. 비대면 예약 확정을 위해 .env에 Zoom 자격 증명을 입력해 주세요.
+    </div>
+    {% endif %}
+
+    {% if not booking_calendar_enabled %}
+    <div class="alert alert-warning mt-4">담당 상담사 정보를 확인할 수 없습니다.</div>
+    {% else %}
+    <form method="post" id="bookingCalendarForm" class="mt-4">
+        {% csrf_token %}
+        <input type="hidden" name="scheduled_at" id="bookingScheduledAtInput" value="">
+
+        <div class="booking-calendar-page" id="bookingCalendarRoot"
+             data-available-dates-url="{% url 'scheduling:booking_available_dates' %}"
+             data-timezone="Asia/Seoul">
+            <div class="booking-calendar-legend">
+                <span class="booking-calendar-legend-item booking-calendar-legend-item--available">
+                    <span class="booking-calendar-legend-swatch"></span>예약 가능
+                </span>
+                <span class="booking-calendar-legend-item booking-calendar-legend-item--blocked">
+                    <span class="booking-calendar-legend-swatch"></span>상담 불가·예약 불가
+                </span>
+                <span class="booking-calendar-legend-item booking-calendar-legend-item--venue-full">
+                    <span class="booking-calendar-legend-swatch"></span>
+                    {% if booking_calendar_remote %}비대면 만석{% else %}대면 상담실 만석{% endif %}
+                </span>
+            </div>
+
+            <div class="booking-calendar-layout mt-3">
+                <section class="booking-calendar-panel">
+                    <div class="booking-calendar-panel-header">날짜 선택 · 본인 일정</div>
+                    <div class="booking-calendar-panel-body">
+                        <div id="bookingCalendar"></div>
+                        <p class="small text-muted mb-0 mt-2 px-1">
+                            본인 확정 일정이 달력에 표시됩니다. 빈 시간대를 선택해 바로 확정하세요.
+                        </p>
+                    </div>
+                </section>
+
+                <section class="booking-slot-panel">
+                    <div class="booking-slot-panel-header" id="bookingSlotPanelTitle">날짜를 선택해 주세요</div>
+                    <div id="bookingSlotList" class="booking-slot-list">
+                        <div class="booking-slot-empty">달력에서 날짜를 선택하면 09:00~22:00 시간대가 표시됩니다.</div>
+                    </div>
+                    <div id="bookingConfirmPanel" class="booking-confirm-panel d-none">
+                        <p class="small fw-semibold mb-2">선택한 시간</p>
+                        <p class="mb-3" id="bookingSelectedTimeLabel">—</p>
+                        <div class="mb-3">
+                            <label for="bookingDurationInput" class="form-label fw-semibold">상담 시간(분)</label>
+                            <input type="number" name="duration_minutes" id="bookingDurationInput"
+                                   class="form-control" min="20" max="180" step="10"
+                                   value="{{ default_duration_minutes }}" style="max-width: 8rem;">
+                        </div>
+                        <div class="d-flex flex-wrap gap-2">
+                            <a href="{% url 'counselor:case_detail' case.pk %}" class="btn btn-outline-secondary btn-sm">취소</a>
+                            <button type="submit" id="bookingSubmitBtn" class="btn btn-counselor text-white btn-sm"
+                                    {% if case.counseling_method == 'REMOTE' and not zoom_configured %}disabled{% endif %}>
+                                <i class="bi bi-check2-circle me-1"></i>예약 확정
+                            </button>
+                        </div>
+                        <p class="small text-muted mt-3 mb-0">
+                            {% if case.counseling_method == 'REMOTE' %}
+                            확정 시 Zoom 회의가 자동 생성됩니다.
+                            {% else %}
+                            확정 시 대면 상담실 예약이 반영됩니다 (동시간대 최대 {{ booking_calendar_room_capacity }}건).
+                            {% endif %}
+                        </p>
+                    </div>
+                </section>
+            </div>
+        </div>
+        {{ booking_calendar_config|json_script:"booking-calendar-config" }}
+    </form>
+    {% endif %}
+{% endblock %}
+    </div>
+</div>
+{% include "includes/booking_calendar_data.html" %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.15/locales/ko.global.min.js"></script>
+<script src="{% static 'js/booking_calendar.js' %}?v=1"></script>
+{% endblock %}

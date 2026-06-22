@@ -64,6 +64,11 @@ urlpatterns = [
         name="session_schedule_change",
     ),
     path(
+        "case/<uuid:case_pk>/session/<int:session_number>/book/",
+        views.client_session_booking_calendar,
+        name="session_booking_calendar",
+    ),
+    path(
         "case/<uuid:case_pk>/appointment/<uuid:appointment_pk>/cancel-request/",
         views.client_session_appointment_cancel,
         name="session_appointment_cancel",

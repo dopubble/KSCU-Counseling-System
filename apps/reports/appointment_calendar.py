@@ -319,6 +319,7 @@ def build_calendar_events(
     *,
     start: datetime | None = None,
     end: datetime | None = None,
+    counselor_id=None,
 ) -> list[dict[str, Any]]:
     """확정(CONFIRMED) 예약만 FullCalendar 이벤트 JSON으로 변환."""
     query_start, query_end = _db_query_bounds(start, end)
@@ -327,6 +328,8 @@ def build_calendar_events(
         .select_related("client", "counselor", "case", "zoom_meeting")
         .order_by("scheduled_at")
     )
+    if counselor_id:
+        qs = qs.filter(counselor_id=counselor_id)
     if query_end is not None:
         qs = qs.filter(scheduled_at__lt=query_end)
     if query_start is not None:

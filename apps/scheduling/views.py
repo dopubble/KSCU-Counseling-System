@@ -9,10 +9,14 @@ from django.views.decorators.http import require_GET, require_POST
 import logging
 
 from apps.accounts.decorators import counselor_required
+from apps.accounts.models import UserRole
 
 logger = logging.getLogger(__name__)
 
-from apps.reports.appointment_calendar import parse_calendar_bound
+from apps.reports.appointment_calendar import build_calendar_events, parse_calendar_bound
+from apps.counseling.models import Case, CounselingMethod
+from .booking_slots import build_booking_slots_for_date, date_has_bookable_slot
+from .constants import DEFAULT_APPOINTMENT_DURATION_MINUTES, IN_PERSON_ROOM_CAPACITY
 from .display import group_availabilities_for_display
 from .forms import (
     AppointmentScheduleForm,
@@ -20,8 +24,10 @@ from .forms import (
     SETTING_DAILY,
     SETTING_RECURRING,
 )
-from apps.counseling.models import CounselingMethod
-from .constants import DEFAULT_APPOINTMENT_DURATION_MINUTES
+from .in_person_room_capacity import (
+    get_in_person_busy_intervals,
+    in_person_room_capacity_limit,
+)
 from .models import Appointment, AppointmentStatus, CounselorAvailability
 from .remote_zoom_capacity import (
     get_remote_zoom_busy_intervals,
@@ -266,6 +272,160 @@ def remote_zoom_busy_intervals(request):
     return JsonResponse(
         {
             "capacity": remote_zoom_capacity_limit(),
+            "default_duration_minutes": DEFAULT_APPOINTMENT_DURATION_MINUTES,
+            "intervals": intervals,
+        }
+    )
+
+
+def _get_booking_case_for_user(request, case_id: str) -> Case:
+    case = get_object_or_404(
+        Case.objects.select_related("counselor", "client", "application"),
+        pk=case_id,
+    )
+    user = request.user
+    if user.is_counselor and case.counselor_id == user.pk:
+        return case
+    if getattr(user, "role", None) == UserRole.CLIENT and case.client_id == user.pk:
+        return case
+    raise PermissionDenied
+
+
+@login_required
+@require_GET
+def booking_slots(request):
+    """날짜별 예약 슬롯 상태 — 내담자·상담사 공통."""
+    case_id = (request.GET.get("case_id") or "").strip()
+    date_text = (request.GET.get("date") or "").strip()
+    if not case_id or not date_text:
+        return JsonResponse(
+            {"error": "case_id, date 쿼리가 필요합니다."},
+            status=400,
+        )
+
+    try:
+        from datetime import date as date_cls
+
+        on_date = date_cls.fromisoformat(date_text)
+    except ValueError:
+        return JsonResponse({"error": "date는 YYYY-MM-DD 형식이어야 합니다."}, status=400)
+
+    case = _get_booking_case_for_user(request, case_id)
+    duration_raw = (request.GET.get("duration_minutes") or "").strip()
+    duration = DEFAULT_APPOINTMENT_DURATION_MINUTES
+    if duration_raw.isdigit():
+        duration = max(1, int(duration_raw))
+
+    exclude_id = (request.GET.get("exclude_appointment_id") or "").strip() or None
+    require_full = request.user.is_counselor
+
+    slots = build_booking_slots_for_date(
+        case=case,
+        on_date=on_date,
+        duration_minutes=duration,
+        exclude_appointment_id=exclude_id,
+        require_full_duration=require_full,
+    )
+    return JsonResponse(
+        {
+            "date": on_date.isoformat(),
+            "counseling_method": case.counseling_method,
+            "duration_minutes": duration,
+            "zoom_capacity": remote_zoom_capacity_limit(),
+            "room_capacity": in_person_room_capacity_limit(),
+            "slots": [slot.to_dict() for slot in slots],
+        }
+    )
+
+
+@login_required
+@require_GET
+def booking_available_dates(request):
+    """월간 달력 — 예약 가능한 날짜 목록."""
+    case_id = (request.GET.get("case_id") or "").strip()
+    month_text = (request.GET.get("month") or "").strip()
+    if not case_id or not month_text:
+        return JsonResponse(
+            {"error": "case_id, month 쿼리가 필요합니다."},
+            status=400,
+        )
+
+    try:
+        from datetime import date as date_cls
+
+        parts = month_text.split("-")
+        year, month = int(parts[0]), int(parts[1])
+        month_start = date_cls(year, month, 1)
+    except (ValueError, IndexError):
+        return JsonResponse(
+            {"error": "month는 YYYY-MM 형식이어야 합니다."},
+            status=400,
+        )
+
+    if month == 12:
+        month_end = date_cls(year + 1, 1, 1)
+    else:
+        month_end = date_cls(year, month + 1, 1)
+
+    case = _get_booking_case_for_user(request, case_id)
+    exclude_id = (request.GET.get("exclude_appointment_id") or "").strip() or None
+    require_full = request.user.is_counselor
+
+    available_dates: list[str] = []
+    cursor = month_start
+    while cursor < month_end:
+        if date_has_bookable_slot(
+            case=case,
+            on_date=cursor,
+            exclude_appointment_id=exclude_id,
+            require_full_duration=require_full,
+        ):
+            available_dates.append(cursor.isoformat())
+        cursor = cursor.fromordinal(cursor.toordinal() + 1)
+
+    return JsonResponse({"month": month_text, "available_dates": available_dates})
+
+
+@counselor_required
+@require_GET
+def counselor_calendar_events(request):
+    """상담사 본인 확정 예약 — FullCalendar 이벤트."""
+    start = parse_calendar_bound(request.GET.get("start", ""))
+    end = parse_calendar_bound(request.GET.get("end", ""))
+    if start is None or end is None:
+        return JsonResponse(
+            {"error": "start, end 쿼리가 필요합니다."},
+            status=400,
+        )
+    events = build_calendar_events(
+        start=start,
+        end=end,
+        counselor_id=request.user.pk,
+    )
+    return JsonResponse(events, safe=False)
+
+
+@login_required
+@require_GET
+def in_person_busy_intervals(request):
+    """대면 확정 예약 구간 — 달력 만석 표시용 (Flatpickr 호환)."""
+    range_start = parse_calendar_bound(request.GET.get("start", ""))
+    range_end = parse_calendar_bound(request.GET.get("end", ""))
+    if range_start is None or range_end is None:
+        return JsonResponse(
+            {"error": "start, end 쿼리가 필요합니다."},
+            status=400,
+        )
+
+    exclude_id = (request.GET.get("exclude_appointment_id") or "").strip() or None
+    intervals = get_in_person_busy_intervals(
+        range_start,
+        range_end,
+        exclude_appointment_id=exclude_id,
+    )
+    return JsonResponse(
+        {
+            "capacity": in_person_room_capacity_limit(),
             "default_duration_minutes": DEFAULT_APPOINTMENT_DURATION_MINUTES,
             "intervals": intervals,
         }

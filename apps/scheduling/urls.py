@@ -17,4 +17,24 @@ urlpatterns = [
         views.remote_zoom_busy_intervals,
         name="remote_zoom_busy_intervals",
     ),
+    path(
+        "api/in-person-busy-intervals/",
+        views.in_person_busy_intervals,
+        name="in_person_busy_intervals",
+    ),
+    path(
+        "api/booking-slots/",
+        views.booking_slots,
+        name="booking_slots",
+    ),
+    path(
+        "api/booking-available-dates/",
+        views.booking_available_dates,
+        name="booking_available_dates",
+    ),
+    path(
+        "api/counselor-calendar-events/",
+        views.counselor_calendar_events,
+        name="counselor_calendar_events",
+    ),
 ]

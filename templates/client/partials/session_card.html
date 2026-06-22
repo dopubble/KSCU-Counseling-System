@@ -35,20 +35,11 @@
             </div>
             {% elif session.show_confirmed_session_actions %}
             <div class="client-session-card-header-actions d-flex flex-wrap align-items-center gap-2">
-                <button type="button"
-                        class="btn btn-sm btn-outline-secondary client-session-action-btn client-session-schedule-change-btn"
-                        {% if session.confirmed_actions_blocked %}disabled{% endif %}
-                        data-session-number="{{ session.session_number }}"
-                        data-session-label="{{ session.session_number }}회기"
-                        data-schedule-action-label="일정 변경 요청"
-                        data-is-confirmed="1"
-                        {% if session.scheduled_datetime %}
-                        data-current-datetime="{{ session.scheduled_datetime|date:'Y-m-d H:i' }}"
-                        data-scheduled-at="{{ session.scheduled_datetime|date:'c' }}"
-                        {% endif %}
-                        data-change-blocked="{% if session.confirmed_actions_blocked %}1{% else %}0{% endif %}">
+                <a href="{% url 'client:session_booking_calendar' case.pk session.session_number %}"
+                   class="btn btn-sm btn-outline-secondary client-session-action-btn{% if session.confirmed_actions_blocked %} disabled{% endif %}"
+                   {% if session.confirmed_actions_blocked %}aria-disabled="true" tabindex="-1"{% endif %}>
                     <i class="bi bi-calendar-event me-1" aria-hidden="true"></i>일정 변경 요청
-                </button>
+                </a>
                 <button type="button"
                         class="btn btn-sm btn-outline-danger client-session-action-btn client-session-cancel-request-btn"
                         {% if session.confirmed_actions_blocked %}disabled{% endif %}
@@ -61,20 +52,10 @@
             </div>
             {% elif session.show_pending_session_actions %}
             <div class="client-session-card-header-actions d-flex flex-wrap align-items-center gap-2">
-                <button type="button"
-                        class="btn btn-sm btn-outline-secondary client-session-action-btn client-session-schedule-change-btn"
-                        data-session-number="{{ session.session_number }}"
-                        data-session-label="{{ session.session_number }}회기"
-                        data-schedule-action-label="일정 수정"
-                        data-is-confirmed="0"
-                        data-is-pending="1"
-                        {% if session.scheduled_datetime %}
-                        data-current-datetime="{{ session.scheduled_datetime|date:'Y-m-d H:i' }}"
-                        data-scheduled-at="{{ session.scheduled_datetime|date:'c' }}"
-                        {% endif %}
-                        data-change-blocked="0">
+                <a href="{% url 'client:session_booking_calendar' case.pk session.session_number %}"
+                   class="btn btn-sm btn-outline-secondary client-session-action-btn">
                     <i class="bi bi-pencil-square me-1" aria-hidden="true"></i>일정 수정
-                </button>
+                </a>
                 <form method="post"
                       action="{% url 'client:session_pending_withdraw' case.pk session.appointment.pk %}"
                       class="client-session-pending-withdraw-form mb-0">
@@ -88,18 +69,11 @@
             </div>
             {% elif session.show_schedule_change_booking %}
             <div class="client-session-card-header-actions d-flex flex-wrap align-items-center gap-2">
-                <button type="button"
-                        class="btn btn-sm btn-outline-secondary client-session-action-btn client-session-schedule-change-btn"
-                        data-session-number="{{ session.session_number }}"
-                        data-session-label="{{ session.session_number }}회기"
-                        data-schedule-action-label="상담일정 예약"
-                        data-is-confirmed="0"
-                        {% if session.scheduled_datetime %}
-                        data-scheduled-at="{{ session.scheduled_datetime|date:'c' }}"
-                        {% endif %}
-                        data-change-blocked="{% if session.schedule_change_blocked %}1{% else %}0{% endif %}">
+                <a href="{% url 'client:session_booking_calendar' case.pk session.session_number %}"
+                   class="btn btn-sm btn-outline-secondary client-session-action-btn{% if session.schedule_change_blocked %} disabled{% endif %}"
+                   {% if session.schedule_change_blocked %}aria-disabled="true" tabindex="-1"{% endif %}>
                     <i class="bi bi-calendar-event me-1" aria-hidden="true"></i>상담일정 예약
-                </button>
+                </a>
             </div>
             {% endif %}
         </div>

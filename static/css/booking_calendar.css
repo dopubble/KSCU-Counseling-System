@@ -1,0 +1,161 @@
+/* 예약 캘린더 — FullCalendar 월간 + 시간 슬롯 패널 */
+
+.booking-calendar-page {
+    min-height: calc(100vh - 12rem);
+}
+
+.booking-calendar-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+    gap: 1.25rem;
+    align-items: start;
+}
+
+@media (max-width: 991.98px) {
+    .booking-calendar-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+.booking-calendar-panel,
+.booking-slot-panel {
+    background: #fff;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 0.75rem;
+    box-shadow: 0 0.125rem 0.5rem rgba(15, 23, 42, 0.06);
+}
+
+.booking-calendar-panel-header,
+.booking-slot-panel-header {
+    padding: 0.875rem 1rem;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    font-weight: 600;
+}
+
+.booking-calendar-panel-body {
+    padding: 0.75rem;
+}
+
+#bookingCalendar .fc-daygrid-day.booking-day-available .fc-daygrid-day-number {
+    color: #1d4ed8;
+    font-weight: 700;
+}
+
+#bookingCalendar .fc-daygrid-day.booking-day-blocked {
+    background: #f8fafc;
+}
+
+#bookingCalendar .fc-daygrid-day.booking-day-blocked .fc-daygrid-day-number {
+    color: #94a3b8;
+}
+
+#bookingCalendar .fc-daygrid-day.booking-day-selected {
+    background: #eff6ff;
+}
+
+.booking-slot-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem 1rem;
+    max-height: 32rem;
+    overflow-y: auto;
+}
+
+.booking-slot-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    border: 1px solid #dbeafe;
+    background: #f8fbff;
+    color: #1e3a8a;
+    border-radius: 0.5rem;
+    padding: 0.625rem 0.75rem;
+    text-align: left;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.booking-slot-btn:hover:not(:disabled) {
+    background: #eff6ff;
+    border-color: #93c5fd;
+}
+
+.booking-slot-btn:disabled,
+.booking-slot-btn.booking-slot-btn--disabled {
+    opacity: 0.5;
+    pointer-events: none;
+    background: #f1f5f9;
+    border-color: #e2e8f0;
+    color: #64748b;
+}
+
+.booking-slot-btn.booking-slot-btn--selected {
+    background: #dbeafe;
+    border-color: #3b82f6;
+    color: #1e40af;
+    font-weight: 600;
+}
+
+.booking-slot-state {
+    font-size: 0.75rem;
+    color: #64748b;
+}
+
+.booking-calendar-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1rem;
+    padding: 0 1rem 0.75rem;
+    font-size: 0.8125rem;
+}
+
+.booking-calendar-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.booking-calendar-legend-swatch {
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 0.15rem;
+    display: inline-block;
+}
+
+.booking-calendar-legend-item--available .booking-calendar-legend-swatch {
+    background: #dbeafe;
+    border: 1px solid #3b82f6;
+}
+
+.booking-calendar-legend-item--blocked .booking-calendar-legend-swatch {
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+}
+
+.booking-calendar-legend-item--venue-full .booking-calendar-legend-swatch {
+    background: #e2e8f0;
+    border: 1px solid #94a3b8;
+}
+
+.booking-confirm-panel {
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    padding: 1rem;
+    background: #fafafa;
+    border-radius: 0 0 0.75rem 0.75rem;
+}
+
+.booking-confirm-panel.d-none + .booking-slot-list {
+    max-height: 36rem;
+}
+
+.booking-slot-empty {
+    padding: 2rem 1rem;
+    text-align: center;
+    color: #64748b;
+    font-size: 0.9rem;
+}
+
+.booking-calendar-counselor-event-inperson {
+    opacity: 0.9;
+}

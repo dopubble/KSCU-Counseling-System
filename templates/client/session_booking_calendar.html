@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% load static ui_tags %}
+
+{% block title %}{{ page_title }} — 사례 {{ case.case_number }}{% endblock %}
+
+{% block extra_css %}
+<link href="{% static 'css/client.css' %}" rel="stylesheet">
+{% include "includes/booking_calendar_assets.html" %}
+{% endblock %}
+
+{% block layout %}
+<div class="site-page client-page py-4 py-lg-5">
+    <div class="container site-container">
+{% block content %}
+    {% page_header show_heading=False c1_label="대시보드" c1_url_name="client:dashboard" c1_icon="bi-house" c2_label="사례 상세" c2_url_name="client:case_detail" c2_url_arg=case.pk c3_label=page_title %}
+    <div class="site-page-heading mt-4">
+        <h1 class="h4 fw-semibold site-page-title mb-1">{{ page_title }}</h1>
+        <p class="text-muted small mb-0">
+            {{ session_number }}회기 · {{ case.get_counseling_method_display }}
+            {% if is_confirmed_change %}
+            — 변경 요청은 상담사 확인 후 반영됩니다.
+            {% else %}
+            — 요청 후 상담사가 확정합니다.
+            {% endif %}
+        </p>
+    </div>
+
+    {% if not booking_calendar_enabled %}
+    <div class="alert alert-warning mt-4">담당 상담사가 배정되지 않아 예약할 수 없습니다.</div>
+    {% else %}
+    <form method="post" id="bookingCalendarForm" class="mt-4">
+        {% csrf_token %}
+        <input type="hidden" name="preferred_datetime" id="bookingScheduledAtInput" value="">
+
+        <div class="booking-calendar-page" id="bookingCalendarRoot"
+             data-available-dates-url="{% url 'scheduling:booking_available_dates' %}"
+             data-timezone="Asia/Seoul">
+            <div class="booking-calendar-legend">
+                <span class="booking-calendar-legend-item booking-calendar-legend-item--available">
+                    <span class="booking-calendar-legend-swatch"></span>예약 가능
+                </span>
+                <span class="booking-calendar-legend-item booking-calendar-legend-item--blocked">
+                    <span class="booking-calendar-legend-swatch"></span>상담 불가·예약 불가
+                </span>
+                <span class="booking-calendar-legend-item booking-calendar-legend-item--venue-full">
+                    <span class="booking-calendar-legend-swatch"></span>
+                    {% if booking_calendar_remote %}비대면 만석{% else %}대면 상담실 만석{% endif %}
+                </span>
+            </div>
+
+            <div class="booking-calendar-layout mt-3">
+                <section class="booking-calendar-panel">
+                    <div class="booking-calendar-panel-header">날짜 선택</div>
+                    <div class="booking-calendar-panel-body">
+                        <div id="bookingCalendar"></div>
+                        <p class="small text-muted mb-0 mt-2 px-1">
+                            타인의 예약 정보는 표시되지 않습니다. 파란색 날짜에서 예약 가능한 시간을 선택해 주세요.
+                        </p>
+                    </div>
+                </section>
+
+                <section class="booking-slot-panel">
+                    <div class="booking-slot-panel-header" id="bookingSlotPanelTitle">날짜를 선택해 주세요</div>
+                    <div id="bookingSlotList" class="booking-slot-list">
+                        <div class="booking-slot-empty">달력에서 날짜를 선택하면 09:00~22:00 시간대가 표시됩니다.</div>
+                    </div>
+                    <div id="bookingConfirmPanel" class="booking-confirm-panel d-none">
+                        <p class="small fw-semibold mb-2">선택한 시간</p>
+                        <p class="mb-3" id="bookingSelectedTimeLabel">—</p>
+                        <div class="mb-3">
+                            <label for="id_message" class="form-label fw-semibold">요청 내용 (선택)</label>
+                            <textarea name="message" id="id_message" class="form-control" rows="3"
+                                      placeholder="상담사에게 전달할 메모가 있으면 입력해 주세요."></textarea>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2">
+                            <a href="{% url 'client:case_detail' case.pk %}" class="btn btn-outline-secondary btn-sm">취소</a>
+                            <button type="submit" id="bookingSubmitBtn" class="btn btn-primary btn-sm" disabled>{{ submit_label }}</button>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
+        {{ booking_calendar_config|json_script:"booking-calendar-config" }}
+    </form>
+    {% endif %}
+{% endblock %}
+    </div>
+</div>
+{% include "includes/booking_calendar_data.html" %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.15/locales/ko.global.min.js"></script>
+<script src="{% static 'js/booking_calendar.js' %}?v=1"></script>
+{% endblock %}

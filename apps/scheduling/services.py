@@ -22,6 +22,7 @@ from .utils import (
     update_zoom_meeting_participant_settings,
 )
 from .remote_zoom_capacity import ensure_remote_zoom_capacity
+from .in_person_room_capacity import ensure_in_person_room_capacity
 from .zoom_hosts import (
     assign_host_emails_for_appointments,
     confirmed_remote_appointments_queryset,
@@ -411,6 +412,8 @@ def confirm_appointment_with_zoom(
             zoom_meeting, _launch_url = _create_zoom_meeting_for_appointment(appointment)
         except (ZoomAPIError, ZoomNotConfiguredError):
             raise
+    else:
+        ensure_in_person_room_capacity(appointment)
 
     appointment.status = AppointmentStatus.CONFIRMED
     appointment.confirmed_at = timezone.now()
@@ -458,6 +461,12 @@ def reschedule_confirmed_appointment(
 
     if _appointment_uses_zoom(appointment):
         ensure_remote_zoom_capacity(
+            appointment,
+            scheduled_at=new_scheduled_at,
+            exclude_appointment_id=appointment.pk,
+        )
+    else:
+        ensure_in_person_room_capacity(
             appointment,
             scheduled_at=new_scheduled_at,
             exclude_appointment_id=appointment.pk,
