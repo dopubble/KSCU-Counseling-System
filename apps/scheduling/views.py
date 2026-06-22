@@ -15,7 +15,11 @@ logger = logging.getLogger(__name__)
 
 from apps.reports.appointment_calendar import build_calendar_events, parse_calendar_bound
 from apps.counseling.models import Case, CounselingMethod
-from .booking_slots import build_booking_slots_for_date, date_has_bookable_slot
+from .booking_slots import (
+    build_available_dates_for_month,
+    build_booking_slots_for_date,
+    month_date_bounds,
+)
 from .constants import DEFAULT_APPOINTMENT_DURATION_MINUTES, IN_PERSON_ROOM_CAPACITY
 from .display import group_availabilities_for_display
 from .forms import (
@@ -351,37 +355,26 @@ def booking_available_dates(request):
         )
 
     try:
-        from datetime import date as date_cls
-
         parts = month_text.split("-")
         year, month = int(parts[0]), int(parts[1])
-        month_start = date_cls(year, month, 1)
+        month_start, month_end = month_date_bounds(year, month)
     except (ValueError, IndexError):
         return JsonResponse(
             {"error": "month는 YYYY-MM 형식이어야 합니다."},
             status=400,
         )
 
-    if month == 12:
-        month_end = date_cls(year + 1, 1, 1)
-    else:
-        month_end = date_cls(year, month + 1, 1)
-
     case = _get_booking_case_for_user(request, case_id)
     exclude_id = (request.GET.get("exclude_appointment_id") or "").strip() or None
     require_full = request.user.is_counselor
 
-    available_dates: list[str] = []
-    cursor = month_start
-    while cursor < month_end:
-        if date_has_bookable_slot(
-            case=case,
-            on_date=cursor,
-            exclude_appointment_id=exclude_id,
-            require_full_duration=require_full,
-        ):
-            available_dates.append(cursor.isoformat())
-        cursor = cursor.fromordinal(cursor.toordinal() + 1)
+    available_dates = build_available_dates_for_month(
+        case=case,
+        month_start=month_start,
+        month_end=month_end,
+        exclude_appointment_id=exclude_id,
+        require_full_duration=require_full,
+    )
 
     return JsonResponse({"month": month_text, "available_dates": available_dates})
 

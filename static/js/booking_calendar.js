@@ -19,6 +19,7 @@
     }
 
     const calendarEl = document.getElementById("bookingCalendar");
+    const loadingEl = document.getElementById("bookingCalendarLoading");
     const slotListEl = document.getElementById("bookingSlotList");
     const slotPanelTitleEl = document.getElementById("bookingSlotPanelTitle");
     const confirmPanelEl = document.getElementById("bookingConfirmPanel");
@@ -48,9 +49,26 @@
 
     let selectedDate = null;
     let selectedSlotStart = null;
-    let monthAvailableDates = new Set();
+    let monthAvailableDates = new Set(config.initialAvailableDates || []);
+    let loadedMonthKey = config.initialMonth || "";
+    let availabilityLoading = false;
     let loadingSlots = false;
+    let calendar = null;
     const isCounselorCalendar = config.role === "counselor";
+
+    function setAvailabilityLoading(loading) {
+        availabilityLoading = loading;
+        if (root) {
+            root.classList.toggle("booking-calendar--loading", loading);
+        }
+        if (loadingEl) {
+            loadingEl.classList.toggle("d-none", !loading);
+            loadingEl.setAttribute("aria-hidden", loading ? "false" : "true");
+        }
+        if (calendar) {
+            calendar.render();
+        }
+    }
 
     function formatEventTime(date) {
         if (!date) return "";
@@ -238,10 +256,19 @@
         }
     }
 
-    async function refreshMonthAvailability(dateInfo) {
-        if (!availableDatesUrl) return;
-        const anchor = dateInfo.view.currentStart;
-        const monthKey = `${anchor.getFullYear()}-${String(anchor.getMonth() + 1).padStart(2, "0")}`;
+    function currentMonthKey() {
+        if (!calendar) return "";
+        const activeDate = calendar.getDate();
+        return `${activeDate.getFullYear()}-${String(activeDate.getMonth() + 1).padStart(2, "0")}`;
+    }
+
+    async function refreshMonthAvailability(_dateInfo) {
+        if (!availableDatesUrl || !calendar) return;
+        const monthKey = currentMonthKey();
+        if (monthKey === loadedMonthKey) {
+            return;
+        }
+        setAvailabilityLoading(true);
         try {
             const response = await fetch(buildAvailableDatesUrl(monthKey), {
                 headers: { Accept: "application/json" },
@@ -250,15 +277,15 @@
             if (!response.ok) return;
             const payload = await response.json();
             monthAvailableDates = new Set(payload.available_dates || []);
-            if (calendar) {
-                calendar.render();
-            }
+            loadedMonthKey = monthKey;
         } catch (_err) {
             /* ignore */
+        } finally {
+            setAvailabilityLoading(false);
         }
     }
 
-    const calendar = new FullCalendar.Calendar(calendarEl, {
+    calendar = new FullCalendar.Calendar(calendarEl, {
         locale: "ko",
         timeZone: calendarTimeZone,
         initialView: "dayGridMonth",
@@ -279,12 +306,18 @@
             if (counselorBlockedDates.includes(key)) {
                 return ["booking-day-blocked"];
             }
+            if (availabilityLoading) {
+                return ["booking-day-loading"];
+            }
             if (monthAvailableDates.has(key)) {
                 return ["booking-day-available"];
             }
             return ["booking-day-blocked"];
         },
         dateClick: function (info) {
+            if (availabilityLoading) {
+                return;
+            }
             const key = formatDateKey(info.date);
             if (counselorBlockedDates.includes(key)) {
                 return;

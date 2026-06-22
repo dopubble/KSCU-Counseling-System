@@ -213,10 +213,16 @@ def date_has_bookable_slot(
     duration_minutes: int = DEFAULT_APPOINTMENT_DURATION_MINUTES,
     exclude_appointment_id=None,
     require_full_duration: bool = False,
+    blocked_dates: set[str] | frozenset[str] | None = None,
 ) -> bool:
     """월간 달력 — 예약 가능한 슬롯이 하나라도 있는 날."""
-    blocked_dates = get_counselor_blocked_dates(case.counselor_id)
-    if on_date.isoformat() in blocked_dates:
+    if not case.counselor_id:
+        return False
+    if blocked_dates is None:
+        blocked = set(get_counselor_blocked_dates(case.counselor_id))
+    else:
+        blocked = set(blocked_dates)
+    if on_date.isoformat() in blocked:
         return False
 
     for slot in build_booking_slots_for_date(
@@ -229,3 +235,42 @@ def date_has_bookable_slot(
         if slot.state == "available":
             return True
     return False
+
+
+def month_date_bounds(year: int, month: int) -> tuple[date, date]:
+    """해당 월 [시작일, 다음 달 1일) 구간."""
+    month_start = date(year, month, 1)
+    if month == 12:
+        month_end = date(year + 1, 1, 1)
+    else:
+        month_end = date(year, month + 1, 1)
+    return month_start, month_end
+
+
+def build_available_dates_for_month(
+    *,
+    case: Case,
+    month_start: date,
+    month_end: date,
+    duration_minutes: int = DEFAULT_APPOINTMENT_DURATION_MINUTES,
+    exclude_appointment_id=None,
+    require_full_duration: bool = False,
+) -> list[str]:
+    """월간 달력 — 예약 가능한 날짜 목록."""
+    if not case.counselor_id:
+        return []
+    blocked_dates = frozenset(get_counselor_blocked_dates(case.counselor_id))
+    available_dates: list[str] = []
+    cursor = month_start
+    while cursor < month_end:
+        if date_has_bookable_slot(
+            case=case,
+            on_date=cursor,
+            duration_minutes=duration_minutes,
+            exclude_appointment_id=exclude_appointment_id,
+            require_full_duration=require_full_duration,
+            blocked_dates=blocked_dates,
+        ):
+            available_dates.append(cursor.isoformat())
+        cursor = cursor.fromordinal(cursor.toordinal() + 1)
+    return available_dates

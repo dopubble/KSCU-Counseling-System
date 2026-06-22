@@ -52,7 +52,15 @@
                 <section class="booking-calendar-panel">
                     <div class="booking-calendar-panel-header">날짜 선택</div>
                     <div class="booking-calendar-panel-body">
-                        <div id="bookingCalendar"></div>
+                        <div class="booking-calendar-wrap">
+                            <div id="bookingCalendarLoading" class="booking-calendar-loading d-none" aria-hidden="true">
+                                <div class="booking-calendar-loading-inner">
+                                    <span class="spinner-border spinner-border-sm text-primary" role="status" aria-hidden="true"></span>
+                                    <span>예약 가능 날짜를 불러오는 중…</span>
+                                </div>
+                            </div>
+                            <div id="bookingCalendar"></div>
+                        </div>
                         <p class="small text-muted mb-0 mt-2 px-1">
                             타인의 예약 정보는 표시되지 않습니다. 파란색 날짜에서 예약 가능한 시간을 선택해 주세요.
                         </p>
@@ -92,5 +100,5 @@
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.15/locales/ko.global.min.js"></script>
-<script src="{% static 'js/booking_calendar.js' %}?v=3"></script>
+<script src="{% static 'js/booking_calendar.js' %}?v=4"></script>
 {% endblock %}

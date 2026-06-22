@@ -36,6 +36,44 @@
     padding: 0.75rem;
 }
 
+.booking-calendar-wrap {
+    position: relative;
+    min-height: 18rem;
+}
+
+.booking-calendar-loading {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.82);
+    border-radius: 0.5rem;
+}
+
+.booking-calendar-loading-inner {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 999px;
+    background: #fff;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    color: #475569;
+    font-size: 0.875rem;
+    box-shadow: 0 0.125rem 0.5rem rgba(15, 23, 42, 0.08);
+}
+
+#bookingCalendar .fc-daygrid-day.booking-day-loading {
+    background: #fff;
+}
+
+#bookingCalendar .fc-daygrid-day.booking-day-loading .fc-daygrid-day-number {
+    color: #64748b;
+    font-weight: 500;
+}
+
 #bookingCalendar .fc-daygrid-day.booking-day-available .fc-daygrid-day-number {
     color: #1d4ed8;
     font-weight: 700;
