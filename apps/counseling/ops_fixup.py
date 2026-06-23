@@ -73,7 +73,7 @@ def switch_client_to_remote_with_zoom(
     )
     Case.objects.filter(client=client).update(counseling_method=CounselingMethod.REMOTE)
 
-    created = skipped = 0
+    created = skipped = recreated = 0
     errors: list[str] = []
     appointments = Appointment.objects.filter(
         client=client,
@@ -82,13 +82,17 @@ def switch_client_to_remote_with_zoom(
     ).select_related("case", "zoom_meeting")
 
     for appointment in appointments:
+        before_id = ""
         zoom = getattr(appointment, "zoom_meeting", None)
-        if zoom and zoom.join_url:
-            skipped += 1
-            continue
+        if zoom:
+            before_id = (zoom.zoom_meeting_id or "").strip()
         try:
-            attach_zoom_meeting_to_confirmed_appointment(appointment)
-            created += 1
+            result = attach_zoom_meeting_to_confirmed_appointment(appointment)
+            after_id = (result.zoom_meeting_id or "").strip()
+            if before_id and before_id == after_id:
+                skipped += 1
+            else:
+                recreated += 1
         except ZoomNotConfiguredError:
             return OpsFixupLine(
                 f"remote_{client_name}",
@@ -102,12 +106,12 @@ def switch_client_to_remote_with_zoom(
         return OpsFixupLine(
             f"remote_{client_name}",
             "error",
-            f"Zoom 생성 {created}건, 실패 {len(errors)}건: {errors[0]}",
+            f"Zoom 재생성 {recreated}건, 실패 {len(errors)}건: {errors[0]}",
         )
     return OpsFixupLine(
         f"remote_{client_name}",
         "ok",
-        f"비대면 전환 완료, Zoom 생성 {created}건, 기존 {skipped}건",
+        f"비대면 전환 완료, Zoom 재생성 {recreated}건, 유효 {skipped}건",
     )
 
 

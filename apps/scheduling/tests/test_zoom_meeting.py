@@ -1,11 +1,14 @@
+from unittest.mock import patch
+
 from django.test import SimpleTestCase
 
 from apps.counseling.services import _is_zoom_host_url, _resolve_appointment_zoom_url
+from apps.scheduling.services import _zoom_meeting_record_is_usable
 from apps.scheduling.utils import (
+    ZoomAPIError,
     _zoom_meeting_settings,
     pick_meeting_launch_url,
 )
-
 
 class ZoomMeetingSettingsTests(SimpleTestCase):
     def test_zoom_meeting_settings_for_participant_join(self):
@@ -57,3 +60,27 @@ class ZoomMeetingSettingsTests(SimpleTestCase):
             _resolve_appointment_zoom_url(Apt(), Case()),
             "https://zoom.us/j/999",
         )
+
+    @patch("apps.scheduling.services.is_zoom_configured", return_value=True)
+    @patch("apps.scheduling.services.get_zoom_meeting")
+    def test_zoom_meeting_record_is_usable_when_api_lookup_fails(
+        self, mock_get, _mock_configured
+    ):
+        class Zoom:
+            zoom_meeting_id = "12345678901"
+            join_url = "https://zoom.us/j/12345678901"
+
+        mock_get.side_effect = ZoomAPIError("Meeting does not exist")
+        self.assertFalse(_zoom_meeting_record_is_usable(Zoom()))
+
+    @patch("apps.scheduling.services.is_zoom_configured", return_value=True)
+    @patch("apps.scheduling.services.get_zoom_meeting")
+    def test_zoom_meeting_record_is_usable_when_api_lookup_succeeds(
+        self, mock_get, _mock_configured
+    ):
+        class Zoom:
+            zoom_meeting_id = "12345678901"
+            join_url = "https://zoom.us/j/12345678901"
+
+        mock_get.return_value = {"join_url": "https://zoom.us/j/12345678901"}
+        self.assertTrue(_zoom_meeting_record_is_usable(Zoom()))

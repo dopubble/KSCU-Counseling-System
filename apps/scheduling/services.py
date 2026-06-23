@@ -200,22 +200,86 @@ def _appointment_uses_zoom(appointment: Appointment) -> bool:
     return appointment.case.counseling_method == CounselingMethod.REMOTE
 
 
+def _zoom_meeting_record_is_usable(zoom: ZoomMeeting | None) -> bool:
+    """DB에 저장된 Zoom 회의가 API에서 조회 가능한지 확인."""
+    if zoom is None:
+        return False
+    meeting_id = (zoom.zoom_meeting_id or "").strip()
+    join_url = (zoom.join_url or "").strip()
+    if not meeting_id or not join_url:
+        return False
+    if not is_zoom_configured():
+        return True
+    try:
+        meeting_data = get_zoom_meeting(meeting_id)
+    except ZoomAPIError:
+        return False
+    return bool(pick_meeting_launch_url(meeting_data))
+
+
+def _sync_zoom_meeting_from_api(
+    zoom: ZoomMeeting,
+    appointment: Appointment,
+) -> ZoomMeeting | None:
+    """Zoom API 기준으로 join_url을 맞춘 뒤 반환. 회의가 없으면 None."""
+    meeting_id = (zoom.zoom_meeting_id or "").strip()
+    if not meeting_id:
+        return None
+    if not is_zoom_configured():
+        return zoom if (zoom.join_url or "").strip() else None
+
+    try:
+        meeting_data = get_zoom_meeting(meeting_id)
+        join_url = pick_meeting_launch_url(meeting_data)
+        if not join_url:
+            return None
+    except ZoomAPIError:
+        return None
+
+    update_fields: list[str] = []
+    if zoom.join_url != join_url:
+        zoom.join_url = join_url
+        update_fields.append("join_url")
+    start_url = (meeting_data.get("start_url") or "").strip()
+    if start_url and zoom.start_url != start_url:
+        zoom.start_url = start_url
+        update_fields.append("start_url")
+    if update_fields:
+        zoom.save(update_fields=update_fields)
+
+    case = appointment.case
+    if case.zoom_meeting_url != join_url:
+        case.zoom_meeting_url = join_url
+        case.save(update_fields=["zoom_meeting_url"])
+
+    return zoom
+
+
 @transaction.atomic
 def attach_zoom_meeting_to_confirmed_appointment(
     appointment: Appointment,
 ) -> ZoomMeeting:
-    """확정된 비대면 예약에 Zoom 회의가 없으면 생성."""
+    """확정된 비대면 예약에 Zoom 회의가 없거나 무효하면 생성·재생성."""
     if appointment.status != AppointmentStatus.CONFIRMED:
         raise AppointmentServiceError("확정된 예약만 Zoom 회의를 연결할 수 있습니다.")
     if not _appointment_uses_zoom(appointment):
         raise AppointmentServiceError("비대면 상담만 Zoom 회의를 연결할 수 있습니다.")
 
     existing = getattr(appointment, "zoom_meeting", None)
-    if existing and existing.join_url:
-        return existing
+    if existing:
+        synced = _sync_zoom_meeting_from_api(existing, appointment)
+        if synced is not None:
+            return synced
+
+    old_meeting_id = (existing.zoom_meeting_id or "").strip() if existing else ""
 
     ensure_remote_zoom_capacity(appointment)
     zoom_meeting, _launch_url = _create_zoom_meeting_for_appointment(appointment)
+
+    new_meeting_id = (zoom_meeting.zoom_meeting_id or "").strip()
+    if old_meeting_id and old_meeting_id != new_meeting_id:
+        delete_zoom_meeting(old_meeting_id)
+
     return zoom_meeting
 
 
@@ -246,7 +310,7 @@ def backfill_missing_zoom_meetings(
 
     for appointment in qs.iterator():
         zoom = getattr(appointment, "zoom_meeting", None)
-        if zoom and zoom.join_url:
+        if _zoom_meeting_record_is_usable(zoom):
             skipped += 1
             continue
 
