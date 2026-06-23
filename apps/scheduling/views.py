@@ -329,6 +329,7 @@ def booking_slots(request):
         duration_minutes=duration,
         exclude_appointment_id=exclude_id,
         require_full_duration=require_full,
+        include_venue_remainings=require_full,
     )
     return JsonResponse(
         {

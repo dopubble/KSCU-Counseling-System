@@ -51,14 +51,21 @@ class BookingSlot:
     end: datetime
     state: SlotState
     label: str
+    room_remaining: int | None = None
+    zoom_remaining: int | None = None
 
     def to_dict(self) -> dict:
-        return {
+        payload = {
             "start": self.start.isoformat(),
             "end": self.end.isoformat(),
             "state": self.state,
             "label": self.label,
         }
+        if self.room_remaining is not None:
+            payload["room_remaining"] = self.room_remaining
+        if self.zoom_remaining is not None:
+            payload["zoom_remaining"] = self.zoom_remaining
+        return payload
 
 
 def _slot_label(start: datetime, end: datetime) -> str:
@@ -111,6 +118,43 @@ class _PeerInterval:
     end: datetime
 
 
+def _load_confirmed_venue_peers(
+    *,
+    counseling_method: str,
+    range_start: datetime,
+    range_end: datetime,
+    exclude_appointment_id=None,
+) -> list[_PeerInterval]:
+    peers_qs = Appointment.objects.filter(
+        status=AppointmentStatus.CONFIRMED,
+        case__counseling_method=counseling_method,
+        scheduled_at__lt=range_end,
+    )
+    if exclude_appointment_id:
+        peers_qs = peers_qs.exclude(pk=exclude_appointment_id)
+    intervals: list[_PeerInterval] = []
+    for apt in peers_qs:
+        peer_start = _calendar_localtime(apt.scheduled_at)
+        peer_end = peer_start + timedelta(minutes=appointment_duration_minutes(apt))
+        if peer_end > range_start:
+            intervals.append(_PeerInterval(start=peer_start, end=peer_end))
+    return intervals
+
+
+def _venue_remaining(
+    peers: list[_PeerInterval],
+    limit: int,
+    slot_start: datetime,
+    slot_end: datetime,
+) -> int:
+    if limit <= 0:
+        return 0
+    count = sum(
+        1 for peer in peers if _intervals_overlap(slot_start, slot_end, peer.start, peer.end)
+    )
+    return max(0, limit - count)
+
+
 class MonthBookingContext:
     """월간 예약 가능일·슬롯 계산용 — DB 조회를 월 단위로 묶음."""
 
@@ -129,6 +173,11 @@ class MonthBookingContext:
         "counselor_peers",
         "venue_peers",
         "venue_limit",
+        "remote_peers",
+        "in_person_peers",
+        "zoom_limit",
+        "room_limit",
+        "include_venue_remainings",
     )
 
     def __init__(
@@ -140,6 +189,7 @@ class MonthBookingContext:
         duration_minutes: int = DEFAULT_APPOINTMENT_DURATION_MINUTES,
         exclude_appointment_id=None,
         require_full_duration: bool = False,
+        include_venue_remainings: bool = False,
     ):
         self.case = case
         self.counselor_id = case.counselor_id
@@ -147,6 +197,7 @@ class MonthBookingContext:
         self.duration_minutes = duration_minutes
         self.exclude_appointment_id = exclude_appointment_id
         self.require_full_duration = require_full_duration
+        self.include_venue_remainings = include_venue_remainings
         self.blocked_dates = frozenset(get_counselor_blocked_dates(case.counselor_id))
 
         tz = local_timezone()
@@ -210,38 +261,29 @@ class MonthBookingContext:
             > range_start
         ]
 
+        self.zoom_limit = remote_zoom_capacity_limit()
+        self.room_limit = in_person_room_capacity_limit()
+        self.remote_peers = _load_confirmed_venue_peers(
+            counseling_method=CounselingMethod.REMOTE,
+            range_start=range_start,
+            range_end=range_end,
+            exclude_appointment_id=exclude_appointment_id,
+        )
+        self.in_person_peers = _load_confirmed_venue_peers(
+            counseling_method=CounselingMethod.IN_PERSON,
+            range_start=range_start,
+            range_end=range_end,
+            exclude_appointment_id=exclude_appointment_id,
+        )
         if self.counseling_method == CounselingMethod.REMOTE:
-            self.venue_limit = remote_zoom_capacity_limit()
-            venue_qs = Appointment.objects.filter(
-                status=AppointmentStatus.CONFIRMED,
-                case__counseling_method=CounselingMethod.REMOTE,
-                scheduled_at__lt=range_end,
-            )
+            self.venue_peers = self.remote_peers
+            self.venue_limit = self.zoom_limit
         elif self.counseling_method == CounselingMethod.IN_PERSON:
-            self.venue_limit = in_person_room_capacity_limit()
-            venue_qs = Appointment.objects.filter(
-                status=AppointmentStatus.CONFIRMED,
-                case__counseling_method=CounselingMethod.IN_PERSON,
-                scheduled_at__lt=range_end,
-            )
+            self.venue_peers = self.in_person_peers
+            self.venue_limit = self.room_limit
         else:
+            self.venue_peers = []
             self.venue_limit = 0
-            venue_qs = Appointment.objects.none()
-
-        if exclude_appointment_id:
-            venue_qs = venue_qs.exclude(pk=exclude_appointment_id)
-        self.venue_peers = [
-            _PeerInterval(
-                start=_calendar_localtime(apt.scheduled_at),
-                end=_calendar_localtime(apt.scheduled_at)
-                + timedelta(minutes=appointment_duration_minutes(apt)),
-            )
-            for apt in venue_qs
-            if _calendar_localtime(apt.scheduled_at) + timedelta(
-                minutes=appointment_duration_minutes(apt)
-            )
-            > range_start
-        ]
 
     def _counselor_slot_available(self, slot_start: datetime, slot_end: datetime) -> bool:
         local_date = slot_start.date()
@@ -336,12 +378,29 @@ class MonthBookingContext:
         for slot_start in hourly_slot_starts(on_date):
             slot_end = slot_start + timedelta(minutes=self.duration_minutes)
             state = self.resolve_slot_state(slot_start)
+            room_remaining = None
+            zoom_remaining = None
+            if self.include_venue_remainings:
+                room_remaining = _venue_remaining(
+                    self.in_person_peers,
+                    self.room_limit,
+                    slot_start,
+                    slot_end,
+                )
+                zoom_remaining = _venue_remaining(
+                    self.remote_peers,
+                    self.zoom_limit,
+                    slot_start,
+                    slot_end,
+                )
             slots.append(
                 BookingSlot(
                     start=slot_start,
                     end=slot_end,
                     state=state,
                     label=_slot_label(slot_start, slot_end),
+                    room_remaining=room_remaining,
+                    zoom_remaining=zoom_remaining,
                 )
             )
         return slots
@@ -425,6 +484,7 @@ def build_booking_slots_for_date(
     exclude_appointment_id=None,
     require_full_duration: bool = False,
     month_context: MonthBookingContext | None = None,
+    include_venue_remainings: bool = False,
 ) -> list[BookingSlot]:
     """사례 기준 — 하루 시간 슬롯 목록."""
     if not case.counselor_id:
@@ -432,6 +492,19 @@ def build_booking_slots_for_date(
 
     if month_context is not None:
         return month_context.build_slots_for_date(on_date)
+
+    if include_venue_remainings:
+        day_end = on_date.fromordinal(on_date.toordinal() + 1)
+        ctx = MonthBookingContext(
+            case=case,
+            month_start=on_date,
+            month_end=day_end,
+            duration_minutes=duration_minutes,
+            exclude_appointment_id=exclude_appointment_id,
+            require_full_duration=require_full_duration,
+            include_venue_remainings=True,
+        )
+        return ctx.build_slots_for_date(on_date)
 
     counseling_method = case.counseling_method
     slots: list[BookingSlot] = []

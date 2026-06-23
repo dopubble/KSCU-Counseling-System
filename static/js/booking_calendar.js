@@ -190,6 +190,18 @@
         }
     }
 
+    function formatCounselorSlotMeta(slot) {
+        const stateText = SLOT_STATE_LABELS[slot.state] || slot.state;
+        if (
+            !isCounselorCalendar ||
+            slot.room_remaining === undefined ||
+            slot.zoom_remaining === undefined
+        ) {
+            return stateText;
+        }
+        return `${stateText} · 대면 ${slot.room_remaining} / 비대면 ${slot.zoom_remaining}`;
+    }
+
     function renderSlots(slots) {
         if (!slotListEl) return;
         slotListEl.innerHTML = "";
@@ -212,11 +224,12 @@
             }
 
             const timeSpan = document.createElement("span");
+            timeSpan.className = "booking-slot-time";
             timeSpan.textContent = slot.label;
 
             const stateSpan = document.createElement("span");
             stateSpan.className = "booking-slot-state";
-            stateSpan.textContent = SLOT_STATE_LABELS[slot.state] || slot.state;
+            stateSpan.textContent = formatCounselorSlotMeta(slot);
 
             btn.appendChild(timeSpan);
             btn.appendChild(stateSpan);

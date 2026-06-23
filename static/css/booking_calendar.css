@@ -113,8 +113,9 @@
 
 .booking-slot-btn {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
+    gap: 0.75rem;
     width: 100%;
     border: 1px solid #dbeafe;
     background: #f8fbff;
@@ -149,6 +150,20 @@
 .booking-slot-state {
     font-size: 0.75rem;
     color: #64748b;
+    text-align: right;
+    line-height: 1.35;
+    flex-shrink: 0;
+}
+
+.booking-slot-time {
+    flex-shrink: 0;
+}
+
+.booking-slot-panel-note {
+    padding: 0 1rem 0.75rem;
+    font-size: 0.75rem;
+    color: #64748b;
+    line-height: 1.4;
 }
 
 .booking-calendar-legend {

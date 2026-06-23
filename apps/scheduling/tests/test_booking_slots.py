@@ -228,3 +228,58 @@ class BookingSlotsTests(TestCase):
         for date_text in dates:
             parsed = date.fromisoformat(date_text)
             self.assertLess(parsed.weekday(), 5, date_text)
+
+    def test_counselor_booking_slots_include_dual_venue_remaining(self):
+        self._add_weekday_availability(time(14, 0), time(22, 41))
+        case = self._create_case(CounselingMethod.REMOTE)
+        monday = self._next_weekday(0)
+        tz = local_timezone()
+        slot_start = timezone.make_aware(datetime.combine(monday, time(15, 0)), tz)
+
+        other_client = User.objects.create_user(
+            email="other@example.com",
+            password="pass12345",
+            name="다른내담자",
+            role=UserRole.CLIENT,
+            status=UserStatus.ACTIVE,
+        )
+        other_app = CounselingApplication.objects.create(
+            client=other_client,
+            counseling_types=["진로상담"],
+            reason="remote",
+            counseling_method=CounselingMethod.REMOTE,
+            status=ApplicationStatus.IN_PROGRESS,
+        )
+        other_case = Case.objects.create(
+            application=other_app,
+            client=other_client,
+            counselor=self.counselor,
+            case_number="CASE-REMOTE-OTHER",
+            status=CaseStatus.ACTIVE,
+            counseling_method=CounselingMethod.REMOTE,
+        )
+        Appointment.objects.create(
+            case=other_case,
+            counselor=self.counselor,
+            client=other_client,
+            scheduled_at=slot_start,
+            duration_minutes=DEFAULT_APPOINTMENT_DURATION_MINUTES,
+            status=AppointmentStatus.CONFIRMED,
+            confirmed_at=timezone.now(),
+        )
+
+        self.http.force_login(self.counselor)
+        url = reverse("scheduling:booking_slots")
+        response = self.http.get(
+            url,
+            {"case_id": str(case.pk), "date": monday.isoformat()},
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        slot_15 = next(
+            slot for slot in payload["slots"] if slot["label"].startswith("15:00")
+        )
+        self.assertIn("room_remaining", slot_15)
+        self.assertIn("zoom_remaining", slot_15)
+        self.assertEqual(slot_15["room_remaining"], 2)
+        self.assertEqual(slot_15["zoom_remaining"], 1)
