@@ -22,6 +22,7 @@
     const loadingEl = document.getElementById("bookingCalendarLoading");
     const slotListEl = document.getElementById("bookingSlotList");
     const slotPanelTitleEl = document.getElementById("bookingSlotPanelTitle");
+    const slotPanelNoteEl = document.getElementById("bookingSlotPanelNote");
     const confirmPanelEl = document.getElementById("bookingConfirmPanel");
     const selectedTimeLabelEl = document.getElementById("bookingSelectedTimeLabel");
     const scheduledInput = document.getElementById("bookingScheduledAtInput");
@@ -255,6 +256,9 @@
         const dateKey = formatDateKey(date);
         if (slotPanelTitleEl) {
             slotPanelTitleEl.textContent = `${formatDisplayDate(date)} 시간 선택`;
+        }
+        if (slotPanelNoteEl && isCounselorCalendar) {
+            slotPanelNoteEl.classList.remove("d-none");
         }
         slotListEl.innerHTML =
             '<div class="booking-slot-empty">시간대를 불러오는 중…</div>';

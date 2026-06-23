@@ -69,13 +69,11 @@
                 </section>
 
                 <section class="booking-slot-panel">
-                    <div class="booking-slot-panel-header" id="bookingSlotPanelTitle">날짜를 선택해 주세요</div>
-                    <p class="booking-slot-panel-note mb-0">
-                        각 시간대 옆 숫자는 해당 시각 기준 남은 좌석입니다. (대면 상담실 / 비대면)
+                    <div class="booking-slot-panel-header" id="bookingSlotPanelTitle">날짜를 선택해 주세요.</div>
+                    <p id="bookingSlotPanelNote" class="booking-slot-panel-note mb-0 d-none">
+                        각 시간대 옆 숫자는 해당 시각 기준 남은 좌석입니다.
                     </p>
-                    <div id="bookingSlotList" class="booking-slot-list">
-                        <div class="booking-slot-empty">달력에서 날짜를 선택하면 09:00~22:00 시간대가 표시됩니다.</div>
-                    </div>
+                    <div id="bookingSlotList" class="booking-slot-list"></div>
                     <div id="bookingConfirmPanel" class="booking-confirm-panel d-none">
                         <p class="small fw-semibold mb-2">선택한 시간</p>
                         <p class="mb-3" id="bookingSelectedTimeLabel">—</p>
@@ -115,5 +113,5 @@
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.15/locales/ko.global.min.js"></script>
-<script src="{% static 'js/booking_calendar.js' %}?v=6"></script>
+<script src="{% static 'js/booking_calendar.js' %}?v=7"></script>
 {% endblock %}
