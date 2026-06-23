@@ -14,7 +14,7 @@
   {"counselor": "신영화", "client": "이현옥", "first_session": "2026-06-17 10:00", "counseling_method": "REMOTE"},
   {"counselor": "신영화", "client": "정경화", "first_session": "2026-06-26 11:00", "counseling_method": "REMOTE"},
   {"counselor": "양은영", "client": "강순화", "first_session": "2026-06-23 12:00", "counseling_method": "IN_PERSON"},
-  {"counselor": "양은영", "client": "이명란", "first_session": "2026-06-23 14:00", "counseling_method": "REMOTE"},
+  {"counselor": "양은영", "client": "이명란", "first_session": "2026-06-23 14:00", "counseling_method": "IN_PERSON"},
   {"counselor": "양은영", "client": "구현정", "first_session": "2026-07-01 10:00", "counseling_method": "REMOTE"},
   {"counselor": "윤성희", "client": "김영창", "first_session": "2026-06-25 17:00", "counseling_method": "IN_PERSON"},
   {"counselor": "윤성희", "client": "조현경", "first_session": "2026-06-30 19:00", "counseling_method": "REMOTE"},

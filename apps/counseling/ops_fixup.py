@@ -12,7 +12,8 @@ from apps.counseling.models import Case, CounselingApplication, CounselingMethod
 from apps.counseling.session1_bulk_import import force_client_session1_schedule
 from apps.scheduling.models import Appointment, AppointmentStatus
 from apps.scheduling.services import attach_zoom_meeting_to_confirmed_appointment
-from apps.scheduling.utils import ZoomNotConfiguredError
+from apps.scheduling.utils import ZoomNotConfiguredError, delete_zoom_meeting
+from apps.sessions_app.models import ZoomMeeting
 
 KIM_JANGSEOYUL_NAME = "김장서율"
 KIM_JANGSEOYUL_STUDENT_IDS = ("261110004", "26111004")
@@ -115,6 +116,57 @@ def switch_client_to_remote_with_zoom(
     )
 
 
+def switch_client_to_in_person(
+    *,
+    client_name: str,
+    client_email: str | None = None,
+    dry_run: bool = True,
+) -> OpsFixupLine:
+    """내담자 상담 방식을 대면으로 바꾸고 Zoom 회의 연결을 해제."""
+    client = _find_client(name=client_name, email=client_email)
+    if not client:
+        return OpsFixupLine(
+            f"in_person_{client_name}",
+            "skip",
+            "대상 내담자 없음",
+        )
+
+    if dry_run:
+        case_count = Case.objects.filter(client=client).count()
+        zoom_count = ZoomMeeting.objects.filter(
+            appointment__client=client,
+        ).count()
+        return OpsFixupLine(
+            f"in_person_{client_name}",
+            "dry_run",
+            f"사례 {case_count}건 IN_PERSON, Zoom 해제 {zoom_count}건",
+        )
+
+    CounselingApplication.objects.filter(client=client).update(
+        counseling_method=CounselingMethod.IN_PERSON
+    )
+    Case.objects.filter(client=client).update(
+        counseling_method=CounselingMethod.IN_PERSON,
+        zoom_meeting_url="",
+    )
+
+    removed = 0
+    for zoom in ZoomMeeting.objects.filter(appointment__client=client).select_related(
+        "appointment"
+    ):
+        meeting_id = (zoom.zoom_meeting_id or "").strip()
+        if meeting_id:
+            delete_zoom_meeting(meeting_id)
+        zoom.delete()
+        removed += 1
+
+    return OpsFixupLine(
+        f"in_person_{client_name}",
+        "ok",
+        f"대면 전환 완료, Zoom 해제 {removed}건",
+    )
+
+
 def apply_ops_production_fixup_june2026(*, dry_run: bool = True) -> list[OpsFixupLine]:
     lines: list[OpsFixupLine] = []
 
@@ -155,7 +207,7 @@ def apply_ops_production_fixup_june2026(*, dry_run: bool = True) -> list[OpsFixu
     )
 
     lines.append(
-        switch_client_to_remote_with_zoom(
+        switch_client_to_in_person(
             client_name=LEE_MYUNGRAN_NAME,
             client_email=LEE_MYUNGRAN_EMAIL,
             dry_run=dry_run,
