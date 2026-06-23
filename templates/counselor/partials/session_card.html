@@ -136,7 +136,7 @@
     </div>
     {% endif %}
 
-    {% if session.show_counselor_direct_booking or session.show_counselor_direct_cancel or session.show_zoom or session.show_counselor_journal or session.show_initial_record or session.show_termination_record %}
+    {% if session.show_counselor_direct_booking or session.show_counselor_direct_cancel or session.show_counselor_direct_reschedule or session.show_zoom or session.show_counselor_journal or session.show_initial_record or session.show_termination_record %}
     <div class="client-session-card-footer d-flex flex-wrap align-items-center gap-2">
         {% if session.show_counselor_direct_cancel and session.appointment %}
         <button type="button"
@@ -146,6 +146,12 @@
                 data-cancel-url="{% url 'counselor:session_appointment_cancel' case.pk session.appointment.pk %}">
             <i class="bi bi-x-circle me-1" aria-hidden="true"></i>예약 취소
         </button>
+        {% endif %}
+        {% if session.show_counselor_direct_reschedule and session.appointment %}
+        <a href="{% url 'counselor:session_appointment_reschedule' case.pk session.session_number %}"
+           class="btn btn-sm btn-outline-primary client-session-action-btn">
+            <i class="bi bi-calendar-event me-1" aria-hidden="true"></i>일정 변경
+        </a>
         {% endif %}
         {% if session.show_counselor_direct_booking %}
         <a href="{% url 'counselor:session_appointment_book' case.pk session.session_number %}"

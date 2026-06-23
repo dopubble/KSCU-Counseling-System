@@ -284,12 +284,6 @@ def cancel_confirmed_appointment_by_counselor(
             "확정된 예약만 취소할 수 있습니다.",
         )
 
-    if is_appointment_in_past(appointment):
-        raise AppointmentOperationError(
-            "past_appointment",
-            "이미 지난 상담 예약은 취소할 수 없습니다.",
-        )
-
     reason = (cancel_reason or "").strip()
     if len(reason) < 5:
         raise AppointmentOperationError(
@@ -1145,12 +1139,26 @@ class CaseSessionCard:
 
     @property
     def show_counselor_direct_cancel(self) -> bool:
-        """상담사 — 확정 예약 직접 취소."""
+        """상담사 — 확정 예약 직접 취소 (과거 일정 포함)."""
         if not self.counselor_assigned or not self.is_confirmed:
             return False
         if self.has_session_cancel_pending:
             return False
-        if self.appointment and is_appointment_in_past(self.appointment):
+        return True
+
+    @property
+    def show_counselor_direct_reschedule(self) -> bool:
+        """상담사 — 확정 회기 일정 변경 (과거 일정 포함)."""
+        if not self.counselor_assigned or not self.is_confirmed:
+            return False
+        if self.has_session_cancel_pending:
+            return False
+        if self.status_code in ("COMPLETED", "NO_SHOW"):
+            return False
+        if self.appointment and self.appointment.status in (
+            AppointmentStatus.COMPLETED,
+            AppointmentStatus.NO_SHOW,
+        ):
             return False
         return True
 

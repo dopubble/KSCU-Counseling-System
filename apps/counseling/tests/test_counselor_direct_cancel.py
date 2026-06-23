@@ -8,7 +8,6 @@ from django.urls import reverse
 from django.utils import timezone
 
 from apps.accounts.models import CounselorProfile, User, UserRole, UserStatus
-from apps.counseling.cancellation_policy import AppointmentOperationError
 from apps.counseling.models import (
     ApplicationStatus,
     Case,
@@ -22,6 +21,7 @@ from apps.counseling.services import (
 )
 from apps.scheduling.constants import DEFAULT_APPOINTMENT_DURATION_MINUTES
 from apps.scheduling.models import Appointment, AppointmentStatus
+from apps.scheduling.services import reschedule_confirmed_appointment
 
 
 def _create_client(name: str = "내담자") -> User:
@@ -99,16 +99,35 @@ class CounselorDirectCancelTests(TestCase):
         self.assertIsNotNone(updated.cancelled_at)
         self.assertEqual(self.case.remaining_sessions, 5)
 
-    def test_counselor_direct_cancel_rejects_past_appointment(self):
+    def test_counselor_direct_cancel_allows_past_appointment(self):
         self.appointment.scheduled_at = timezone.now() - timedelta(hours=1)
         self.appointment.save(update_fields=["scheduled_at"])
 
-        with self.assertRaises(AppointmentOperationError) as ctx:
-            cancel_confirmed_appointment_by_counselor(
-                self.appointment,
-                cancel_reason="지난 예약 취소 시도",
-            )
-        self.assertEqual(ctx.exception.code, "past_appointment")
+        updated = cancel_confirmed_appointment_by_counselor(
+            self.appointment,
+            cancel_reason="지난 예약 취소 후 재예약",
+        )
+        self.assertEqual(updated.status, AppointmentStatus.CANCELLED)
+
+    def test_counselor_direct_reschedule_shown_for_past_confirmed(self):
+        self.appointment.scheduled_at = timezone.now() - timedelta(hours=1)
+        self.appointment.save(update_fields=["scheduled_at"])
+        card = build_case_session_cards(self.case)[1]
+        self.assertTrue(card.show_counselor_direct_reschedule)
+        self.assertTrue(card.show_counselor_direct_cancel)
+
+    def test_counselor_reschedule_past_confirmed_appointment(self):
+        self.appointment.scheduled_at = timezone.now() - timedelta(days=1)
+        self.appointment.save(update_fields=["scheduled_at"])
+        new_time = timezone.now().replace(
+            hour=15, minute=0, second=0, microsecond=0
+        ) + timedelta(days=2)
+
+        updated, _warning = reschedule_confirmed_appointment(
+            self.appointment,
+            new_scheduled_at=new_time,
+        )
+        self.assertEqual(updated.scheduled_at, new_time)
 
     @patch("apps.counseling.views.send_counselor_direct_cancel_notification", return_value=True)
     def test_counselor_cancel_view(self, _mock_email):

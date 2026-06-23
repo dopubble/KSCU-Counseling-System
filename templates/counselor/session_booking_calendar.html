@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load static ui_tags %}
 
-{% block title %}{{ session_number }}회기 예약 — {{ case.client.name }}{% endblock %}
+{% block title %}{{ session_number }}회기 {% if booking_is_reschedule %}일정 변경{% else %}예약{% endif %} — {{ case.client.name }}{% endblock %}
 
 {% block extra_css %}
 <link href="{% static 'css/counselor.css' %}" rel="stylesheet">
@@ -12,11 +12,13 @@
 <div class="site-page counselor-page py-4 py-lg-5">
     <div class="container site-container">
 {% block content %}
-    {% page_header show_heading=False c1_label="대시보드" c1_url_name="counselor:dashboard" c1_icon="bi-briefcase" c2_label=case.client.name c2_url_name="counselor:case_detail" c2_url_arg=case.pk c3_label=session_number|stringformat:"s"|add:"회기 예약" %}
+    {% page_header show_heading=False c1_label="대시보드" c1_url_name="counselor:dashboard" c1_icon="bi-briefcase" c2_label=case.client.name c2_url_name="counselor:case_detail" c2_url_arg=case.pk c3_label=booking_page_c3|default:session_number|stringformat:"s"|add:"회기 예약" %}
     <div class="site-page-heading mt-4">
-        <h1 class="h4 fw-semibold site-page-title mb-1">{{ session_number }}회기 — 일정 입력 및 확정</h1>
+        <h1 class="h4 fw-semibold site-page-title mb-1">
+            {% if booking_page_title %}{{ booking_page_title }}{% else %}{{ session_number }}회기 — 일정 입력 및 확정{% endif %}
+        </h1>
         <p class="text-muted small mb-0">
-            내담자 {{ case.client.name }} · {{ case.get_counseling_method_display }}
+            {% if booking_help_text %}{{ booking_help_text }}{% else %}내담자 {{ case.client.name }} · {{ case.get_counseling_method_display }}{% endif %}
         </p>
     </div>
 
@@ -83,11 +85,17 @@
                             <a href="{% url 'counselor:case_detail' case.pk %}" class="btn btn-outline-secondary btn-sm">취소</a>
                             <button type="submit" id="bookingSubmitBtn" class="btn btn-counselor text-white btn-sm"
                                     {% if case.counseling_method == 'REMOTE' and not zoom_configured %}disabled{% endif %}>
-                                <i class="bi bi-check2-circle me-1"></i>예약 확정
+                                <i class="bi bi-check2-circle me-1"></i>{% if booking_submit_label %}{{ booking_submit_label }}{% else %}예약 확정{% endif %}
                             </button>
                         </div>
                         <p class="small text-muted mt-3 mb-0">
+                            {% if booking_is_reschedule %}
                             {% if case.counseling_method == 'REMOTE' %}
+                            변경 확정 시 Zoom 회의 일시가 함께 갱신됩니다.
+                            {% else %}
+                            변경 확정 시 대면 상담실 예약이 새 일시로 반영됩니다.
+                            {% endif %}
+                            {% elif case.counseling_method == 'REMOTE' %}
                             확정 시 Zoom 회의가 자동 생성됩니다.
                             {% else %}
                             확정 시 대면 상담실 예약이 반영됩니다 (동시간대 최대 {{ booking_calendar_room_capacity }}건).

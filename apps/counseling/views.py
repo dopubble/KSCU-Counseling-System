@@ -80,6 +80,7 @@ from apps.scheduling.services import (
     create_appointment_request,
     ensure_pending_session_appointment,
     reject_appointment_request,
+    reschedule_confirmed_appointment,
 )
 from apps.scheduling.utils import (
     ZoomAPIError,
@@ -2501,6 +2502,93 @@ def counselor_session_appointment_book(request, case_pk, session_number):
             or DEFAULT_APPOINTMENT_DURATION_MINUTES,
             **build_booking_calendar_context(
                 case,
+                session_number=session_number,
+                role="counselor",
+            ),
+        },
+    )
+
+
+@counselor_required
+def counselor_session_appointment_reschedule(request, case_pk, session_number):
+    """상담사 — 확정 회기 일정 변경 (과거 일정 포함)."""
+    case = _get_counselor_case(request, case_pk)
+    card = _get_session_card(case, session_number)
+    if not card or not card.show_counselor_direct_reschedule:
+        messages.error(request, "이 회기는 일정을 변경할 수 없습니다.")
+        return redirect("counselor:case_detail", pk=case.pk)
+
+    appointment = card.appointment
+    if appointment is None or appointment.status != AppointmentStatus.CONFIRMED:
+        messages.error(request, "확정된 예약만 일정을 변경할 수 있습니다.")
+        return redirect("counselor:case_detail", pk=case.pk)
+
+    if request.method == "POST":
+        form = AppointmentScheduleForm(
+            request.POST,
+            counselor_label=True,
+            calendar_picker=True,
+        )
+        if not form.is_valid():
+            messages.error(request, "입력 내용을 확인해 주세요.")
+        elif (
+            case.counseling_method == CounselingMethod.REMOTE
+            and not is_zoom_configured()
+        ):
+            messages.error(
+                request,
+                "Zoom API가 설정되지 않아 비대면 일정을 변경할 수 없습니다. .env 설정을 확인해 주세요.",
+            )
+        else:
+            old_scheduled_at = appointment.scheduled_at
+            try:
+                appointment, zoom_warning = reschedule_confirmed_appointment(
+                    appointment,
+                    new_scheduled_at=form.cleaned_data["scheduled_at"],
+                )
+            except AppointmentServiceError as exc:
+                messages.error(request, str(exc))
+            else:
+                success_msg = (
+                    f"{session_number}회기 일정이 변경되었습니다. "
+                    f"({old_scheduled_at:%Y-%m-%d %H:%M} → "
+                    f"{appointment.scheduled_at:%Y-%m-%d %H:%M})"
+                )
+                if zoom_warning:
+                    success_msg += f" (Zoom: {zoom_warning})"
+                messages.success(request, success_msg)
+                return redirect("counselor:case_detail", pk=case.pk)
+    else:
+        form = AppointmentScheduleForm(
+            counselor_label=True,
+            calendar_picker=True,
+            initial={
+                "scheduled_at": timezone.localtime(appointment.scheduled_at),
+                "duration_minutes": appointment.duration_minutes,
+            },
+        )
+
+    return render(
+        request,
+        "counselor/session_booking_calendar.html",
+        {
+            "case": case,
+            "session_number": session_number,
+            "form": form,
+            "zoom_configured": is_zoom_configured(),
+            "default_duration_minutes": appointment.duration_minutes
+            or DEFAULT_APPOINTMENT_DURATION_MINUTES,
+            "booking_is_reschedule": True,
+            "booking_page_title": f"{session_number}회기 — 일정 변경",
+            "booking_page_c3": f"{session_number}회기 일정 변경",
+            "booking_submit_label": "일정 변경 확정",
+            "booking_help_text": (
+                "현재 확정 일정을 다른 날짜·시간으로 변경합니다. "
+                "이미 지난 예약도 변경할 수 있습니다."
+            ),
+            **build_booking_calendar_context(
+                case,
+                appointment=appointment,
                 session_number=session_number,
                 role="counselor",
             ),

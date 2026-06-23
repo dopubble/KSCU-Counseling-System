@@ -95,6 +95,11 @@ urlpatterns = [
         name="session_appointment_book",
     ),
     path(
+        "case/<uuid:case_pk>/session/<int:session_number>/reschedule/",
+        views.counselor_session_appointment_reschedule,
+        name="session_appointment_reschedule",
+    ),
+    path(
         "case/<uuid:case_pk>/session/<int:session_number>/materials/upload/",
         views.counselor_session_material_upload,
         name="session_material_upload",
