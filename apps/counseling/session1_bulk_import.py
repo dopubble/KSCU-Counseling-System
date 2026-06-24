@@ -43,6 +43,7 @@ class Session1MatchRow:
     first_session: datetime
     line_no: int = 0
     counseling_method: str | None = None
+    client_email: str = ""
 
 
 @dataclass
@@ -101,6 +102,7 @@ def load_session1_matches(path: Path) -> list[Session1MatchRow]:
             ) from exc
         first_session = timezone.make_aware(naive, ROSTER_TIMEZONE)
         counseling_method = _parse_counseling_method(item.get("counseling_method"))
+        client_email = (item.get("client_email") or item.get("email") or "").strip()
         rows.append(
             Session1MatchRow(
                 counselor_name=counselor,
@@ -108,6 +110,7 @@ def load_session1_matches(path: Path) -> list[Session1MatchRow]:
                 first_session=first_session,
                 line_no=line_no,
                 counseling_method=counseling_method,
+                client_email=client_email,
             )
         )
 
@@ -936,14 +939,18 @@ def repair_session1_confirmations_from_roster(
         if client_names and row.client_name not in client_names:
             continue
 
-        client, client_err = resolve_client_by_name(row.client_name, client_index=client_index)
-        if client_err:
+        client, client_err = _resolve_client_for_ops(
+            client_name=row.client_name,
+            client_email=row.client_email,
+            client_index=client_index,
+        )
+        if client_err or not client:
             results.append(
                 Session1RepairResult(
                     row.client_name,
                     row.counselor_name,
                     "error",
-                    client_err,
+                    client_err or f"내담자를 찾을 수 없습니다: {row.client_name!r}",
                 )
             )
             continue
