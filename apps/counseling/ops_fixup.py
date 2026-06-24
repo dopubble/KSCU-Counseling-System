@@ -3,13 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
-from zoneinfo import ZoneInfo
 
 from apps.accounts.client_purge import purge_clients_by_name
 from apps.accounts.models import User, UserRole
 from apps.counseling.models import Case, CounselingApplication, CounselingMethod
-from apps.counseling.session1_bulk_import import force_client_session1_schedule
 from apps.scheduling.models import Appointment, AppointmentStatus
 from apps.scheduling.services import (
     attach_zoom_meeting_to_confirmed_appointment,
@@ -24,10 +21,6 @@ from apps.sessions_app.models import ZoomMeeting
 
 KIM_JANGSEOYUL_NAME = "김장서율"
 KIM_JANGSEOYUL_STUDENT_IDS = ("261110004", "26111004")
-
-KIM_AREUM_NAME = "김아름"
-KIM_AREUM_EMAIL = "arsui90@naver.com"
-KIM_AREUM_SESSION1_AT = datetime(2026, 6, 25, 16, 0, tzinfo=ZoneInfo("Asia/Seoul"))
 
 LEE_MYUNGRAN_NAME = "이명란"
 LEE_MYUNGRAN_EMAIL = "starking0700@naver.com"
@@ -198,20 +191,6 @@ def apply_ops_production_fixup_june2026(*, dry_run: bool = True) -> list[OpsFixu
                 "대상 없음(이미 삭제됨)",
             )
         )
-
-    session_result = force_client_session1_schedule(
-        client_name=KIM_AREUM_NAME,
-        client_email=KIM_AREUM_EMAIL,
-        scheduled_at=KIM_AREUM_SESSION1_AT,
-        dry_run=dry_run,
-    )
-    lines.append(
-        OpsFixupLine(
-            "force_kim_areum_session1",
-            session_result.status,
-            session_result.detail,
-        )
-    )
 
     lines.append(
         switch_client_to_in_person(

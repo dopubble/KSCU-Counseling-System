@@ -1422,6 +1422,16 @@ def force_client_session1_schedule(
         detail = f"기존 1회기 {cancel_n}건 취소 → {expected_label} 확정 (사례 {case.case_number})"
         return ForceSession1Result(client_name, "dry_run", detail)
 
+    on_case = [a for a in active if a.case_id == case.pk]
+    current = on_case[0] if on_case else (active[0] if active else None)
+    if (
+        current
+        and current.case_id == case.pk
+        and _local_slot_label(current.scheduled_at) == expected_label
+        and current.status == AppointmentStatus.CONFIRMED
+    ):
+        return ForceSession1Result(client_name, "ok", f"이미 확정 ({expected_label})")
+
     with transaction.atomic():
         cancelled = 0
         for apt in active:

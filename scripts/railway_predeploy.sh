@@ -4,7 +4,7 @@ set -eu
 
 python manage.py migrate --noinput
 
-# 운영 수정: 김장서율 삭제 + 김아름 1회기 6/25 16:00 (매 배포 idempotent)
+# 운영 수정: 김장서율 삭제 등 (매 배포 idempotent)
 python manage.py ops_production_fixup --apply --continue-on-error
 
 # 매칭 대기 테스트 내담자 삭제 (보조)
