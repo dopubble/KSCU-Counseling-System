@@ -11,8 +11,15 @@ from apps.accounts.models import User, UserRole
 from apps.counseling.models import Case, CounselingApplication, CounselingMethod
 from apps.counseling.session1_bulk_import import force_client_session1_schedule
 from apps.scheduling.models import Appointment, AppointmentStatus
-from apps.scheduling.services import attach_zoom_meeting_to_confirmed_appointment
-from apps.scheduling.utils import ZoomNotConfiguredError, delete_zoom_meeting
+from apps.scheduling.services import (
+    attach_zoom_meeting_to_confirmed_appointment,
+    fix_mismatched_zoom_host_assignments,
+)
+from apps.scheduling.utils import (
+    ZoomNotConfiguredError,
+    delete_zoom_meeting,
+    is_zoom_configured,
+)
 from apps.sessions_app.models import ZoomMeeting
 
 KIM_JANGSEOYUL_NAME = "김장서율"
@@ -213,4 +220,23 @@ def apply_ops_production_fixup_june2026(*, dry_run: bool = True) -> list[OpsFixu
             dry_run=dry_run,
         )
     )
+    lines.append(fix_zoom_host_mismatches(dry_run=dry_run))
     return lines
+
+
+def fix_zoom_host_mismatches(*, dry_run: bool = True) -> OpsFixupLine:
+    """겹치는 비대면 예약의 Zoom 호스트 배정 불일치를 수정."""
+    if not is_zoom_configured():
+        return OpsFixupLine("fix_zoom_host_mismatches", "skip", "Zoom 미설정")
+
+    try:
+        fixed, skipped, messages = fix_mismatched_zoom_host_assignments(dry_run=dry_run)
+    except ZoomNotConfiguredError as exc:
+        return OpsFixupLine("fix_zoom_host_mismatches", "skip", str(exc))
+
+    error_msgs = [m for m in messages if not m.startswith("[would fix]")]
+    status = "error" if error_msgs else "ok"
+    detail = f"수정 {fixed}건, 건너뜀 {skipped}건"
+    if messages:
+        detail += f" ({'; '.join(messages[:3])})"
+    return OpsFixupLine("fix_zoom_host_mismatches", status, detail)

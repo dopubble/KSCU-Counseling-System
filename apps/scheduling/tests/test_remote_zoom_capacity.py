@@ -94,7 +94,7 @@ class RemoteZoomCapacityTests(TestCase):
         self.counselor_a = _create_counselor("상담사A")
         self.counselor_b = _create_counselor("상담사B")
 
-    def test_count_overlapping_uses_sixty_minute_default_duration(self):
+    def test_count_overlapping_uses_fifty_minute_default_duration(self):
         client1 = _create_client("내담자1")
         client2 = _create_client("내담자2")
         case1 = _create_remote_case(client1, self.counselor_a, "A")
@@ -108,7 +108,7 @@ class RemoteZoomCapacityTests(TestCase):
             scheduled_at=self.start + timedelta(minutes=30),
         )
         overlap_count = count_overlapping_confirmed_remote(
-            scheduled_at=self.start + timedelta(minutes=59),
+            scheduled_at=self.start + timedelta(minutes=40),
             duration_minutes=DEFAULT_APPOINTMENT_DURATION_MINUTES,
         )
         self.assertEqual(overlap_count, 2)
@@ -199,3 +199,64 @@ class RemoteZoomCapacityTests(TestCase):
             )
         self.assertEqual(updated.scheduled_at, new_time)
         self.assertIsNone(warning)
+
+    def test_reschedule_reassigns_zoom_host_when_slot_overlaps_peer(self):
+        client1 = _create_client("내담자1")
+        client2 = _create_client("내담자2")
+        case1 = _create_remote_case(client1, self.counselor_a, "A")
+        case2 = _create_remote_case(client2, self.counselor_b, "B")
+        anchor = _create_confirmed_remote_appointment(case1, scheduled_at=self.start)
+        moving = _create_confirmed_remote_appointment(
+            case2,
+            scheduled_at=self.start + timedelta(hours=2),
+        )
+
+        from apps.scheduling import services as scheduling_services
+        from apps.sessions_app.models import ZoomMeeting
+
+        ZoomMeeting.objects.create(
+            appointment=anchor,
+            zoom_meeting_id="11111111111",
+            join_url="https://zoom.us/j/111",
+            zoom_host_email="host1@example.com",
+        )
+        ZoomMeeting.objects.create(
+            appointment=moving,
+            zoom_meeting_id="22222222222",
+            join_url="https://zoom.us/j/222",
+            zoom_host_email="host1@example.com",
+        )
+
+        new_zoom = ZoomMeeting(
+            appointment=moving,
+            zoom_meeting_id="33333333333",
+            join_url="https://zoom.us/j/333",
+            zoom_host_email="host2@example.com",
+        )
+
+        with (
+            patch.object(
+                scheduling_services,
+                "resolve_zoom_host_email_for_appointment",
+                return_value="host2@example.com",
+            ),
+            patch.object(
+                scheduling_services,
+                "_create_zoom_meeting_for_appointment",
+                return_value=(new_zoom, new_zoom.join_url),
+            ) as create_mock,
+            patch.object(scheduling_services, "delete_zoom_meeting") as delete_mock,
+            patch.object(scheduling_services, "update_zoom_meeting") as update_mock,
+        ):
+            updated, warning = reschedule_confirmed_appointment(
+                moving,
+                new_scheduled_at=self.start,
+                skip_availability=True,
+            )
+
+        self.assertEqual(updated.scheduled_at, self.start)
+        self.assertIsNone(warning)
+        create_mock.assert_called_once()
+        self.assertEqual(create_mock.call_args.kwargs["host_user_email"], "host2@example.com")
+        delete_mock.assert_called_once_with("22222222222")
+        update_mock.assert_not_called()

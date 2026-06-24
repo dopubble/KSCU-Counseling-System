@@ -330,6 +330,68 @@ def backfill_missing_zoom_meetings(
     return created, skipped, errors
 
 
+def fix_mismatched_zoom_host_assignments(
+    *,
+    dry_run: bool = False,
+) -> tuple[int, int, list[str]]:
+    """
+    zoom_host_email이 호스트 배정 알고리즘과 다르면 올바른 Licensed 호스트로 재생성.
+    반환: (fixed, skipped, errors)
+    """
+    if not is_zoom_configured():
+        raise ZoomNotConfiguredError(
+            "Zoom API 설정이 없습니다. ZOOM_* 환경 변수를 확인해 주세요."
+        )
+
+    appointments = list(confirmed_remote_appointments_queryset())
+    expected = assign_host_emails_for_appointments(appointments)
+    fixed = skipped = 0
+    errors: list[str] = []
+
+    for appointment in appointments:
+        zoom = getattr(appointment, "zoom_meeting", None)
+        meeting_id = (zoom.zoom_meeting_id or "").strip() if zoom else ""
+        if not meeting_id:
+            skipped += 1
+            continue
+
+        stored = (zoom.zoom_host_email or "").strip().lower()
+        exp = (expected.get(str(appointment.pk), "") or "").strip().lower()
+        if not exp or stored == exp:
+            skipped += 1
+            continue
+
+        label = (
+            f"{appointment.case.client.name} "
+            f"{appointment.scheduled_at:%Y-%m-%d %H:%M}"
+        )
+        if dry_run:
+            fixed += 1
+            errors.append(f"[would fix] {label}: {stored or '(empty)'} -> {exp}")
+            continue
+
+        try:
+            _create_zoom_meeting_for_appointment(
+                appointment,
+                host_user_email=exp,
+            )
+            refreshed = ZoomMeeting.objects.filter(appointment_id=appointment.pk).first()
+            new_id = (refreshed.zoom_meeting_id or "").strip() if refreshed else ""
+            if meeting_id and new_id and meeting_id != new_id:
+                delete_zoom_meeting(meeting_id)
+            fixed += 1
+        except (ZoomAPIError, ZoomNotConfiguredError, AppointmentServiceError) as exc:
+            clear_zoom_token_cache()
+            errors.append(f"{label}: {exc}")
+            logger.warning(
+                "Zoom host fix failed for appointment %s: %s",
+                appointment.pk,
+                exc,
+            )
+
+    return fixed, skipped, errors
+
+
 def recreate_all_zoom_meetings(
     *,
     dry_run: bool = False,
@@ -540,23 +602,53 @@ def reschedule_confirmed_appointment(
     appointment.save(update_fields=["scheduled_at", "updated_at"])
 
     zoom_warning: str | None = None
-    zoom_meeting = getattr(appointment, "zoom_meeting", None)
-    if zoom_meeting and zoom_meeting.zoom_meeting_id:
-        try:
-            update_zoom_meeting(
-                zoom_meeting.zoom_meeting_id,
-                start_time=new_scheduled_at,
-                duration_minutes=appointment.duration_minutes,
-            )
-        except ZoomAPIError as exc:
-            clear_zoom_token_cache()
-            zoom_warning = str(exc)
-            logger.warning(
-                "Zoom meeting update skipped for appointment %s (meeting_id=%s): %s",
-                appointment.pk,
-                zoom_meeting.zoom_meeting_id,
-                exc,
-            )
+    zoom_meeting = (
+        ZoomMeeting.objects.filter(appointment_id=appointment.pk).first()
+    )
+    if _appointment_uses_zoom(appointment) and zoom_meeting and zoom_meeting.zoom_meeting_id:
+        expected_host = resolve_zoom_host_email_for_appointment(appointment).strip()
+        current_host = (zoom_meeting.zoom_host_email or "").strip()
+        old_meeting_id = (zoom_meeting.zoom_meeting_id or "").strip()
+
+        if expected_host and current_host.lower() != expected_host.lower():
+            try:
+                _create_zoom_meeting_for_appointment(
+                    appointment,
+                    host_user_email=expected_host,
+                )
+                refreshed = getattr(appointment, "zoom_meeting", None)
+                new_meeting_id = (
+                    (refreshed.zoom_meeting_id or "").strip() if refreshed else ""
+                )
+                if old_meeting_id and old_meeting_id != new_meeting_id:
+                    delete_zoom_meeting(old_meeting_id)
+            except ZoomAPIError as exc:
+                clear_zoom_token_cache()
+                zoom_warning = str(exc)
+                logger.warning(
+                    "Zoom host reassignment failed for appointment %s "
+                    "(meeting_id=%s, expected_host=%s): %s",
+                    appointment.pk,
+                    old_meeting_id,
+                    expected_host,
+                    exc,
+                )
+        else:
+            try:
+                update_zoom_meeting(
+                    zoom_meeting.zoom_meeting_id,
+                    start_time=new_scheduled_at,
+                    duration_minutes=appointment.duration_minutes,
+                )
+            except ZoomAPIError as exc:
+                clear_zoom_token_cache()
+                zoom_warning = str(exc)
+                logger.warning(
+                    "Zoom meeting update skipped for appointment %s (meeting_id=%s): %s",
+                    appointment.pk,
+                    zoom_meeting.zoom_meeting_id,
+                    exc,
+                )
 
     return appointment, zoom_warning
 
