@@ -6,7 +6,7 @@
   {"counselor": "김소진", "client": "박슬아", "first_session": "2026-06-16 14:00", "counseling_method": "IN_PERSON"},
   {"counselor": "김소진", "client": "이경숙", "first_session": "2026-07-10 14:00", "counseling_method": "REMOTE"},
   {"counselor": "김은영", "client": "이세영", "first_session": "2026-06-24 19:00", "counseling_method": "IN_PERSON"},
-  {"counselor": "김은영", "client": "배민정", "first_session": "2026-06-25 19:00", "counseling_method": "IN_PERSON"},
+  {"counselor": "김은영", "client": "배민정", "client_email": "yhamom@naver.com", "first_session": "2026-07-25 19:30", "counseling_method": "REMOTE"},
   {"counselor": "백경미", "client": "황윤진", "first_session": "2026-06-25 14:00", "counseling_method": "IN_PERSON"},
   {"counselor": "백경미", "client": "김아름", "client_email": "arsui90@naver.com", "first_session": "2026-06-25 11:00", "counseling_method": "IN_PERSON"},
   {"counselor": "성소미", "client": "최우정", "first_session": "2026-06-22 11:00", "counseling_method": "IN_PERSON"},
