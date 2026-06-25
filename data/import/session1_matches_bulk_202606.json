@@ -23,7 +23,7 @@
   {"counselor": "전효영", "client": "황명자", "first_session": "2026-06-22 14:00", "counseling_method": "IN_PERSON"},
   {"counselor": "전효영", "client": "김효순", "first_session": "2026-06-23 11:00", "counseling_method": "REMOTE"},
   {"counselor": "정영란", "client": "성명현", "first_session": "2026-06-22 10:00", "counseling_method": "IN_PERSON"},
-  {"counselor": "정영란", "client": "성순희", "first_session": "2026-06-25 21:00", "counseling_method": "IN_PERSON"},
+  {"counselor": "정영란", "client": "성순희", "client_email": "sooni1028@naver.com", "first_session": "2026-06-25 21:00", "counseling_method": "REMOTE"},
   {"counselor": "정영란", "client": "정한결", "first_session": "2026-06-30 15:00", "counseling_method": "REMOTE"},
   {"counselor": "천옥희", "client": "조영은", "first_session": "2026-06-23 14:00", "counseling_method": "REMOTE"},
   {"counselor": "천옥희", "client": "장경화", "first_session": "2026-06-22 11:00", "counseling_method": "IN_PERSON"},
