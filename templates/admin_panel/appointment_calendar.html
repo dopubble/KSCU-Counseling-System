@@ -15,6 +15,9 @@
 
     <div class="admin-calendar-toolbar">
         <div>
+            <p class="text-muted mb-0 small d-md-none" id="adminCalendarMobileHint">
+                일정 블록을 누르면 확정 일시·상세 정보를 볼 수 있습니다.
+            </p>
             <p class="text-muted mb-0 small">
                 확정(CONFIRMED)된 예약만 표시합니다. 비대면 일정은 Zoom 호스트 풀 기준으로 색상이 구분됩니다.
             </p>
@@ -62,7 +65,7 @@
 </div>
 
 <div class="modal fade" id="adminAppointmentDetailModal" tabindex="-1" aria-labelledby="adminAppointmentDetailModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog modal-dialog-centered modal-fullscreen-sm-down">
         <div class="modal-content shadow">
             <div class="modal-header">
                 <h5 class="modal-title" id="adminAppointmentDetailModalLabel">예약 상세</h5>
@@ -80,6 +83,10 @@
                 <div class="detail-row" id="detailSession">
                     <span class="detail-label">상담 회차</span>
                     <span data-detail-value>—</span>
+                </div>
+                <div class="detail-row" id="detailScheduled">
+                    <span class="detail-label">확정 일시</span>
+                    <span class="fw-semibold" data-detail-value>—</span>
                 </div>
                 <div class="detail-row" id="detailMethod">
                     <span class="detail-label">상담 방식</span>

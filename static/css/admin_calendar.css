@@ -83,6 +83,88 @@
 
 @media (max-width: 767.98px) {
     .admin-calendar-shell {
-        padding: 0.75rem;
+        padding: 0.75rem 0.35rem;
+    }
+
+    .admin-calendar-page .fc .fc-toolbar {
+        flex-wrap: wrap;
+        gap: 0.35rem;
+    }
+
+    .admin-calendar-page .fc .fc-toolbar-title {
+        font-size: 1rem;
+        line-height: 1.3;
+        white-space: normal;
+        text-align: center;
+    }
+
+    .admin-calendar-page .fc .fc-button {
+        padding: 0.35rem 0.55rem;
+        font-size: 0.8125rem;
+    }
+
+    /* 월간 보기: 확정 일시·제목이 잘리지 않도록 세로 배치 */
+    .admin-calendar-page .fc-daygrid-day-events {
+        margin-bottom: 0.15rem;
+    }
+
+    .admin-calendar-page .fc-daygrid-event-harness {
+        overflow: visible;
+    }
+
+    .admin-calendar-page .fc-daygrid-event {
+        white-space: normal;
+        overflow: visible;
+        cursor: pointer;
+        margin-top: 2px;
+        min-height: 2.5rem;
+        -webkit-tap-highlight-color: rgba(32, 33, 36, 0.12);
+    }
+
+    .admin-calendar-page .fc-daygrid-block-event .fc-event-main,
+    .admin-calendar-page .fc-daygrid-dot-event .fc-event-main {
+        overflow: visible;
+        white-space: normal;
+        padding: 2px 4px;
+    }
+
+    .admin-calendar-page .fc-mobile-event {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        line-height: 1.25;
+        overflow: visible;
+        white-space: normal;
+    }
+
+    .admin-calendar-page .fc-mobile-event-time {
+        font-weight: 700;
+        font-size: 0.68rem;
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+    }
+
+    .admin-calendar-page .fc-mobile-event-title {
+        font-weight: 500;
+        font-size: 0.65rem;
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+        word-break: keep-all;
+    }
+
+    .admin-calendar-page .fc-daygrid-day-frame {
+        min-height: 5.5rem;
+    }
+
+    #adminAppointmentDetailModal .detail-row {
+        flex-direction: column;
+        gap: 0.2rem;
+    }
+
+    #adminAppointmentDetailModal .detail-label {
+        width: auto;
+        font-size: 0.8125rem;
     }
 }

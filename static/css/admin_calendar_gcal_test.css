@@ -119,3 +119,23 @@
 .admin-calendar-page--gcal-ui .admin-calendar-legend-item {
     color: var(--gcal-text);
 }
+
+@media (max-width: 767.98px) {
+    .admin-calendar-page--gcal-ui .fc-daygrid-block-event,
+    .admin-calendar-page--gcal-ui .fc-daygrid-dot-event {
+        padding: 2px 4px;
+    }
+
+    .admin-calendar-page--gcal-ui .fc-daygrid-block-event .fc-event-time,
+    .admin-calendar-page--gcal-ui .fc-daygrid-block-event .fc-event-title,
+    .admin-calendar-page--gcal-ui .fc-daygrid-dot-event .fc-event-time,
+    .admin-calendar-page--gcal-ui .fc-daygrid-dot-event .fc-event-title {
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+    }
+
+    .admin-calendar-page--gcal-ui .fc-h-event {
+        border-width: 0 0 0 3px;
+    }
+}
