@@ -4,19 +4,24 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from django.utils import timezone
+
 from apps.accounts.client_purge import purge_clients_by_name
 from apps.accounts.models import User, UserRole
 from apps.counseling.models import Case, CounselingApplication, CounselingMethod
 from apps.scheduling.models import Appointment, AppointmentStatus
 from apps.scheduling.services import (
+    AppointmentServiceError,
     attach_zoom_meeting_to_confirmed_appointment,
     fix_mismatched_zoom_host_assignments,
 )
 from apps.scheduling.utils import (
+    ZoomAPIError,
     ZoomNotConfiguredError,
     delete_zoom_meeting,
     is_zoom_configured,
 )
+from apps.scheduling.zoom_hosts import email_for_host_id
 from apps.sessions_app.models import ZoomMeeting
 
 KIM_JANGSEOYUL_NAME = "김장서율"
@@ -24,6 +29,12 @@ KIM_JANGSEOYUL_STUDENT_IDS = ("261110004", "26111004")
 
 LEE_MYUNGRAN_NAME = "이명란"
 LEE_MYUNGRAN_EMAIL = "starking0700@naver.com"
+
+PARK_MIYEONG_NAME = "박미영"
+PARK_MIYEONG_EMAIL = "myparkrang@naver.com"
+PARK_MIYEONG_COUNSELOR = "이수정"
+PARK_MIYEONG_SESSION1_LABEL = "2026-06-25 22:00"
+PARK_MIYEONG_ZOOM_HOST_ID = "host_02"
 
 
 @dataclass
@@ -167,6 +178,99 @@ def switch_client_to_in_person(
     )
 
 
+def _appointment_local_label(appointment: Appointment) -> str:
+    return timezone.localtime(appointment.scheduled_at).strftime("%Y-%m-%d %H:%M")
+
+
+def force_appointment_zoom_host(
+    *,
+    client_name: str,
+    client_email: str,
+    counselor_name: str,
+    scheduled_label: str,
+    host_id: str,
+    dry_run: bool = True,
+) -> OpsFixupLine:
+    """지정 예약 Zoom 호스트를 강제 지정 (자동 배정 알고리즘과 무관)."""
+    task = f"zoom_host_{client_name}_{scheduled_label}"
+    if not is_zoom_configured():
+        return OpsFixupLine(task, "skip", "Zoom 미설정")
+
+    target_email = (email_for_host_id(host_id) or "").strip()
+    if not target_email:
+        return OpsFixupLine(task, "error", f"호스트 ID 오류: {host_id}")
+
+    client = _find_client(name=client_name, email=client_email)
+    if not client:
+        return OpsFixupLine(task, "skip", "대상 내담자 없음")
+
+    appointment = (
+        Appointment.objects.filter(
+            client=client,
+            counselor__name=counselor_name,
+            session_number=1,
+            status=AppointmentStatus.CONFIRMED,
+            case__counseling_method=CounselingMethod.REMOTE,
+        )
+        .select_related("case", "counselor", "zoom_meeting")
+        .order_by("-scheduled_at")
+        .first()
+    )
+    if not appointment:
+        return OpsFixupLine(task, "skip", "확정 비대면 1회기 예약 없음")
+
+    current_label = _appointment_local_label(appointment)
+    if current_label != scheduled_label:
+        return OpsFixupLine(
+            task,
+            "skip",
+            f"일시 불일치 (DB {current_label}, 기대 {scheduled_label})",
+        )
+
+    zoom = getattr(appointment, "zoom_meeting", None)
+    stored = (zoom.zoom_host_email or "").strip().lower() if zoom else ""
+    if stored == target_email.lower():
+        return OpsFixupLine(task, "ok", f"이미 {host_id} ({target_email})")
+
+    if dry_run:
+        return OpsFixupLine(
+            task,
+            "dry_run",
+            f"{stored or '(없음)'} → {host_id} ({target_email})",
+        )
+
+    old_meeting_id = (zoom.zoom_meeting_id or "").strip() if zoom else ""
+    try:
+        from apps.scheduling.services import _create_zoom_meeting_for_appointment
+
+        _create_zoom_meeting_for_appointment(
+            appointment,
+            host_user_email=target_email,
+        )
+        if old_meeting_id:
+            refreshed = ZoomMeeting.objects.filter(appointment_id=appointment.pk).first()
+            new_meeting_id = (
+                (refreshed.zoom_meeting_id or "").strip() if refreshed else ""
+            )
+            if new_meeting_id and new_meeting_id != old_meeting_id:
+                delete_zoom_meeting(old_meeting_id)
+    except (ZoomAPIError, ZoomNotConfiguredError, AppointmentServiceError) as exc:
+        return OpsFixupLine(task, "error", str(exc))
+
+    return OpsFixupLine(task, "ok", f"{host_id} ({target_email})로 재배정")
+
+
+def ensure_park_miyeong_zoom_host_02(*, dry_run: bool = True) -> OpsFixupLine:
+    return force_appointment_zoom_host(
+        client_name=PARK_MIYEONG_NAME,
+        client_email=PARK_MIYEONG_EMAIL,
+        counselor_name=PARK_MIYEONG_COUNSELOR,
+        scheduled_label=PARK_MIYEONG_SESSION1_LABEL,
+        host_id=PARK_MIYEONG_ZOOM_HOST_ID,
+        dry_run=dry_run,
+    )
+
+
 def apply_ops_production_fixup_june2026(*, dry_run: bool = True) -> list[OpsFixupLine]:
     lines: list[OpsFixupLine] = []
 
@@ -200,6 +304,7 @@ def apply_ops_production_fixup_june2026(*, dry_run: bool = True) -> list[OpsFixu
         )
     )
     lines.append(fix_zoom_host_mismatches(dry_run=dry_run))
+    lines.append(ensure_park_miyeong_zoom_host_02(dry_run=dry_run))
     return lines
 
 
