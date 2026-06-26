@@ -36,6 +36,18 @@ PARK_MIYEONG_COUNSELOR = "이수정"
 PARK_MIYEONG_SESSION1_LABEL = "2026-06-25 22:00"
 PARK_MIYEONG_ZOOM_HOST_ID = "host_02"
 
+KIM_SUMI_NAME = "김수미"
+KIM_SUMI_EMAIL = "glory921@hanmail.net"
+KIM_SUMI_COUNSELOR = "성소미"
+KIM_SUMI_SESSION1_LABEL = "2026-06-26 11:00"
+KIM_SUMI_ZOOM_HOST_ID = "host_01"
+
+SOONSUNHEE_NAME = "성순희"
+SOONSUNHEE_EMAIL = "sooni1028@naver.com"
+SOONSUNHEE_COUNSELOR = "정영란"
+SOONSUNHEE_SESSION1_LABEL = "2026-06-26 11:00"
+SOONSUNHEE_ZOOM_HOST_ID = "host_02"
+
 
 @dataclass
 class OpsFixupLine:
@@ -271,6 +283,28 @@ def ensure_park_miyeong_zoom_host_02(*, dry_run: bool = True) -> OpsFixupLine:
     )
 
 
+def ensure_kim_sumi_zoom_host_01(*, dry_run: bool = True) -> OpsFixupLine:
+    return force_appointment_zoom_host(
+        client_name=KIM_SUMI_NAME,
+        client_email=KIM_SUMI_EMAIL,
+        counselor_name=KIM_SUMI_COUNSELOR,
+        scheduled_label=KIM_SUMI_SESSION1_LABEL,
+        host_id=KIM_SUMI_ZOOM_HOST_ID,
+        dry_run=dry_run,
+    )
+
+
+def ensure_soonsunhee_zoom_host_02(*, dry_run: bool = True) -> OpsFixupLine:
+    return force_appointment_zoom_host(
+        client_name=SOONSUNHEE_NAME,
+        client_email=SOONSUNHEE_EMAIL,
+        counselor_name=SOONSUNHEE_COUNSELOR,
+        scheduled_label=SOONSUNHEE_SESSION1_LABEL,
+        host_id=SOONSUNHEE_ZOOM_HOST_ID,
+        dry_run=dry_run,
+    )
+
+
 def apply_ops_production_fixup_june2026(*, dry_run: bool = True) -> list[OpsFixupLine]:
     lines: list[OpsFixupLine] = []
 
@@ -304,6 +338,8 @@ def apply_ops_production_fixup_june2026(*, dry_run: bool = True) -> list[OpsFixu
         )
     )
     lines.append(fix_zoom_host_mismatches(dry_run=dry_run))
+    lines.append(ensure_kim_sumi_zoom_host_01(dry_run=dry_run))
+    lines.append(ensure_soonsunhee_zoom_host_02(dry_run=dry_run))
     lines.append(ensure_park_miyeong_zoom_host_02(dry_run=dry_run))
     return lines
 
