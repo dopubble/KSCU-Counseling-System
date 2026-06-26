@@ -856,6 +856,7 @@ def shift_session1_confirmed_schedule(
                 appointment,
                 new_scheduled_at=new_at,
                 skip_availability=skip_availability,
+                notify_zoom_link_change=False,
             )
             results.append(
                 Session1ShiftResult(

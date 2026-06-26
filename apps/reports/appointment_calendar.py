@@ -370,10 +370,10 @@ def build_calendar_events(
             is_remote = interval.is_remote
             zoom_meeting = getattr(apt, "zoom_meeting", None)
             zoom_url = ""
-            if zoom_meeting and zoom_meeting.join_url:
-                zoom_url = zoom_meeting.join_url.strip()
-            elif is_remote and apt.case.zoom_meeting_url:
-                zoom_url = apt.case.zoom_meeting_url.strip()
+            if is_remote:
+                from apps.scheduling.zoom_links import resolve_appointment_zoom_join_url
+
+                zoom_url = resolve_appointment_zoom_join_url(apt, apt.case).strip()
 
             session_no = apt.session_number
             session_label = f"{session_no}회차" if session_no else "회차 미지정"

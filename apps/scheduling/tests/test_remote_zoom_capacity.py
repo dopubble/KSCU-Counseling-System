@@ -247,6 +247,10 @@ class RemoteZoomCapacityTests(TestCase):
             ) as create_mock,
             patch.object(scheduling_services, "delete_zoom_meeting") as delete_mock,
             patch.object(scheduling_services, "update_zoom_meeting") as update_mock,
+            patch.object(
+                scheduling_services,
+                "fix_mismatched_zoom_host_assignments",
+            ),
         ):
             updated, warning = reschedule_confirmed_appointment(
                 moving,

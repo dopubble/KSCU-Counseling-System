@@ -28,6 +28,11 @@ from .zoom_hosts import (
     confirmed_remote_appointments_queryset,
     resolve_zoom_host_email_for_appointment,
 )
+from .zoom_links import (
+    capture_appointment_zoom_join_url,
+    resolve_appointment_zoom_join_url,
+    sync_case_zoom_meeting_url,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +105,24 @@ def _notify_appointment_confirmation(appointment: Appointment) -> None:
     send_appointment_confirmation_notification(appointment)
 
 
+def _maybe_notify_zoom_link_change(
+    appointment: Appointment,
+    previous_url: str,
+    *,
+    notify: bool,
+    new_url: str | None = None,
+) -> None:
+    if not notify or appointment.status != AppointmentStatus.CONFIRMED:
+        return
+    resolved = (new_url or resolve_appointment_zoom_join_url(appointment, appointment.case)).strip()
+    prev = (previous_url or "").strip()
+    if not resolved or (prev and prev.rstrip("/") == resolved.rstrip("/")):
+        return
+    from apps.counseling.emailing import send_appointment_zoom_link_updated_notification
+
+    send_appointment_zoom_link_updated_notification(appointment, previous_url=prev, zoom_url=resolved)
+
+
 def _notify_appointment_pending_update(appointment: Appointment) -> None:
     from apps.counseling.emailing import send_appointment_pending_update_notification
 
@@ -161,8 +184,12 @@ def _create_zoom_meeting_for_appointment(
     appointment: Appointment,
     *,
     host_user_email: str | None = None,
+    notify_link_change: bool = False,
 ) -> tuple[ZoomMeeting, str]:
     """예약 1건에 Zoom 회의 생성·저장. join_url 반환."""
+    previous_url = (
+        capture_appointment_zoom_join_url(appointment) if notify_link_change else ""
+    )
     case = appointment.case
     topic = f"[KSCU 상담] {case.client.name} · {case.case_number}"
     host_email = (host_user_email or resolve_zoom_host_email_for_appointment(appointment)).strip()
@@ -191,8 +218,13 @@ def _create_zoom_meeting_for_appointment(
     )
 
     launch_url = join_url or start_url
-    case.zoom_meeting_url = launch_url
-    case.save(update_fields=["zoom_meeting_url"])
+    sync_case_zoom_meeting_url(appointment, join_url=launch_url)
+    _maybe_notify_zoom_link_change(
+        appointment,
+        previous_url,
+        notify=notify_link_change,
+        new_url=launch_url,
+    )
     return zoom_meeting, launch_url
 
 
@@ -247,10 +279,7 @@ def _sync_zoom_meeting_from_api(
     if update_fields:
         zoom.save(update_fields=update_fields)
 
-    case = appointment.case
-    if case.zoom_meeting_url != join_url:
-        case.zoom_meeting_url = join_url
-        case.save(update_fields=["zoom_meeting_url"])
+    sync_case_zoom_meeting_url(appointment, join_url=join_url)
 
     return zoom
 
@@ -333,6 +362,7 @@ def backfill_missing_zoom_meetings(
 def fix_mismatched_zoom_host_assignments(
     *,
     dry_run: bool = False,
+    notify_link_change: bool = False,
 ) -> tuple[int, int, list[str]]:
     """
     zoom_host_email이 호스트 배정 알고리즘과 다르면 올바른 Licensed 호스트로 재생성.
@@ -370,15 +400,26 @@ def fix_mismatched_zoom_host_assignments(
             errors.append(f"[would fix] {label}: {stored or '(empty)'} -> {exp}")
             continue
 
+        previous_url = (
+            capture_appointment_zoom_join_url(appointment) if notify_link_change else ""
+        )
         try:
             _create_zoom_meeting_for_appointment(
                 appointment,
                 host_user_email=exp,
+                notify_link_change=False,
             )
             refreshed = ZoomMeeting.objects.filter(appointment_id=appointment.pk).first()
             new_id = (refreshed.zoom_meeting_id or "").strip() if refreshed else ""
             if meeting_id and new_id and meeting_id != new_id:
                 delete_zoom_meeting(meeting_id)
+            new_url = (refreshed.join_url or "").strip() if refreshed else ""
+            _maybe_notify_zoom_link_change(
+                appointment,
+                previous_url,
+                notify=notify_link_change,
+                new_url=new_url,
+            )
             fixed += 1
         except (ZoomAPIError, ZoomNotConfiguredError, AppointmentServiceError) as exc:
             clear_zoom_token_cache()
@@ -557,6 +598,7 @@ def reschedule_confirmed_appointment(
     *,
     new_scheduled_at,
     skip_availability: bool = False,
+    notify_zoom_link_change: bool = True,
 ) -> tuple[Appointment, str | None]:
     """
     확정 예약 일시 변경 — 슬롯·중복 검사 후 DB 저장.
@@ -601,6 +643,11 @@ def reschedule_confirmed_appointment(
     appointment.scheduled_at = new_scheduled_at
     appointment.save(update_fields=["scheduled_at", "updated_at"])
 
+    previous_url = (
+        capture_appointment_zoom_join_url(appointment)
+        if notify_zoom_link_change
+        else ""
+    )
     zoom_warning: str | None = None
     zoom_meeting = (
         ZoomMeeting.objects.filter(appointment_id=appointment.pk).first()
@@ -640,6 +687,7 @@ def reschedule_confirmed_appointment(
                     start_time=new_scheduled_at,
                     duration_minutes=appointment.duration_minutes,
                 )
+                _sync_zoom_meeting_from_api(zoom_meeting, appointment)
             except ZoomAPIError as exc:
                 clear_zoom_token_cache()
                 zoom_warning = str(exc)
@@ -649,6 +697,20 @@ def reschedule_confirmed_appointment(
                     zoom_meeting.zoom_meeting_id,
                     exc,
                 )
+
+    if notify_zoom_link_change and _appointment_uses_zoom(appointment):
+        fix_mismatched_zoom_host_assignments(
+            notify_link_change=True,
+        )
+
+    refreshed_zoom = ZoomMeeting.objects.filter(appointment_id=appointment.pk).first()
+    final_url = (refreshed_zoom.join_url or "").strip() if refreshed_zoom else ""
+    _maybe_notify_zoom_link_change(
+        appointment,
+        previous_url,
+        notify=notify_zoom_link_change,
+        new_url=final_url or None,
+    )
 
     return appointment, zoom_warning
 
@@ -711,6 +773,7 @@ def sync_existing_zoom_join_urls(
             if zoom_fields:
                 zoom_meeting.save(update_fields=zoom_fields)
 
+            sync_case_zoom_meeting_url(appointment)
             cases_to_refresh[case.pk] = case
             updated += 1
         except ZoomAPIError as exc:
@@ -725,19 +788,19 @@ def sync_existing_zoom_join_urls(
 
     if not dry_run:
         for case in cases_to_refresh.values():
-            latest_join = (
-                ZoomMeeting.objects.filter(
-                    appointment__case=case,
-                    appointment__status=AppointmentStatus.CONFIRMED,
+            latest_appointment = (
+                Appointment.objects.filter(
+                    case=case,
+                    status=AppointmentStatus.CONFIRMED,
+                    zoom_meeting__join_url__gt="",
                 )
-                .exclude(join_url="")
-                .order_by("-appointment__confirmed_at", "-created_at")
-                .values_list("join_url", flat=True)
+                .select_related("zoom_meeting")
+                .order_by("-confirmed_at", "-zoom_meeting__created_at")
                 .first()
             )
-            if latest_join and case.zoom_meeting_url != latest_join:
-                case.zoom_meeting_url = latest_join
-                case.save(update_fields=["zoom_meeting_url"])
+            if latest_appointment is None:
+                continue
+            sync_case_zoom_meeting_url(latest_appointment)
 
     return updated, skipped, failed, errors
 

@@ -1415,26 +1415,18 @@ def _resolve_pending_appointment_for_session(
 
 
 def _is_zoom_host_url(url: str) -> bool:
-    """Zoom 호스트(start) URL — 참가 버튼에 사용하지 않음."""
-    normalized = (url or "").strip().lower()
-    if not normalized:
-        return False
-    return "/s/" in normalized or "zak=" in normalized
+    from apps.scheduling.zoom_links import is_zoom_host_url
+
+    return is_zoom_host_url(url)
 
 
 def _resolve_appointment_zoom_url(
     appointment: Optional[Appointment],
     case: Case,
 ) -> str:
-    """참가 join_url — 상담사·내담자 공통."""
-    if appointment is None:
-        return ""
-    zoom = getattr(appointment, "zoom_meeting", None)
-    if zoom and zoom.join_url:
-        return zoom.join_url
-    if case.zoom_meeting_url and not _is_zoom_host_url(case.zoom_meeting_url):
-        return case.zoom_meeting_url
-    return ""
+    from apps.scheduling.zoom_links import resolve_appointment_zoom_join_url
+
+    return resolve_appointment_zoom_join_url(appointment, case)
 
 
 def build_case_session_cards(case: Case) -> list[CaseSessionCard]:

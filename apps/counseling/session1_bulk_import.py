@@ -821,6 +821,7 @@ def sync_session1_times_from_roster(
                 appointment,
                 new_scheduled_at=row.first_session,
                 skip_availability=skip_availability,
+                notify_zoom_link_change=False,
             )
             detail = f"{current_label} → {_local_slot_label(appointment.scheduled_at)}"
             if zoom_warning:
@@ -1113,6 +1114,7 @@ def repair_session1_confirmations_from_roster(
                     appointment,
                     new_scheduled_at=row.first_session,
                     skip_availability=skip_availability,
+                    notify_zoom_link_change=False,
                 )
                 detail = f"{current_label} → {_local_slot_label(appointment.scheduled_at)}"
                 if zoom_warning:

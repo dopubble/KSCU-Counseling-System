@@ -182,11 +182,62 @@ def send_appointment_confirmation_notification(appointment) -> bool:
         f"일시: {appointment.scheduled_at:%Y-%m-%d %H:%M}\n"
         f"상담 시간: {appointment.duration_minutes}분\n"
     )
-    zoom_url = (case.zoom_meeting_url or "").strip()
+    from apps.scheduling.zoom_links import resolve_appointment_zoom_join_url
+
+    zoom_url = resolve_appointment_zoom_join_url(appointment, case)
     if zoom_url:
         message += f"\nZoom 참여 링크:\n{zoom_url}\n"
     message += "\n상담 상세 페이지에서 일정과 Zoom 정보를 확인하실 수 있습니다.\n"
     return _send(subject, message, [client.email])
+
+
+def send_appointment_zoom_link_updated_notification(
+    appointment,
+    *,
+    previous_url: str = "",
+    zoom_url: str = "",
+) -> bool:
+    """Zoom 링크 변경 — 내담자·담당 상담사 알림."""
+    from apps.scheduling.zoom_links import resolve_appointment_zoom_join_url
+
+    case = appointment.case
+    counselor = appointment.counselor
+    client = appointment.client
+    link = (zoom_url or resolve_appointment_zoom_join_url(appointment, case)).strip()
+    if not link:
+        return False
+
+    prev = (previous_url or "").strip()
+    if prev and prev.rstrip("/") == link.rstrip("/"):
+        return False
+
+    session_label = (
+        f"{appointment.session_number}회기"
+        if appointment.session_number
+        else "상담"
+    )
+    subject = "[KSCU 상담] Zoom 참여 링크 변경 안내"
+    message = (
+        f"{client.name}님, 안녕하세요.\n\n"
+        f"{session_label} Zoom 참여 링크가 변경되었습니다.\n"
+        f"사례번호: {case.case_number}\n"
+        f"일시: {appointment.scheduled_at:%Y-%m-%d %H:%M}\n"
+        f"담당 상담사: {counselor.name if counselor else '—'}\n\n"
+        f"Zoom 참여 링크:\n{link}\n\n"
+        "이전에 받으신 링크·북마크는 사용하지 마시고, "
+        "위 링크 또는 상담 상세 페이지의 「Zoom 회의 바로가기」로 입장해 주세요.\n"
+    )
+
+    recipients: list[str] = []
+    if client.email:
+        recipients.append(client.email)
+    if counselor and counselor.email:
+        counselor_addr = counselor.email.strip()
+        if counselor_addr and counselor_addr not in recipients:
+            recipients.append(counselor_addr)
+    if not recipients:
+        return False
+    return _send(subject, message, recipients)
 
 
 def send_appointment_pending_update_notification(appointment) -> bool:
