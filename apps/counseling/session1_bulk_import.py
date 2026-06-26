@@ -1178,6 +1178,31 @@ def repair_session1_confirmations_from_roster(
 
         try:
             if time_mismatch:
+                if appointment.status == AppointmentStatus.CONFIRMED:
+                    appointment, zoom_warning = reschedule_confirmed_appointment(
+                        appointment,
+                        new_scheduled_at=row.first_session,
+                        skip_availability=skip_availability,
+                    )
+                    detail = (
+                        f"{current_label} → {_local_slot_label(appointment.scheduled_at)}"
+                    )
+                    if zoom_warning:
+                        detail += f" (Zoom: {zoom_warning})"
+                    session1_candidates = _find_roster_session1_appointments(
+                        client, row.counselor_name
+                    )
+                    _append_session1_repair_result(
+                        results,
+                        row=row,
+                        appointment=appointment,
+                        session1_candidates=session1_candidates,
+                        roster_day=roster_day,
+                        dry_run=False,
+                        status="rescheduled",
+                        detail=detail,
+                    )
+                    continue
                 appointment.scheduled_at = row.first_session
                 appointment.save(update_fields=["scheduled_at", "updated_at"])
 

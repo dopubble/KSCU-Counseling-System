@@ -191,7 +191,12 @@ class RemoteZoomCapacityTests(TestCase):
         )
         self.assertTrue(ok, message)
 
-        with patch("apps.scheduling.services.update_zoom_meeting", return_value={}):
+        with (
+            patch(
+                "apps.scheduling.services._reconcile_zoom_host_for_confirmed_appointment",
+                return_value=None,
+            ),
+        ):
             updated, warning = reschedule_confirmed_appointment(
                 moving,
                 new_scheduled_at=new_time,
@@ -259,4 +264,52 @@ class RemoteZoomCapacityTests(TestCase):
         create_mock.assert_called_once()
         self.assertEqual(create_mock.call_args.kwargs["host_user_email"], "host2@example.com")
         delete_mock.assert_called_once_with("22222222222")
+        update_mock.assert_not_called()
+
+    def test_reschedule_creates_zoom_when_meeting_id_missing(self):
+        client1 = _create_client("내담자1")
+        client2 = _create_client("내담자2")
+        case1 = _create_remote_case(client1, self.counselor_a, "A")
+        case2 = _create_remote_case(client2, self.counselor_b, "B")
+        _create_confirmed_remote_appointment(case1, scheduled_at=self.start)
+        moving = _create_confirmed_remote_appointment(
+            case2,
+            scheduled_at=self.start + timedelta(hours=2),
+        )
+
+        from apps.scheduling import services as scheduling_services
+        from apps.sessions_app.models import ZoomMeeting
+
+        new_zoom = ZoomMeeting(
+            appointment=moving,
+            zoom_meeting_id="99999999999",
+            join_url="https://zoom.us/j/999",
+            zoom_host_email="host2@example.com",
+        )
+
+        with (
+            patch.object(
+                scheduling_services,
+                "resolve_zoom_host_email_for_appointment",
+                return_value="host2@example.com",
+            ),
+            patch.object(
+                scheduling_services,
+                "_create_zoom_meeting_for_appointment",
+                return_value=(new_zoom, new_zoom.join_url),
+            ) as create_mock,
+            patch.object(scheduling_services, "delete_zoom_meeting") as delete_mock,
+            patch.object(scheduling_services, "update_zoom_meeting") as update_mock,
+        ):
+            updated, warning = reschedule_confirmed_appointment(
+                moving,
+                new_scheduled_at=self.start,
+                skip_availability=True,
+            )
+
+        self.assertEqual(updated.scheduled_at, self.start)
+        self.assertIsNone(warning)
+        create_mock.assert_called_once()
+        self.assertEqual(create_mock.call_args.kwargs["host_user_email"], "host2@example.com")
+        delete_mock.assert_not_called()
         update_mock.assert_not_called()
