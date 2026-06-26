@@ -11,8 +11,6 @@ from apps.scheduling.zoom_hosts import (
     email_for_host_id,
     get_zoom_host_pool,
     host_id_for_email,
-    pinned_zoom_host_email_for_appointment,
-    ZOOM_HOST_PINS,
 )
 
 
@@ -53,29 +51,3 @@ class ZoomHostAssignmentTests(TestCase):
     )
     def test_assign_host_emails_for_empty_list(self):
         self.assertEqual(assign_host_emails_for_appointments([]), {})
-
-    @override_settings(
-        ZOOM_LICENSED_USERS="sscukscu@gmail.com,sedulife@mail.kcu.ac",
-    )
-    def test_pinned_host_overrides_algorithm(self):
-        from datetime import datetime
-        from types import SimpleNamespace
-        from zoneinfo import ZoneInfo
-
-        pin = ZOOM_HOST_PINS[0]
-        scheduled_at = timezone.make_aware(
-            datetime.strptime(pin.scheduled_label, "%Y-%m-%d %H:%M"),
-            ZoneInfo("Asia/Seoul"),
-        )
-        appointment = SimpleNamespace(
-            pk="pinned-apt",
-            scheduled_at=scheduled_at,
-            duration_minutes=50,
-            client=SimpleNamespace(name=pin.client_name, email=pin.client_email),
-            counselor=SimpleNamespace(name=pin.counselor_name),
-            case=SimpleNamespace(counseling_method="REMOTE"),
-        )
-        self.assertEqual(
-            pinned_zoom_host_email_for_appointment(appointment),
-            "sedulife@mail.kcu.ac",
-        )

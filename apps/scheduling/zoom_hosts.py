@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import timedelta
 
 from django.conf import settings
+from django.utils import timezone
 
 from apps.counseling.models import CounselingMethod
 from apps.reports.appointment_calendar import (
@@ -19,28 +19,6 @@ from apps.scheduling.models import Appointment, AppointmentStatus
 DEFAULT_ZOOM_LICENSED_USERS = (
     "sscukscu@gmail.com",
     "sedulife@mail.kcu.ac",
-)
-
-
-@dataclass(frozen=True)
-class ZoomHostPin:
-    """알고리즘과 무관하게 고정할 Zoom 호스트 (운영 pin)."""
-
-    client_name: str
-    client_email: str
-    counselor_name: str
-    scheduled_label: str
-    host_id: str
-
-
-ZOOM_HOST_PINS: tuple[ZoomHostPin, ...] = (
-    ZoomHostPin(
-        "박미영",
-        "myparkrang@naver.com",
-        "이수정",
-        "2026-06-25 22:00",
-        "host_02",
-    ),
 )
 
 
@@ -69,30 +47,6 @@ def host_id_for_email(email: str) -> str:
     for index, licensed in enumerate(get_zoom_licensed_user_emails(), start=1):
         if licensed.strip().lower() == normalized:
             return f"host_{index:02d}"
-    return ""
-
-
-def appointment_scheduled_label(appointment: Appointment) -> str:
-    return _calendar_localtime(appointment.scheduled_at).strftime("%Y-%m-%d %H:%M")
-
-
-def pinned_zoom_host_email_for_appointment(appointment: Appointment) -> str:
-    """고정(pin)된 예약이면 Licensed 이메일, 아니면 빈 문자열."""
-    client = getattr(appointment, "client", None)
-    counselor = getattr(appointment, "counselor", None)
-    if client is None or counselor is None:
-        return ""
-
-    label = appointment_scheduled_label(appointment)
-    client_email = (client.email or "").strip().lower()
-    for pin in ZOOM_HOST_PINS:
-        if (
-            client.name == pin.client_name
-            and client_email == pin.client_email.strip().lower()
-            and counselor.name == pin.counselor_name
-            and label == pin.scheduled_label
-        ):
-            return (email_for_host_id(pin.host_id) or "").strip()
     return ""
 
 
@@ -146,15 +100,10 @@ def assign_host_emails_for_appointments(
 
     intervals = [_appointment_interval(apt) for apt in appointments]
     host_ids = assign_zoom_hosts(intervals)
-    result = {
+    return {
         appointment_id: email_for_host_id(host_id) or emails[0]
         for appointment_id, host_id in host_ids.items()
     }
-    for apt in appointments:
-        pinned = pinned_zoom_host_email_for_appointment(apt)
-        if pinned:
-            result[str(apt.pk)] = pinned
-    return result
 
 
 def resolve_zoom_host_email_for_appointment(appointment: Appointment) -> str:
