@@ -48,6 +48,8 @@ SOONSUNHEE_COUNSELOR = "정영란"
 SOONSUNHEE_SESSION1_LABEL = "2026-06-26 11:00"
 SOONSUNHEE_ZOOM_HOST_ID = "host_02"
 
+GUHYUNJEONG_NAME = "구현정"
+
 
 @dataclass
 class OpsFixupLine:
@@ -305,6 +307,38 @@ def ensure_soonsunhee_zoom_host_02(*, dry_run: bool = True) -> OpsFixupLine:
     )
 
 
+def ensure_guhyunjeong_session1_time(*, dry_run: bool = True) -> OpsFixupLine:
+    """로스터 JSON 기준 구현정 1회기 일시 유지 (6/26 10:00)."""
+    from pathlib import Path
+
+    from django.conf import settings
+
+    from apps.counseling.session1_bulk_import import (
+        load_session1_matches,
+        sync_session1_times_from_roster,
+    )
+
+    task = f"session1_time_{GUHYUNJEONG_NAME}"
+    path = Path(settings.BASE_DIR) / "data" / "import" / "session1_matches_bulk_202606.json"
+    rows = load_session1_matches(path)
+    results = sync_session1_times_from_roster(
+        rows,
+        dry_run=dry_run,
+        skip_availability=True,
+        client_names=frozenset({GUHYUNJEONG_NAME}),
+    )
+    if not results:
+        return OpsFixupLine(task, "skip", "로스터 행 없음")
+    result = results[0]
+    if result.status == "error":
+        return OpsFixupLine(task, "error", result.detail)
+    if result.status == "ok":
+        return OpsFixupLine(task, "ok", "일치")
+    if dry_run:
+        return OpsFixupLine(task, "dry_run", result.detail)
+    return OpsFixupLine(task, result.status, result.detail)
+
+
 def apply_ops_production_fixup_june2026(*, dry_run: bool = True) -> list[OpsFixupLine]:
     lines: list[OpsFixupLine] = []
 
@@ -338,6 +372,7 @@ def apply_ops_production_fixup_june2026(*, dry_run: bool = True) -> list[OpsFixu
         )
     )
     lines.append(fix_zoom_host_mismatches(dry_run=dry_run))
+    lines.append(ensure_guhyunjeong_session1_time(dry_run=dry_run))
     lines.append(ensure_kim_sumi_zoom_host_01(dry_run=dry_run))
     lines.append(ensure_soonsunhee_zoom_host_02(dry_run=dry_run))
     lines.append(ensure_park_miyeong_zoom_host_02(dry_run=dry_run))
