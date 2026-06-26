@@ -18,7 +18,8 @@ DEFAULT_JSON = (
 
 class Command(BaseCommand):
     help = (
-        "1회기 로스터와 DB를 대조해 PENDING/SCHEDULED·일시 불일치 예약을 CONFIRMED로 복구합니다.\n"
+        "1회기 로스터와 DB를 대조해 PENDING/SCHEDULED·미확정 예약을 CONFIRMED로 복구합니다.\n"
+        "확정(CONFIRMED) 예약 일시는 기본적으로 변경하지 않습니다 (--reschedule-confirmed).\n"
         "예시:\n"
         "  python manage.py repair_session1_confirmations\n"
         "  python manage.py repair_session1_confirmations --apply --client 이현옥"
@@ -68,6 +69,11 @@ class Command(BaseCommand):
             action="store_true",
             help="예외·오류가 있어도 exit code 0 (Railway preDeploy용)",
         )
+        parser.add_argument(
+            "--reschedule-confirmed",
+            action="store_true",
+            help="확정(CONFIRMED) 1회기 일시가 로스터와 다를 때 자동 변경 (기본: 변경 안 함)",
+        )
 
     def handle(self, *args, **options):
         try:
@@ -96,6 +102,7 @@ class Command(BaseCommand):
             skip_availability=not options["enforce_availability"],
             counselor_name=counselor,
             client_names=client_names,
+            reschedule_confirmed=bool(options["reschedule_confirmed"]),
         )
 
         prefix = "[dry-run] " if not options["apply"] else ""

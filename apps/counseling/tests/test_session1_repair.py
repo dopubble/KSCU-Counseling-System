@@ -142,3 +142,26 @@ class Session1RepairTests(TestCase):
         self.assertEqual(results[0].status, "confirm")
         apt = Appointment.objects.get(case=self.case, session_number=1)
         self.assertEqual(apt.status, AppointmentStatus.PENDING)
+
+    def test_repair_does_not_reschedule_confirmed_time_drift_by_default(self):
+        Appointment.objects.create(
+            case=self.case,
+            counselor=self.counselor,
+            client=self.client_user,
+            scheduled_at=timezone.make_aware(
+                datetime(2026, 6, 17, 11, 0),
+                timezone.get_current_timezone(),
+            ),
+            duration_minutes=50,
+            status=AppointmentStatus.CONFIRMED,
+            confirmed_at=timezone.now(),
+            session_number=1,
+        )
+        results = repair_session1_confirmations_from_roster([self.row], dry_run=False)
+        self.assertEqual(results[0].status, "time_drift")
+        apt = Appointment.objects.get(case=self.case, session_number=1)
+        self.assertEqual(apt.status, AppointmentStatus.CONFIRMED)
+        self.assertEqual(
+            timezone.localtime(apt.scheduled_at).strftime("%Y-%m-%d %H:%M"),
+            "2026-06-17 11:00",
+        )

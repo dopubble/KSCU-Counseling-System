@@ -893,6 +893,7 @@ def _append_session1_repair_result(
     if (
         appointment is not None
         and appointment.status == AppointmentStatus.CONFIRMED
+        and status != "time_drift"
         and not appointment_in_calendar_events(appointment.pk, local_day=roster_day)
     ):
         results.append(
@@ -922,8 +923,13 @@ def repair_session1_confirmations_from_roster(
     skip_availability: bool = True,
     counselor_name: str | None = None,
     client_names: frozenset[str] | None = None,
+    reschedule_confirmed: bool = False,
 ) -> list[Session1RepairResult]:
-    """로스터 1회기 예약을 CONFIRMED·올바른 일시로 복구 (캘린더 누락 방지)."""
+    """로스터 1회기 예약을 CONFIRMED·올바른 일시로 복구 (캘린더 누락 방지).
+
+    reschedule_confirmed=False(기본): 확정(CONFIRMED) 예약 일시는 자동 변경하지 않음.
+    배포 시 운영에서 조정한 일정이 로스터와 달라도 캘린더에서 사라지지 않도록 한다.
+    """
     from apps.reports.appointment_calendar import appointment_in_calendar_events
     from apps.scheduling.services import (
         AppointmentServiceError,
@@ -1075,6 +1081,21 @@ def repair_session1_confirmations_from_roster(
                     dry_run=dry_run,
                     status="ok",
                     detail="일치",
+                )
+                continue
+            if not reschedule_confirmed:
+                _append_session1_repair_result(
+                    results,
+                    row=row,
+                    appointment=appointment,
+                    session1_candidates=session1_candidates,
+                    roster_day=roster_day,
+                    dry_run=dry_run,
+                    status="time_drift",
+                    detail=(
+                        f"확정 일시 유지 ({current_label}, 로스터 {expected_label}) "
+                        "— 자동 변경 안 함"
+                    ),
                 )
                 continue
             if dry_run:
