@@ -10,10 +10,12 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any
 from urllib.parse import quote
+from zoneinfo import ZoneInfo
 
 import requests
 from django.conf import settings
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 logger = logging.getLogger(__name__)
 
@@ -270,6 +272,25 @@ def update_zoom_meeting(
         "timezone": tz,
     }
     return _patch_zoom_meeting(meeting_id, payload)
+
+
+def parse_zoom_meeting_start_datetime(meeting_data: dict[str, Any]) -> datetime | None:
+    """Zoom GET /meetings 응답의 start_time을 aware datetime으로 변환."""
+    raw = (meeting_data.get("start_time") or "").strip()
+    if not raw:
+        return None
+    parsed = parse_datetime(
+        raw.replace("Z", "+00:00") if raw.endswith("Z") else raw
+    )
+    if parsed is None:
+        return None
+    if timezone.is_naive(parsed):
+        tz_name = (meeting_data.get("timezone") or settings.TIME_ZONE or "Asia/Seoul").strip()
+        try:
+            parsed = timezone.make_aware(parsed, ZoneInfo(tz_name))
+        except Exception:
+            parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
+    return parsed
 
 
 def get_zoom_meeting(meeting_id: str) -> dict[str, Any]:

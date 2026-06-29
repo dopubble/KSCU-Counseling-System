@@ -28,6 +28,13 @@ def normalize_client_preferred_datetime(dt: datetime | None) -> datetime | None:
     return timezone.localtime(dt, tz)
 
 
+def format_local_datetime(dt: datetime | None) -> str:
+    """플랫폼 표시용 — KST wall-clock (Y-m-d H:i)."""
+    if dt is None:
+        return "—"
+    return timezone.localtime(dt).strftime("%Y-%m-%d %H:%M")
+
+
 def serialize_counselor_availability_rules(counselor) -> list[dict]:
     """내담자 예약 달력용 — 상담사 가용·차단 규칙 JSON."""
     if not counselor:

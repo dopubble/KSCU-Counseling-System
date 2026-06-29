@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from django.db import transaction
 from django.utils import timezone
 
@@ -8,7 +10,7 @@ from apps.sessions_app.models import ZoomMeeting
 
 from .forms import DEFAULT_APPOINTMENT_DURATION_MINUTES
 from .models import Appointment, AppointmentStatus
-from .availability import is_counselor_slot_available, normalize_client_preferred_datetime
+from .availability import is_counselor_slot_available, normalize_client_preferred_datetime, format_local_datetime
 from .utils import (
     ZoomAPIError,
     ZoomNotConfiguredError,
@@ -17,6 +19,7 @@ from .utils import (
     delete_zoom_meeting,
     get_zoom_meeting,
     is_zoom_configured,
+    parse_zoom_meeting_start_datetime,
     pick_meeting_launch_url,
     update_zoom_meeting,
     update_zoom_meeting_participant_settings,
@@ -803,6 +806,144 @@ def sync_existing_zoom_join_urls(
             sync_case_zoom_meeting_url(latest_appointment)
 
     return updated, skipped, failed, errors
+
+
+def _local_minute(dt: datetime) -> datetime:
+    return timezone.localtime(dt).replace(second=0, microsecond=0)
+
+
+def _zoom_meeting_time_matches_appointment(
+    appointment: Appointment,
+    meeting_data: dict,
+) -> bool:
+    zoom_start = parse_zoom_meeting_start_datetime(meeting_data)
+    if zoom_start is None:
+        return False
+    db_minute = _local_minute(appointment.scheduled_at)
+    zoom_minute = _local_minute(zoom_start)
+    zoom_duration = meeting_data.get("duration")
+    duration_match = (
+        zoom_duration is None
+        or int(zoom_duration) == appointment.duration_minutes
+    )
+    return db_minute == zoom_minute and duration_match
+
+
+def sync_zoom_meeting_times(
+    *,
+    dry_run: bool = False,
+) -> tuple[int, int, int, int, list[dict], list[str]]:
+    """
+    DB 예약 일시(KST)와 Zoom 회의 start_time 불일치를 찾아 Zoom PATCH로 맞춘다.
+
+    반환: (in_sync, updated, skipped, failed, mismatches, errors)
+    mismatches 항목: client_name, case_number, session_number, meeting_id,
+                    db_local, zoom_local, db_duration, zoom_duration
+    """
+    if not is_zoom_configured():
+        raise ZoomNotConfiguredError(
+            "Zoom API 설정이 없습니다. ZOOM_* 환경 변수를 확인해 주세요."
+        )
+
+    qs = (
+        ZoomMeeting.objects.exclude(zoom_meeting_id="")
+        .select_related(
+            "appointment",
+            "appointment__case",
+            "appointment__case__client",
+            "appointment__counselor",
+        )
+        .filter(
+            appointment__status=AppointmentStatus.CONFIRMED,
+            appointment__case__counseling_method=CounselingMethod.REMOTE,
+        )
+        .order_by("appointment__scheduled_at")
+    )
+
+    in_sync = updated = skipped = failed = 0
+    mismatches: list[dict] = []
+    errors: list[str] = []
+
+    for zoom_meeting in qs.iterator():
+        appointment = zoom_meeting.appointment
+        case = appointment.case
+        meeting_id = (zoom_meeting.zoom_meeting_id or "").strip()
+        client_name = case.client.name
+        case_number = case.case_number
+        session_number = appointment.session_number
+
+        try:
+            meeting_data = get_zoom_meeting(meeting_id)
+        except ZoomAPIError as exc:
+            clear_zoom_token_cache()
+            failed += 1
+            errors.append(
+                f"조회 실패 {meeting_id} ({client_name} {case_number}): {exc}"
+            )
+            continue
+
+        if _zoom_meeting_time_matches_appointment(appointment, meeting_data):
+            in_sync += 1
+            continue
+
+        zoom_start = parse_zoom_meeting_start_datetime(meeting_data)
+        zoom_local = (
+            format_local_datetime(zoom_start)
+            if zoom_start
+            else (meeting_data.get("start_time") or "?")
+        )
+        zoom_duration = meeting_data.get("duration")
+        try:
+            zoom_duration_int = int(zoom_duration) if zoom_duration is not None else None
+        except (TypeError, ValueError):
+            zoom_duration_int = None
+
+        mismatches.append(
+            {
+                "appointment": appointment,
+                "zoom_meeting": zoom_meeting,
+                "meeting_id": meeting_id,
+                "client_name": client_name,
+                "case_number": case_number,
+                "session_number": session_number,
+                "db_local": format_local_datetime(appointment.scheduled_at),
+                "zoom_local": zoom_local,
+                "db_duration": appointment.duration_minutes,
+                "zoom_duration": zoom_duration_int,
+            }
+        )
+
+    if dry_run:
+        return in_sync, 0, 0, failed, mismatches, errors
+
+    for row in mismatches:
+        appointment = row["appointment"]
+        zoom_meeting = row["zoom_meeting"]
+        meeting_id = row["meeting_id"]
+        label = (
+            f"{row['client_name']} | {row['case_number']} | "
+            f"{row['session_number'] or '?'}회기 | {meeting_id}"
+        )
+
+        try:
+            update_zoom_meeting(
+                meeting_id,
+                start_time=appointment.scheduled_at,
+                duration_minutes=appointment.duration_minutes,
+            )
+            _sync_zoom_meeting_from_api(zoom_meeting, appointment)
+            updated += 1
+        except ZoomAPIError as exc:
+            clear_zoom_token_cache()
+            failed += 1
+            errors.append(f"PATCH 실패 {label}: {exc}")
+            logger.warning(
+                "Zoom meeting time sync failed for appointment %s: %s",
+                appointment.pk,
+                exc,
+            )
+
+    return in_sync, updated, skipped, failed, mismatches, errors
 
 
 @transaction.atomic

@@ -61,6 +61,7 @@ from apps.sessions_app.pdf import (
 )
 
 from apps.scheduling.availability import (
+    format_local_datetime,
     get_counselor_blocked_dates,
     is_counselor_slot_available,
     serialize_counselor_availability_rules,
@@ -2118,7 +2119,8 @@ def counselor_session_schedule_change_approve(request, case_pk, request_pk):
     session_label = f"{session_number}회기"
     success_msg = (
         f"{session_label} 일정 변경을 승인했습니다. "
-        f"({old_scheduled_at:%Y-%m-%d %H:%M} → {appointment.scheduled_at:%Y-%m-%d %H:%M})"
+        f"({format_local_datetime(old_scheduled_at)} → "
+        f"{format_local_datetime(appointment.scheduled_at)})"
     )
     if zoom_warning:
         success_msg += (
@@ -2582,8 +2584,8 @@ def counselor_session_appointment_reschedule(request, case_pk, session_number):
             else:
                 success_msg = (
                     f"{session_number}회기 일정이 변경되었습니다. "
-                    f"({old_scheduled_at:%Y-%m-%d %H:%M} → "
-                    f"{appointment.scheduled_at:%Y-%m-%d %H:%M})"
+                    f"({format_local_datetime(old_scheduled_at)} → "
+                    f"{format_local_datetime(appointment.scheduled_at)})"
                 )
                 if zoom_warning:
                     success_msg += f" (Zoom: {zoom_warning})"
