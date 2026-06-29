@@ -2578,6 +2578,7 @@ def counselor_session_appointment_reschedule(request, case_pk, session_number):
                 appointment, zoom_warning = reschedule_confirmed_appointment(
                     appointment,
                     new_scheduled_at=form.cleaned_data["scheduled_at"],
+                    duration_minutes=form.cleaned_data["duration_minutes"],
                 )
             except AppointmentServiceError as exc:
                 messages.error(request, str(exc))
@@ -2597,7 +2598,7 @@ def counselor_session_appointment_reschedule(request, case_pk, session_number):
             calendar_picker=True,
             initial={
                 "scheduled_at": timezone.localtime(appointment.scheduled_at),
-                "duration_minutes": appointment.duration_minutes,
+                "duration_minutes": DEFAULT_APPOINTMENT_DURATION_MINUTES,
             },
         )
 
@@ -2609,8 +2610,7 @@ def counselor_session_appointment_reschedule(request, case_pk, session_number):
             "session_number": session_number,
             "form": form,
             "zoom_configured": is_zoom_configured(),
-            "default_duration_minutes": appointment.duration_minutes
-            or DEFAULT_APPOINTMENT_DURATION_MINUTES,
+            "default_duration_minutes": DEFAULT_APPOINTMENT_DURATION_MINUTES,
             "booking_is_reschedule": True,
             "booking_page_title": f"{session_number}회기 — 일정 변경",
             "booking_page_c3": f"{session_number}회기 일정 변경",

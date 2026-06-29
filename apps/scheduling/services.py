@@ -600,6 +600,7 @@ def reschedule_confirmed_appointment(
     appointment: Appointment,
     *,
     new_scheduled_at,
+    duration_minutes: int | None = None,
     skip_availability: bool = False,
     notify_zoom_link_change: bool = True,
 ) -> tuple[Appointment, str | None]:
@@ -611,11 +612,16 @@ def reschedule_confirmed_appointment(
         raise AppointmentServiceError("확정된 예약만 일정을 변경할 수 있습니다.")
 
     new_scheduled_at = normalize_client_preferred_datetime(new_scheduled_at)
+    duration = (
+        duration_minutes
+        if duration_minutes is not None
+        else appointment.duration_minutes or DEFAULT_APPOINTMENT_DURATION_MINUTES
+    )
     if not skip_availability:
         available, message = is_counselor_slot_available(
             appointment.counselor_id,
             new_scheduled_at,
-            duration_minutes=appointment.duration_minutes,
+            duration_minutes=duration,
             require_full_duration=True,
         )
         if not available:
@@ -634,17 +640,23 @@ def reschedule_confirmed_appointment(
         ensure_remote_zoom_capacity(
             appointment,
             scheduled_at=new_scheduled_at,
+            duration_minutes=duration,
             exclude_appointment_id=appointment.pk,
         )
     else:
         ensure_in_person_room_capacity(
             appointment,
             scheduled_at=new_scheduled_at,
+            duration_minutes=duration,
             exclude_appointment_id=appointment.pk,
         )
 
     appointment.scheduled_at = new_scheduled_at
-    appointment.save(update_fields=["scheduled_at", "updated_at"])
+    update_fields = ["scheduled_at", "updated_at"]
+    if appointment.duration_minutes != duration:
+        appointment.duration_minutes = duration
+        update_fields.append("duration_minutes")
+    appointment.save(update_fields=update_fields)
 
     previous_url = (
         capture_appointment_zoom_join_url(appointment)

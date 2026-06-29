@@ -79,7 +79,7 @@
                             <label for="bookingDurationInput" class="form-label fw-semibold">상담 시간(분)</label>
                             <input type="number" name="duration_minutes" id="bookingDurationInput"
                                    class="form-control" min="20" max="180" step="10"
-                                   value="{{ default_duration_minutes }}" style="max-width: 8rem;">
+                                   value="{{ default_duration_minutes|default:50 }}" style="max-width: 8rem;">
                         </div>
                         <div class="d-flex flex-wrap gap-2">
                             <a href="{% url 'counselor:case_detail' case.pk %}" class="btn btn-outline-secondary btn-sm">취소</a>

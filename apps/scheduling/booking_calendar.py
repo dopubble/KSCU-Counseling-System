@@ -29,11 +29,7 @@ def build_booking_calendar_context(
     """FullCalendar 예약 페이지 초기화용."""
     counselor = case.counselor
     is_remote = case.counseling_method == CounselingMethod.REMOTE
-    duration = (
-        appointment.duration_minutes
-        if appointment and appointment.duration_minutes
-        else DEFAULT_APPOINTMENT_DURATION_MINUTES
-    )
+    duration = DEFAULT_APPOINTMENT_DURATION_MINUTES
     exclude_id = str(appointment.pk) if appointment and appointment.pk else ""
 
     slots_url = reverse("scheduling:booking_slots")
