@@ -5,7 +5,15 @@ from .models import ClosureReport, ConsentDocument, SessionMaterial
 
 @admin.register(ConsentDocument)
 class ConsentDocumentAdmin(admin.ModelAdmin):
-    list_display = ("client", "application", "doc_type", "signed_at", "verified_by")
+    list_display = (
+        "client",
+        "application",
+        "doc_type",
+        "signed_at",
+        "updated_at",
+        "uploaded_by",
+        "verified_by",
+    )
     list_filter = ("doc_type",)
 
 

@@ -12,8 +12,12 @@ from apps.counseling.application_queries import (
     waiting_match_for_admin,
 )
 from apps.counseling.models import ApplicationStatus, Case, CaseStatus, CounselingApplication
-from apps.counseling.services import get_available_counselors, get_counselor_active_case_counts
-from apps.counseling.services import count_cancel_pending_appointments
+from apps.counseling.services import (
+    count_cancel_pending_appointments,
+    get_available_counselors,
+    get_counselor_active_case_counts,
+)
+from apps.documents.models import COUNSELOR_REQUIRED_DOC_TYPES, ConsentDocument
 from apps.reports.table_sort import (
     ACTIVE_CASE_SORT_SPECS,
     CANCEL_PENDING_DEFAULT,
@@ -466,5 +470,70 @@ def statistics(request):
         {
             "type_distribution": type_distribution,
             "status_distribution": status_distribution,
+        },
+    )
+
+
+@role_required(UserRole.ADMIN)
+def consent_submissions(request):
+    """기수별 동의서 제출 현황."""
+    cohorts = get_available_cohorts()
+    selected_cohort = _parse_cohort_param(request.GET.get("cohort"))
+    status_filter = request.GET.get("status", "active")
+
+    cases_qs = (
+        Case.objects.select_related(
+            "client",
+            "counselor",
+            "counselor__counselor_profile",
+            "application",
+        )
+        .filter(counselor__isnull=False)
+        .order_by(
+            "counselor__counselor_profile__cohort",
+            "counselor__name",
+            "client__name",
+        )
+    )
+    if selected_cohort is not None:
+        cases_qs = cases_qs.filter(counselor__counselor_profile__cohort=selected_cohort)
+    if status_filter == "active":
+        cases_qs = cases_qs.filter(status=CaseStatus.ACTIVE)
+
+    cases = list(cases_qs)
+    application_ids = [case.application_id for case in cases]
+    consents = ConsentDocument.objects.filter(application_id__in=application_ids)
+    by_app_type = {(doc.application_id, doc.doc_type): doc for doc in consents}
+
+    rows = []
+    for case in cases:
+        profile = getattr(case.counselor, "counselor_profile", None)
+        slots = {
+            doc_type: by_app_type.get((case.application_id, doc_type))
+            for doc_type in COUNSELOR_REQUIRED_DOC_TYPES
+        }
+        submitted_count = sum(1 for doc in slots.values() if doc and doc.is_submitted)
+        rows.append(
+            {
+                "case": case,
+                "cohort": profile.cohort if profile else None,
+                "doc_columns": [
+                    {"doc_type": doc_type, "doc": slots[doc_type]}
+                    for doc_type in COUNSELOR_REQUIRED_DOC_TYPES
+                ],
+                "submitted_count": submitted_count,
+                "required_count": len(COUNSELOR_REQUIRED_DOC_TYPES),
+            }
+        )
+
+    return render(
+        request,
+        "admin_panel/consent_submissions.html",
+        {
+            "cohorts": cohorts,
+            "selected_cohort": selected_cohort,
+            "status_filter": status_filter,
+            "rows": rows,
+            "rows_count": len(rows),
         },
     )

@@ -23,4 +23,5 @@ urlpatterns = [
         name="appointment_calendar_events",
     ),
     path("counselors/", views.counselor_list, name="counselor_list"),
+    path("consents/", views.consent_submissions, name="consent_submissions"),
 ]

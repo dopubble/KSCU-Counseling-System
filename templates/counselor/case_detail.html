@@ -160,6 +160,8 @@
                     </div>
                 </div>
 
+                {% include "counselor/partials/consent_documents_card.html" %}
+
                 {% include "includes/shared_materials_widget.html" with portal="counselor" can_manage_board=can_manage_board %}
 
                 {% if pending_for_case %}

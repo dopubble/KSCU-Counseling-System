@@ -100,6 +100,11 @@ urlpatterns = [
         name="session_appointment_reschedule",
     ),
     path(
+        "case/<uuid:case_pk>/consents/<str:doc_type>/upload/",
+        views.counselor_consent_upload,
+        name="consent_upload",
+    ),
+    path(
         "case/<uuid:case_pk>/session/<int:session_number>/materials/upload/",
         views.counselor_session_material_upload,
         name="session_material_upload",

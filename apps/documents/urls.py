@@ -5,5 +5,5 @@ from . import views
 app_name = "documents"
 
 urlpatterns = [
-    path("consents/", views.consent_list, name="consent_list"),
+    path("consents/<uuid:pk>/file/", views.consent_file, name="consent_file"),
 ]

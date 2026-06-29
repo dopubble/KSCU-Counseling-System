@@ -9,10 +9,24 @@ from django.utils.text import get_valid_filename
 from apps.accounts.models import UserRole
 
 
+def _consent_file_storage():
+    """런타임에 STORAGES['consent'] 를 해석 (레거시/동의서 분리)."""
+    from django.core.files.storage import storages
+
+    return storages["consent"]
+
+
 def _upload_basename(filename: str) -> str:
     """업로드 파일의 원본 파일명(경로 제거·안전 문자만)."""
     basename = os.path.basename((filename or "").replace("\\", "/"))
     return get_valid_filename(basename) or "file"
+
+
+def _consent_safe_filename(name: str) -> str:
+    """동의서 표준 파일명 — 대괄호·한글 유지, 경로 구분자만 제거."""
+    forbidden = set('<>:"/\\|?*\0')
+    cleaned = "".join(c if c not in forbidden else "_" for c in (name or ""))
+    return cleaned.strip() or "consent.pdf"
 
 
 def session_material_upload_path(instance, filename):
@@ -39,8 +53,10 @@ def session_material_upload_path(instance, filename):
 
 
 def consent_upload_path(instance, filename):
-    ext = filename.rsplit(".", 1)[-1]
-    return f"consents/{instance.client_id}/{uuid.uuid4()}.{ext}"
+    ext = (filename.rsplit(".", 1)[-1] if "." in filename else "bin").lower()
+    display_name = instance.build_storage_basename(ext)
+    app_id = instance.application_id or "unknown"
+    return f"consents/{app_id}/{display_name}"
 
 
 def closure_report_upload_path(instance, filename):
@@ -57,9 +73,24 @@ def counselor_assignment_upload_path(instance, filename):
 
 
 class ConsentDocType(models.TextChoices):
-    PRIVACY = "PRIVACY", "개인정보 동의"
-    COUNSELING = "COUNSELING", "상담 동의"
+    PRIVACY = "PRIVACY", "개인정보 처리방침 동의서"
+    INTAKE = "INTAKE", "접수면접지"
+    COUNSELING = "COUNSELING", "상담 동의서"
     RECORDING = "RECORDING", "녹화 동의"
+
+
+COUNSELOR_REQUIRED_DOC_TYPES = (
+    ConsentDocType.PRIVACY,
+    ConsentDocType.INTAKE,
+    ConsentDocType.COUNSELING,
+)
+
+DOC_TYPE_FILENAME_LABEL = {
+    ConsentDocType.PRIVACY: "개인정보동의서",
+    ConsentDocType.INTAKE: "접수면접지",
+    ConsentDocType.COUNSELING: "상담동의서",
+    ConsentDocType.RECORDING: "녹화동의서",
+}
 
 
 class ConsentDocument(models.Model):
@@ -77,7 +108,11 @@ class ConsentDocument(models.Model):
         verbose_name="상담 신청",
     )
     doc_type = models.CharField("동의서 유형", max_length=20, choices=ConsentDocType.choices)
-    file = models.FileField("파일", upload_to=consent_upload_path)
+    file = models.FileField(
+        "파일",
+        upload_to=consent_upload_path,
+        storage=_consent_file_storage,
+    )
     signed_at = models.DateTimeField("서명일", auto_now_add=True)
     verified_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -87,6 +122,15 @@ class ConsentDocument(models.Model):
         related_name="verified_consents",
         verbose_name="검증자",
     )
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="uploaded_consent_documents",
+        verbose_name="업로드한 사용자",
+    )
+    updated_at = models.DateTimeField("최종 수정일", auto_now=True)
 
     class Meta:
         verbose_name = "동의서"
@@ -95,6 +139,36 @@ class ConsentDocument(models.Model):
 
     def __str__(self):
         return f"{self.client.name} - {self.get_doc_type_display()}"
+
+    def build_storage_basename(self, ext: str) -> str:
+        """[N기]상담사명_내담자명_서류종류.ext"""
+        from apps.counseling.cohort_journal_service import get_counselor_cohort
+
+        case = getattr(self.application, "case", None)
+        counselor = case.counselor if case else None
+        cohort = get_counselor_cohort(counselor) if counselor else None
+        cohort_part = f"[{cohort}기]" if cohort else "[기수미정]"
+        counselor_name = (counselor.name if counselor else "상담사미배정").replace(" ", "")
+        client_name = self.client.name.replace(" ", "")
+        label = DOC_TYPE_FILENAME_LABEL.get(self.doc_type, self.doc_type)
+        safe = _consent_safe_filename(
+            f"{cohort_part}{counselor_name}_{client_name}_{label}.{ext}"
+        )
+        return safe or f"consent.{ext}"
+
+    def get_download_filename(self) -> str:
+        if not self.file:
+            return ""
+        stored = os.path.basename(self.file.name.replace("\\", "/"))
+        if "." in stored:
+            ext = stored.rsplit(".", 1)[-1]
+        else:
+            ext = "bin"
+        return self.build_storage_basename(ext)
+
+    @property
+    def is_submitted(self) -> bool:
+        return bool(self.file)
 
 
 class ClosureReport(models.Model):

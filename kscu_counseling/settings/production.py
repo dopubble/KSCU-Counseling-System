@@ -154,52 +154,22 @@ if _on_railway:
         file=sys.stderr,
     )
 
-# --- 업로드 파일(과제·첨부) 영구 저장 ---
-# 1) Railway Volume: MEDIA_ROOT=/data/media 등 마운트 경로 지정
-# 2) S3 호환 스토리지: AWS_* 환경 변수 설정
-from pathlib import Path
+# --- 미디어 스토리지 (레거시 vs 동의서 분리) ---
+# 레거시(게시판·회기자료): 기존과 동일 — MEDIA_USE_S3=true 없이는 파일시스템 유지
+# 동의서: CONSENT_AWS_* 만 설정 시 비공개 S3 (기존 파일 무영향)
+from kscu_counseling.settings.consent_storage import apply_consent_storage
+from kscu_counseling.settings.media_storage import apply_legacy_media_storage
 
-_media_root = _env_str("MEDIA_ROOT")
-if _media_root:
-    MEDIA_ROOT = Path(_media_root)  # noqa: F405
-
-_aws_bucket = _env_str("AWS_STORAGE_BUCKET_NAME")
-_aws_key = _env_str("AWS_ACCESS_KEY_ID")
-_aws_secret = _env_str("AWS_SECRET_ACCESS_KEY")
-if _aws_bucket and _aws_key and _aws_secret:
-    AWS_ACCESS_KEY_ID = _aws_key
-    AWS_SECRET_ACCESS_KEY = _aws_secret
-    AWS_STORAGE_BUCKET_NAME = _aws_bucket
-    AWS_S3_REGION_NAME = _env_str("AWS_S3_REGION_NAME", "ap-northeast-2")
-    _s3_endpoint = _env_str("AWS_S3_ENDPOINT_URL")
-    if _s3_endpoint:
-        AWS_S3_ENDPOINT_URL = _s3_endpoint
-    AWS_S3_FILE_OVERWRITE = False
-    AWS_DEFAULT_ACL = None
-    AWS_QUERYSTRING_AUTH = False
-    AWS_S3_SIGNATURE_VERSION = "s3v4"
-
-    STORAGES = {  # noqa: F405
-        "default": {
-            "BACKEND": "storages.backends.s3.S3Storage",
-        },
-        "staticfiles": {
-            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-        },
-    }
-    if _on_railway:
-        print(
-            f"[kscu] media storage=S3 bucket={_aws_bucket}",
-            file=sys.stderr,
-        )
-elif _on_railway:
-    import sys
-
-    print(
-        f"[kscu] media storage=filesystem MEDIA_ROOT={MEDIA_ROOT}",  # noqa: F405
-        "— Railway Volume 또는 S3 설정을 권장합니다.",
-        file=sys.stderr,
-    )
+MEDIA_STORAGE_MODE = apply_legacy_media_storage(
+    settings_module=globals(),
+    env_str=_env_str,
+    on_railway=_on_railway,
+)
+CONSENT_STORAGE_MODE = apply_consent_storage(
+    settings_module=globals(),
+    env_str=_env_str,
+    on_railway=_on_railway,
+)
 
 # --- DB 연결 유지 (요청마다 Postgres handshake 비용 감소) ---
 _default_db = DATABASES.get("default", {})  # noqa: F405

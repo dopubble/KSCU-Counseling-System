@@ -48,6 +48,8 @@ from apps.sessions_app.models import (
     InitialCounselingRecord,
     TerminationCounselingRecord,
 )
+from apps.documents.forms import ConsentUploadForm
+from apps.documents.services.consent_service import build_consent_rows, upsert_counselor_consent
 from apps.sessions_app.pdf import (
     PDF_PASSWORD_NOTICE,
     build_initial_record_pdf,
@@ -1791,6 +1793,7 @@ def counselor_case_detail(request, pk):
             or request.user.role == UserRole.ADMIN,
             "zoom_host_key_configured": is_zoom_host_key_configured(),
             "zoom_host_key": get_zoom_host_key() if is_zoom_host_key_configured() else "",
+            "consent_rows": build_consent_rows(application),
         },
     )
 
@@ -2337,6 +2340,34 @@ def counselor_update_session_status(request, case_pk, appointment_pk):
     appointment.save(update_fields=["status", "updated_at"])
     label = "진행중" if target == AppointmentStatus.CONFIRMED else "완료"
     messages.success(request, f"{appointment.scheduled_at:%Y-%m-%d %H:%M} 회기 상태가 「{label}」으로 변경되었습니다.")
+    return redirect("counselor:case_detail", pk=case.pk)
+
+
+@counselor_required
+@require_POST
+def counselor_consent_upload(request, case_pk, doc_type):
+    """필수 동의서(오프라인 스캔) 업로드·재업로드."""
+    case = _get_counselor_case(request, case_pk)
+    form = ConsentUploadForm(request.POST, request.FILES)
+    if not form.is_valid():
+        file_errors = form.errors.get("file")
+        if file_errors:
+            messages.error(request, file_errors[0])
+        else:
+            messages.error(request, "파일을 확인해 주세요.")
+        return redirect("counselor:case_detail", pk=case.pk)
+
+    try:
+        upsert_counselor_consent(
+            case=case,
+            doc_type=doc_type,
+            file_obj=form.cleaned_data["file"],
+            uploaded_by=request.user,
+        )
+    except ValueError:
+        raise Http404 from None
+
+    messages.success(request, "동의서가 제출되었습니다.")
     return redirect("counselor:case_detail", pk=case.pk)
 
 

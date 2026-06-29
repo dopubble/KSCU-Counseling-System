@@ -26,31 +26,38 @@
         return window.matchMedia(`(max-width: ${MOBILE_MAX_WIDTH}px)`).matches;
     }
 
+    /** @type {FullCalendar.Calendar | null} */
+    let calendar = null;
+
+    /**
+     * FullCalendar timeZone 모드에서는 event.start 가 fake-UTC Date 이므로
+     * toLocaleString 대신 calendar.formatDate 를 사용해야 격자·모달 시각이 일치한다.
+     */
     function formatScheduledRange(event) {
         const start = event.start;
         const end = event.end;
-        if (!start) {
+        if (!start || !calendar) {
             return "—";
         }
-        const dateOpts = {
+        const startLabel = calendar.formatDate(start, {
             year: "numeric",
             month: "long",
             day: "numeric",
             weekday: "short",
             hour: "numeric",
             minute: "2-digit",
+            meridiem: "short",
             hour12: true,
-        };
-        const timeOpts = {
-            hour: "numeric",
-            minute: "2-digit",
-            hour12: true,
-        };
-        const startLabel = start.toLocaleString("ko-KR", dateOpts);
+        });
         if (!end) {
             return startLabel;
         }
-        const endLabel = end.toLocaleTimeString("ko-KR", timeOpts);
+        const endLabel = calendar.formatDate(end, {
+            hour: "numeric",
+            minute: "2-digit",
+            meridiem: "short",
+            hour12: true,
+        });
         return `${startLabel} ~ ${endLabel}`;
     }
 
@@ -137,7 +144,7 @@
         };
     }
 
-    const calendar = new FullCalendar.Calendar(calendarEl, {
+    calendar = new FullCalendar.Calendar(calendarEl, {
         locale: "ko",
         timeZone: calendarTimeZone,
         initialView: "dayGridMonth",

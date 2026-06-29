@@ -30,7 +30,7 @@
 </li>
 
 <li class="nav-item dropdown">
-    <a class="nav-link dropdown-toggle admin-nav-dropdown-toggle {% if ns == 'admin_panel' and url_name == 'counselor_list' %}active{% endif %}"
+    <a class="nav-link dropdown-toggle admin-nav-dropdown-toggle {% if ns == 'admin_panel' and url_name == 'counselor_list' or ns == 'admin_panel' and url_name == 'consent_submissions' %}active{% endif %}"
        href="#"
        id="adminCounselorMenu"
        role="button"
@@ -42,6 +42,10 @@
         <li>
             <a class="dropdown-item {% if ns == 'admin_panel' and url_name == 'counselor_list' %}active{% endif %}"
                href="{% url 'admin_panel:counselor_list' %}">상담사 명단</a>
+        </li>
+        <li>
+            <a class="dropdown-item {% if ns == 'admin_panel' and url_name == 'consent_submissions' %}active{% endif %}"
+               href="{% url 'admin_panel:consent_submissions' %}">동의서 제출 관리</a>
         </li>
     </ul>
 </li>
