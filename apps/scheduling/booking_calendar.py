@@ -10,6 +10,7 @@ from apps.scheduling.availability import (
     serialize_counselor_availability_rules,
 )
 from apps.scheduling.constants import (
+    BOOKING_SLOT_INTERVAL_MINUTES,
     DEFAULT_APPOINTMENT_DURATION_MINUTES,
     IN_PERSON_ROOM_CAPACITY,
 )
@@ -64,6 +65,7 @@ def build_booking_calendar_context(
             "zoomCapacity": remote_zoom_capacity_limit(),
             "roomCapacity": in_person_room_capacity_limit(),
             "inPersonRoomCapacity": IN_PERSON_ROOM_CAPACITY,
+            "slotIntervalMinutes": BOOKING_SLOT_INTERVAL_MINUTES,
         },
         "counselor_blocked_dates": (
             get_counselor_blocked_dates(counselor.pk) if counselor else []

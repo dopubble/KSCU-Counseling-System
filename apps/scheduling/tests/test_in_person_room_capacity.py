@@ -97,7 +97,7 @@ class InPersonRoomCapacityTests(TestCase):
             scheduled_at=self.start + timedelta(minutes=30),
         )
         overlap_count = count_overlapping_confirmed_in_person(
-            scheduled_at=self.start + timedelta(minutes=59),
+            scheduled_at=self.start + timedelta(minutes=40),
             duration_minutes=DEFAULT_APPOINTMENT_DURATION_MINUTES,
         )
         self.assertEqual(overlap_count, 2)

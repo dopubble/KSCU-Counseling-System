@@ -18,10 +18,14 @@ from apps.scheduling.availability import is_counselor_slot_available, local_time
 from apps.scheduling.booking_slots import (
     build_available_dates_for_month,
     build_booking_slots_for_date,
+    interval_slot_starts,
     month_date_bounds,
     resolve_slot_state,
 )
-from apps.scheduling.constants import DEFAULT_APPOINTMENT_DURATION_MINUTES
+from apps.scheduling.constants import (
+    BOOKING_SLOT_INTERVAL_MINUTES,
+    DEFAULT_APPOINTMENT_DURATION_MINUTES,
+)
 from apps.scheduling.models import Appointment, AppointmentStatus, CounselorAvailability
 
 
@@ -283,3 +287,31 @@ class BookingSlotsTests(TestCase):
         self.assertIn("zoom_remaining", slot_15)
         self.assertEqual(slot_15["room_remaining"], 2)
         self.assertEqual(slot_15["zoom_remaining"], 1)
+
+
+class IntervalSlotStartsTests(TestCase):
+    def test_generates_30_minute_grid_until_last_fits_duration(self):
+        on_date = date(2026, 7, 3)
+        starts = interval_slot_starts(on_date)
+        labels = [dt.strftime("%H:%M") for dt in starts]
+
+        self.assertEqual(BOOKING_SLOT_INTERVAL_MINUTES, 30)
+        self.assertIn("09:00", labels)
+        self.assertIn("09:30", labels)
+        self.assertIn("17:30", labels)
+        self.assertIn("21:00", labels)
+        self.assertNotIn("21:30", labels)
+
+        for index in range(1, len(starts)):
+            delta = starts[index] - starts[index - 1]
+            self.assertEqual(delta, timedelta(minutes=30))
+
+        last = starts[-1]
+        end_boundary = timezone.make_aware(
+            datetime.combine(on_date, time(22, 0)),
+            local_timezone(),
+        )
+        self.assertLessEqual(
+            last + timedelta(minutes=DEFAULT_APPOINTMENT_DURATION_MINUTES),
+            end_boundary,
+        )

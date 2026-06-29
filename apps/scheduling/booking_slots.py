@@ -22,6 +22,7 @@ from apps.scheduling.availability import (
 )
 from apps.scheduling.constants import (
     BOOKING_SLOT_END_HOUR,
+    BOOKING_SLOT_INTERVAL_MINUTES,
     BOOKING_SLOT_START_HOUR,
     DEFAULT_APPOINTMENT_DURATION_MINUTES,
 )
@@ -72,16 +73,24 @@ def _slot_label(start: datetime, end: datetime) -> str:
     return f"{start:%H:%M} – {end:%H:%M}"
 
 
-def hourly_slot_starts(on_date: date) -> list[datetime]:
-    """09:00~21:00 시작 (60분 상담 시 22:00 종료)."""
+def interval_slot_starts(on_date: date) -> list[datetime]:
+    """09:00~22:00 — BOOKING_SLOT_INTERVAL_MINUTES 간격 시작 (기본 상담 시간 내 종료)."""
     tz = local_timezone()
     slots: list[datetime] = []
-    for hour in range(BOOKING_SLOT_START_HOUR, BOOKING_SLOT_END_HOUR):
-        if hour + (DEFAULT_APPOINTMENT_DURATION_MINUTES // 60) > BOOKING_SLOT_END_HOUR:
-            break
-        slots.append(
-            timezone.make_aware(datetime.combine(on_date, time(hour, 0)), tz)
-        )
+    duration = DEFAULT_APPOINTMENT_DURATION_MINUTES
+    end_boundary = timezone.make_aware(
+        datetime.combine(on_date, time(BOOKING_SLOT_END_HOUR, 0)),
+        tz,
+    )
+    day_start = timezone.make_aware(
+        datetime.combine(on_date, time(BOOKING_SLOT_START_HOUR, 0)),
+        tz,
+    )
+    step = timedelta(minutes=BOOKING_SLOT_INTERVAL_MINUTES)
+    cursor = day_start
+    while cursor + timedelta(minutes=duration) <= end_boundary:
+        slots.append(cursor)
+        cursor += step
     return slots
 
 
@@ -368,14 +377,14 @@ class MonthBookingContext:
     def date_has_bookable_slot(self, on_date: date) -> bool:
         if on_date.isoformat() in self.blocked_dates:
             return False
-        for slot_start in hourly_slot_starts(on_date):
+        for slot_start in interval_slot_starts(on_date):
             if self.resolve_slot_state(slot_start) == "available":
                 return True
         return False
 
     def build_slots_for_date(self, on_date: date) -> list[BookingSlot]:
         slots: list[BookingSlot] = []
-        for slot_start in hourly_slot_starts(on_date):
+        for slot_start in interval_slot_starts(on_date):
             slot_end = slot_start + timedelta(minutes=self.duration_minutes)
             state = self.resolve_slot_state(slot_start)
             room_remaining = None
@@ -509,7 +518,7 @@ def build_booking_slots_for_date(
     counseling_method = case.counseling_method
     slots: list[BookingSlot] = []
 
-    for slot_start in hourly_slot_starts(on_date):
+    for slot_start in interval_slot_starts(on_date):
         slot_end = slot_start + timedelta(minutes=duration_minutes)
         state = resolve_slot_state(
             counselor_id=case.counselor_id,

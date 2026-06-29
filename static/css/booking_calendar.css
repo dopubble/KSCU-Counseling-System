@@ -25,6 +25,13 @@
     box-shadow: 0 0.125rem 0.5rem rgba(15, 23, 42, 0.06);
 }
 
+.booking-slot-panel {
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 10rem);
+    min-height: 0;
+}
+
 .booking-calendar-panel-header,
 .booking-slot-panel-header {
     padding: 0.875rem 1rem;
@@ -105,25 +112,30 @@
 .booking-slot-list {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.375rem;
     padding: 0.75rem 1rem 1rem;
-    max-height: 32rem;
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: 36rem;
     overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
 .booking-slot-btn {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
-    gap: 0.75rem;
+    gap: 0.5rem;
     width: 100%;
     border: 1px solid #dbeafe;
     background: #f8fbff;
     color: #1e3a8a;
     border-radius: 0.5rem;
-    padding: 0.625rem 0.75rem;
+    padding: 0.5rem 0.625rem;
     text-align: left;
     transition: background 0.15s ease, border-color 0.15s ease;
+    font-size: 0.875rem;
+    line-height: 1.3;
 }
 
 .booking-slot-btn:hover:not(:disabled) {
@@ -148,11 +160,12 @@
 }
 
 .booking-slot-state {
-    font-size: 0.75rem;
+    font-size: 0.6875rem;
     color: #64748b;
     text-align: right;
-    line-height: 1.35;
-    flex-shrink: 0;
+    line-height: 1.25;
+    flex-shrink: 1;
+    min-width: 0;
 }
 
 .booking-slot-time {
@@ -207,10 +220,11 @@
     padding: 1rem;
     background: #fafafa;
     border-radius: 0 0 0.75rem 0.75rem;
+    flex-shrink: 0;
 }
 
 .booking-confirm-panel.d-none + .booking-slot-list {
-    max-height: 36rem;
+    max-height: none;
 }
 
 .booking-slot-empty {

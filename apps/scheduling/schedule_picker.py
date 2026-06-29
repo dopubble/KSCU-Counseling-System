@@ -9,7 +9,10 @@ from apps.scheduling.availability import (
     get_counselor_blocked_dates,
     serialize_counselor_availability_rules,
 )
-from apps.scheduling.constants import DEFAULT_APPOINTMENT_DURATION_MINUTES
+from apps.scheduling.constants import (
+    BOOKING_SLOT_INTERVAL_MINUTES,
+    DEFAULT_APPOINTMENT_DURATION_MINUTES,
+)
 from apps.scheduling.models import Appointment
 from apps.scheduling.remote_zoom_capacity import remote_zoom_capacity_limit
 
@@ -43,6 +46,7 @@ def build_schedule_picker_context(
             "durationMinutes": duration,
             "excludeAppointmentId": exclude_id,
             "zoomIntervalsUrl": intervals_url,
+            "slotIntervalMinutes": BOOKING_SLOT_INTERVAL_MINUTES,
         },
         "counselor_blocked_dates": (
             get_counselor_blocked_dates(counselor.pk) if counselor else []

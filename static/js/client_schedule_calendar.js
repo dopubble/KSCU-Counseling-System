@@ -4,6 +4,16 @@
 (function (global) {
     "use strict";
 
+    const BOOKING_SLOT_INTERVAL_MINUTES = 30;
+
+    function isOnBookingSlotGrid(date) {
+        if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+            return false;
+        }
+        const minutes = date.getMinutes();
+        return minutes % BOOKING_SLOT_INTERVAL_MINUTES === 0;
+    }
+
     function toPythonWeekday(date) {
         const jsDay = date.getDay();
         return jsDay === 0 ? 6 : jsDay - 1;
@@ -217,6 +227,9 @@
         if (!slotStart) {
             return false;
         }
+        if (!isOnBookingSlotGrid(slotStart)) {
+            return false;
+        }
         const dateStr = formatISODate(slotStart);
         if (blockedDates && blockedDates.indexOf(dateStr) !== -1) {
             return false;
@@ -281,10 +294,17 @@
     function findFirstAvailableSlotStart(date, rules, blockedDates) {
         const labels = getAvailabilityWindowLabels(date, rules, blockedDates);
         for (let i = 0; i < labels.length; i++) {
-            const startStr = labels[i].split("~")[0];
-            const candidate = combineLocalDateTime(date, startStr);
-            if (isCounselorSlotStartAvailable("", rules, blockedDates, candidate)) {
-                return candidate;
+            const parts = labels[i].split("~");
+            const windowStart = combineLocalDateTime(date, parts[0]);
+            const windowEnd = combineLocalDateTime(date, parts[1] || parts[0]);
+            let candidate = new Date(windowStart.getTime());
+            while (candidate.getTime() <= windowEnd.getTime()) {
+                if (isCounselorSlotStartAvailable("", rules, blockedDates, candidate)) {
+                    return candidate;
+                }
+                candidate = new Date(
+                    candidate.getTime() + BOOKING_SLOT_INTERVAL_MINUTES * 60 * 1000
+                );
             }
         }
         return null;
@@ -611,7 +631,7 @@
             if (zoomState && typeof zoomState.getDurationMinutes === "function") {
                 return zoomState.getDurationMinutes();
             }
-            return (zoomState && zoomState.durationMinutes) || 60;
+            return (zoomState && zoomState.durationMinutes) || 50;
         }
 
         function refreshZoomIntervals(instance) {
@@ -683,7 +703,7 @@
                 dateFormat: "Y-m-d H:i",
                 altInput: false,
                 allowInput: true,
-                minuteIncrement: 1,
+                minuteIncrement: BOOKING_SLOT_INTERVAL_MINUTES,
                 disable: disableRules,
                 locale: global.flatpickr.l10ns.ko || undefined,
                 onReady: function (_selected, _str, instance) {
@@ -726,6 +746,25 @@
                         return;
                     }
                     if (guardZoomCapacity(selectedDates, dateStr, instance)) {
+                        return;
+                    }
+                    if (
+                        !isOnBookingSlotGrid(selectedDates[0]) ||
+                        !isCounselorSlotStartAvailable(
+                            dateStr,
+                            rules,
+                            blockedDates,
+                            selectedDates[0]
+                        )
+                    ) {
+                        rejectInvalidSlotSelection(
+                            selectedDates,
+                            dateStr,
+                            instance,
+                            rules,
+                            blockedDates,
+                            options
+                        );
                         return;
                     }
                     if (instance.input) {
@@ -775,6 +814,8 @@
         isBlockedDateValue: isBlockedDateValue,
         isAvailableDateValue: isAvailableDateValue,
         isCounselorSlotStartAvailable: isCounselorSlotStartAvailable,
+        isOnBookingSlotGrid: isOnBookingSlotGrid,
+        BOOKING_SLOT_INTERVAL_MINUTES: BOOKING_SLOT_INTERVAL_MINUTES,
         formatAvailabilityHint: formatAvailabilityHint,
         formatDatetimeForServer: formatDatetimeForServer,
         resolveInputDatetimeForServer: resolveInputDatetimeForServer,

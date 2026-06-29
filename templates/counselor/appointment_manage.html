@@ -64,7 +64,7 @@
                         </div>
                         <input type="hidden"
                                name="duration_minutes"
-                               value="{{ appointment.duration_minutes|default:60 }}">
+                               value="{{ appointment.duration_minutes|default:50 }}">
                         <div class="d-flex flex-wrap gap-2 appointment-manage-actions">
                             <button type="submit" name="action" value="update" class="btn btn-outline-secondary">
                                 <i class="bi bi-pencil me-1"></i>시간 수정
@@ -97,7 +97,7 @@
 
 {% block extra_js %}
 {% include "includes/schedule_picker_scripts.html" %}
-<script src="{% static 'js/schedule_picker_page.js' %}?v=1"></script>
+<script src="{% static 'js/schedule_picker_page.js' %}?v=2"></script>
 <script>
 (function () {
     const form = document.getElementById("appointmentManageForm");

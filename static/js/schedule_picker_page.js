@@ -24,7 +24,7 @@
                 return parsed;
             }
         }
-        return (config && config.durationMinutes) || 60;
+        return (config && config.durationMinutes) || 50;
     }
 
     function buildZoomOptions(config) {
@@ -35,7 +35,7 @@
             enabled: true,
             url: config.zoomIntervalsUrl,
             capacity: config.zoomCapacity || 2,
-            durationMinutes: config.durationMinutes || 60,
+            durationMinutes: config.durationMinutes || 50,
             excludeAppointmentId: config.excludeAppointmentId || "",
             getDurationMinutes: function () {
                 return getDurationMinutes(config);
@@ -54,7 +54,9 @@
         ClientScheduleCalendar.initPicker(input, rules, blockedDates, {
             zoom: zoom,
             onInvalidSlot: function () {
-                /* counselor slot — handled in calendar */
+                alert(
+                    "선택하신 시간은 예약 가능한 30분 단위 시간이 아닙니다. 달력에서 가능 시간을 확인해 주세요."
+                );
             },
             onBlockedSelect: function () {
                 alert("상담가능 시간이 아닙니다. 파란색 날짜를 선택해주세요.");

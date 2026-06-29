@@ -134,7 +134,15 @@
 
     function toFormDatetime(isoString) {
         if (!isoString) return "";
-        const dt = new Date(isoString);
+        const trimmed = String(isoString).trim();
+        const isoMatch = trimmed.match(
+            /^(\d{4}-\d{2}-\d{2})[T\s](\d{2}):(\d{2})/
+        );
+        if (isoMatch) {
+            return `${isoMatch[1]} ${isoMatch[2]}:${isoMatch[3]}`;
+        }
+        const dt = new Date(trimmed);
+        if (Number.isNaN(dt.getTime())) return "";
         const y = dt.getFullYear();
         const m = String(dt.getMonth() + 1).padStart(2, "0");
         const d = String(dt.getDate()).padStart(2, "0");
@@ -148,8 +156,12 @@
             case_id: config.caseId,
             date: dateKey,
         });
-        if (config.durationMinutes) {
-            params.set("duration_minutes", String(config.durationMinutes));
+        const duration =
+            durationInput && durationInput.value
+                ? parseInt(durationInput.value, 10)
+                : config.durationMinutes;
+        if (duration && !Number.isNaN(duration) && duration > 0) {
+            params.set("duration_minutes", String(duration));
         }
         if (config.excludeAppointmentId) {
             params.set("exclude_appointment_id", config.excludeAppointmentId);
@@ -403,6 +415,18 @@
     });
 
     calendar.render();
+
+    if (durationInput) {
+        durationInput.addEventListener("change", function () {
+            const parsed = parseInt(durationInput.value, 10);
+            if (!Number.isNaN(parsed) && parsed > 0) {
+                config.durationMinutes = parsed;
+                if (selectedDate) {
+                    loadSlots(selectedDate);
+                }
+            }
+        });
+    }
 
     const bookingForm = document.getElementById("bookingCalendarForm");
     if (bookingForm) {

@@ -20,7 +20,11 @@ from .booking_slots import (
     build_booking_slots_for_date,
     month_date_bounds,
 )
-from .constants import DEFAULT_APPOINTMENT_DURATION_MINUTES, IN_PERSON_ROOM_CAPACITY
+from .constants import (
+    BOOKING_SLOT_INTERVAL_MINUTES,
+    DEFAULT_APPOINTMENT_DURATION_MINUTES,
+    IN_PERSON_ROOM_CAPACITY,
+)
 from .display import group_availabilities_for_display
 from .forms import (
     AppointmentScheduleForm,
@@ -338,6 +342,7 @@ def booking_slots(request):
             "duration_minutes": duration,
             "zoom_capacity": remote_zoom_capacity_limit(),
             "room_capacity": in_person_room_capacity_limit(),
+            "slot_interval_minutes": BOOKING_SLOT_INTERVAL_MINUTES,
             "slots": [slot.to_dict() for slot in slots],
         }
     )
