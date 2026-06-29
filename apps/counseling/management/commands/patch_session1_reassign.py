@@ -40,7 +40,7 @@ class Command(BaseCommand):
                 counselor_name="양은영",
                 client_name="구현정",
                 first_session=timezone.make_aware(
-                    datetime(2026, 6, 26, 10, 0),
+                    datetime(2026, 7, 1, 10, 0),
                     timezone.get_current_timezone(),
                 ),
                 counseling_method=CounselingMethod.REMOTE,

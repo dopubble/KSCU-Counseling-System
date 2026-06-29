@@ -308,7 +308,7 @@ def ensure_soonsunhee_zoom_host_02(*, dry_run: bool = True) -> OpsFixupLine:
 
 
 def ensure_guhyunjeong_session1_time(*, dry_run: bool = True) -> OpsFixupLine:
-    """로스터 JSON 기준 구현정 1회기 일시 유지 (6/26 10:00)."""
+    """로스터 JSON 기준 구현정 1회기 일시 유지 (7/1 10:00)."""
     from pathlib import Path
 
     from django.conf import settings
