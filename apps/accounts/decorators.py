@@ -39,6 +39,14 @@ def user_can_access_counselor_area(user):
     return user.role in (UserRole.COUNSELOR, UserRole.ADMIN)
 
 
+def user_can_access_supervisor_area(user):
+    if not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    return user.role in (UserRole.SUPERVISOR, UserRole.ADMIN)
+
+
 def counselor_required(view_func):
     """
     상담사 전용 뷰 접근 제어.
@@ -93,5 +101,30 @@ def board_manager_required(view_func):
             return view_func(request, *args, **kwargs)
 
         raise PermissionDenied("게시판 관리 권한이 없습니다.")
+
+    return wrapper
+
+
+def supervisor_required(view_func):
+    """수퍼바이저·관리자 전용 뷰."""
+
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return redirect_to_login(
+                request.get_full_path(),
+                login_url=reverse("accounts:login"),
+            )
+
+        if request.user.is_superuser:
+            return view_func(request, *args, **kwargs)
+
+        if request.user.status != UserStatus.ACTIVE:
+            return redirect("accounts:pending")
+
+        if user_can_access_supervisor_area(request.user):
+            return view_func(request, *args, **kwargs)
+
+        raise PermissionDenied("수퍼바이저 전용 페이지입니다.")
 
     return wrapper

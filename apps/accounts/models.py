@@ -8,6 +8,7 @@ from django.utils import timezone
 
 class UserRole(models.TextChoices):
     ADMIN = "ADMIN", "관리자"
+    SUPERVISOR = "SUPERVISOR", "수퍼바이저"
     COUNSELOR = "COUNSELOR", "상담사"
     CLIENT = "CLIENT", "내담자"
 
@@ -74,6 +75,10 @@ class User(AbstractBaseUser, PermissionsMixin):
         return self.role == UserRole.ADMIN
 
     @property
+    def is_supervisor(self):
+        return self.role == UserRole.SUPERVISOR
+
+    @property
     def is_counselor(self):
         return self.role == UserRole.COUNSELOR
 
@@ -128,6 +133,37 @@ class CounselorProfile(models.Model):
             )
         if self.is_approved and self.cohort is None:
             raise ValidationError({"cohort": "상담사 승인 시 기수를 입력해야 합니다."})
+
+
+class SupervisorProfile(models.Model):
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="supervisor_profile",
+        verbose_name="사용자",
+    )
+    assigned_cohorts = models.JSONField(
+        "담당 기수",
+        default=list,
+        blank=True,
+        help_text="담당 수련 기수 목록. 예: [1, 2]",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "수퍼바이저 프로필"
+        verbose_name_plural = "수퍼바이저 프로필"
+
+    def __str__(self):
+        return f"수퍼바이저: {self.user.name}"
+
+    def clean(self):
+        super().clean()
+        if self.user_id and self.user.role != UserRole.SUPERVISOR:
+            raise ValidationError(
+                {"user": "수퍼바이저(SUPERVISOR) 역할 계정만 수퍼바이저 프로필을 가질 수 있습니다."}
+            )
 
 
 class ClientProfile(models.Model):

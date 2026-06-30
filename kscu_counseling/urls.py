@@ -12,6 +12,7 @@ urlpatterns = [
     path("manual/", platform_user_manual, name="platform_user_manual"),
     path("counseling/", include("apps.counseling.urls")),
     path("counseling/counselor/", include("apps.counseling.urls_counselor")),
+    path("counseling/supervisor/", include("apps.counseling.urls_supervisor")),
     path("accounts/", include("apps.accounts.urls")),
     path("client/", include("apps.counseling.urls_client")),
     path("admin-panel/", include("apps.reports.urls_admin")),

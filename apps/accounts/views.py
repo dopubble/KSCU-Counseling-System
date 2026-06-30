@@ -74,6 +74,8 @@ class UserLoginView(LoginView):
             return reverse_lazy("admin_panel:dashboard")
         if user.role == UserRole.COUNSELOR:
             return reverse_lazy("counselor:dashboard")
+        if user.role == UserRole.SUPERVISOR:
+            return reverse_lazy("supervisor:dashboard")
         if user.role == UserRole.CLIENT:
             return reverse_lazy("client:dashboard")
         if user_can_access_counselor_area(user):

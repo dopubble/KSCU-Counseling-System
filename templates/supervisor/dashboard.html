@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% load static ui_tags %}
+
+{% block title %}수퍼바이저 대시보드{% endblock %}
+
+{% block extra_css %}
+<link href="{% static 'css/counselor.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block layout %}
+<div class="site-page counselor-page py-4 py-lg-5">
+    <div class="container site-container">
+{% block content %}
+    {% page_header title="수퍼바이저 대시보드" subtitle="담당 기수 상담일지·과제를 열람합니다." heading_tag="h1" title_class="h3 fw-semibold site-page-title mb-0" header_class="site-page-header mb-4" c1_label="수퍼비전" c1_icon="bi-eye" %}
+    <p class="counselor-greeting mb-4 mt-n2">안녕하세요, {{ user.name }} 수퍼바이저님</p>
+
+    <div class="card border-0 shadow-sm section-spacing">
+        <div class="card-body">
+            <p class="text-muted small mb-1">담당 기수</p>
+            <p class="h5 fw-semibold mb-3">{{ cohort_label }}</p>
+            {% if can_browse_journals %}
+            <a href="{% url 'supervisor:cohort_journals' %}" class="btn btn-primary">
+                <i class="bi bi-journal-text me-1" aria-hidden="true"></i>기수별 상담일지 열람
+            </a>
+            {% else %}
+            <p class="text-muted small mb-0">담당 기수가 할당되지 않았습니다. 관리자에게 문의하세요.</p>
+            {% endif %}
+        </div>
+    </div>
+{% endblock %}
+    </div>
+</div>
+{% endblock %}
