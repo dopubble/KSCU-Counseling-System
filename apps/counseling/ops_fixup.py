@@ -50,6 +50,13 @@ SOONSUNHEE_COUNSELOR = "정영란"
 SOONSUNHEE_SESSION1_LABEL = "2026-06-26 11:00"
 SOONSUNHEE_ZOOM_HOST_ID = "host_02"
 
+JEONG_HANGYEOL_NAME = "정한결"
+JEONG_HANGYEOL_EMAIL = "hangyeol3884@naver.com"
+JEONG_HANGYEOL_COUNSELOR = "정영란"
+JEONG_HANGYEOL_CASE_NUMBER = "CASE-2026-0007"
+JEONG_HANGYEOL_SESSION2_LABEL = "2026-07-07 15:00"
+JEONG_HANGYEOL_ZOOM_HOST_ID = "host_02"
+
 GUHYUNJEONG_NAME = "구현정"
 
 
@@ -312,6 +319,20 @@ def ensure_park_miyeong_session2_zoom_host_02(*, dry_run: bool = True) -> OpsFix
     )
 
 
+def ensure_jeong_hangyeol_session2_zoom_host_02(*, dry_run: bool = True) -> OpsFixupLine:
+    """정한결(CASE-2026-0007) 2회기 7/7 15:00 → Zoom host_02."""
+    return force_appointment_zoom_host(
+        client_name=JEONG_HANGYEOL_NAME,
+        client_email=JEONG_HANGYEOL_EMAIL,
+        counselor_name=JEONG_HANGYEOL_COUNSELOR,
+        scheduled_label=JEONG_HANGYEOL_SESSION2_LABEL,
+        host_id=JEONG_HANGYEOL_ZOOM_HOST_ID,
+        session_number=2,
+        case_number=JEONG_HANGYEOL_CASE_NUMBER,
+        dry_run=dry_run,
+    )
+
+
 def ensure_kim_sumi_zoom_host_01(*, dry_run: bool = True) -> OpsFixupLine:
     return force_appointment_zoom_host(
         client_name=KIM_SUMI_NAME,
@@ -404,6 +425,7 @@ def apply_ops_production_fixup_june2026(*, dry_run: bool = True) -> list[OpsFixu
     lines.append(ensure_soonsunhee_zoom_host_02(dry_run=dry_run))
     lines.append(ensure_park_miyeong_zoom_host_02(dry_run=dry_run))
     lines.append(ensure_park_miyeong_session2_zoom_host_02(dry_run=dry_run))
+    lines.append(ensure_jeong_hangyeol_session2_zoom_host_02(dry_run=dry_run))
     return lines
 
 
