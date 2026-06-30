@@ -48,6 +48,12 @@ SOONSUNHEE_COUNSELOR = "정영란"
 SOONSUNHEE_SESSION1_LABEL = "2026-06-26 11:00"
 SOONSUNHEE_ZOOM_HOST_ID = "host_02"
 
+JEONG_HANGYEOL_NAME = "정한결"
+JEONG_HANGYEOL_EMAIL = "hangyeol3884@naver.com"
+JEONG_HANGYEOL_COUNSELOR = "정영란"
+JEONG_HANGYEOL_SESSION1_LABEL = "2026-06-30 15:00"
+JEONG_HANGYEOL_ZOOM_HOST_ID = "host_02"
+
 GUHYUNJEONG_NAME = "구현정"
 
 
@@ -303,6 +309,17 @@ def ensure_soonsunhee_zoom_host_02(*, dry_run: bool = True) -> OpsFixupLine:
         counselor_name=SOONSUNHEE_COUNSELOR,
         scheduled_label=SOONSUNHEE_SESSION1_LABEL,
         host_id=SOONSUNHEE_ZOOM_HOST_ID,
+        dry_run=dry_run,
+    )
+
+
+def ensure_jeonghangyeol_zoom_host_02(*, dry_run: bool = True) -> OpsFixupLine:
+    return force_appointment_zoom_host(
+        client_name=JEONG_HANGYEOL_NAME,
+        client_email=JEONG_HANGYEOL_EMAIL,
+        counselor_name=JEONG_HANGYEOL_COUNSELOR,
+        scheduled_label=JEONG_HANGYEOL_SESSION1_LABEL,
+        host_id=JEONG_HANGYEOL_ZOOM_HOST_ID,
         dry_run=dry_run,
     )
 
