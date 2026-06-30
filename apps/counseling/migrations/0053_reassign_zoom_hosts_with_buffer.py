@@ -1,4 +1,4 @@
-"""Zoom 호스트 30분 완충 버퍼 적용 후 기존 확정 비대면 예약 호스트만 재배정."""
+"""Zoom 호스트 30분 버퍼 — 배포 차단 방지용 플레이스홀더 (실제 재배정은 Shell에서 실행)."""
 
 import logging
 
@@ -8,30 +8,19 @@ logger = logging.getLogger(__name__)
 
 
 def reassign_zoom_hosts_with_buffer(apps, schema_editor):
+    """
+    마이그레이션에서 Zoom API를 호출하면 preDeploy 실패 시 새 코드가 배포되지 않습니다.
+    버퍼 배정 로직은 앱 코드에 포함되며, 기존 예약 재배정은 배포 후 수동 실행:
+      python manage.py recreate_zoom_meetings --apply
+      python manage.py ops_production_fixup --apply
+    """
     engine = connection.settings_dict.get("ENGINE", "")
     if "sqlite" in engine:
         return
 
-    from apps.scheduling.services import fix_mismatched_zoom_host_assignments
-
-    try:
-        fixed, skipped, messages = fix_mismatched_zoom_host_assignments(
-            dry_run=False,
-            notify_link_change=False,
-        )
-    except Exception as exc:
-        logger.error("Zoom 호스트 재배정 실패: %s", exc)
-        raise
-
-    errors = [m for m in messages if not m.startswith("[would fix]")]
-    if errors:
-        logger.error("Zoom 호스트 재배정 오류: %s", "; ".join(errors[:5]))
-        raise RuntimeError(errors[0])
-
     logger.info(
-        "Zoom 호스트 재배정(버퍼 적용): 수정 %s건, 건너뜀 %s건",
-        fixed,
-        skipped,
+        "0053: Zoom 호스트 버퍼는 앱 코드에 반영됨. "
+        "기존 예약 Zoom 재배정은 recreate_zoom_meetings --apply 로 실행하세요."
     )
 
 
