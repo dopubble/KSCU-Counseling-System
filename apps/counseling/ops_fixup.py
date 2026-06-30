@@ -242,12 +242,15 @@ def force_appointment_zoom_host(
         return OpsFixupLine(task, "skip", f"확정 비대면 {session_number}회기 예약 없음")
 
     current_label = _appointment_local_label(appointment)
-    if current_label != scheduled_label:
-        return OpsFixupLine(
-            task,
-            "skip",
-            f"일시 불일치 (DB {current_label}, 기대 {scheduled_label})",
-        )
+    if scheduled_label and current_label != scheduled_label:
+        if case_number:
+            pass
+        else:
+            return OpsFixupLine(
+                task,
+                "skip",
+                f"일시 불일치 (DB {current_label}, 기대 {scheduled_label})",
+            )
 
     zoom = getattr(appointment, "zoom_meeting", None)
     stored = (zoom.zoom_host_email or "").strip().lower() if zoom else ""
@@ -400,6 +403,7 @@ def apply_ops_production_fixup_june2026(*, dry_run: bool = True) -> list[OpsFixu
     lines.append(ensure_kim_sumi_zoom_host_01(dry_run=dry_run))
     lines.append(ensure_soonsunhee_zoom_host_02(dry_run=dry_run))
     lines.append(ensure_park_miyeong_zoom_host_02(dry_run=dry_run))
+    lines.append(ensure_park_miyeong_session2_zoom_host_02(dry_run=dry_run))
     return lines
 
 
