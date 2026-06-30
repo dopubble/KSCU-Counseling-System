@@ -13,7 +13,10 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from apps.counseling.models import CounselingMethod
-from apps.scheduling.constants import DEFAULT_APPOINTMENT_DURATION_MINUTES
+from apps.scheduling.constants import (
+    DEFAULT_APPOINTMENT_DURATION_MINUTES,
+    DEFAULT_ZOOM_HOST_BUFFER_MINUTES,
+)
 from apps.scheduling.models import Appointment, AppointmentStatus
 
 logger = logging.getLogger(__name__)
@@ -195,9 +198,22 @@ def appointment_overlaps_range(
     return True
 
 
+def get_zoom_host_buffer_minutes() -> int:
+    raw = getattr(settings, "ZOOM_HOST_BUFFER_MINUTES", None)
+    if raw is not None:
+        try:
+            value = int(raw)
+            if value >= 0:
+                return value
+        except (TypeError, ValueError):
+            pass
+    return DEFAULT_ZOOM_HOST_BUFFER_MINUTES
+
+
 def assign_zoom_hosts(intervals: list[CalendarInterval]) -> dict[str, str]:
-    """겹치는 비대면 확정 예약에 호스트 풀을 순차 배정 (표시용)."""
+    """겹치는 비대면 확정 예약에 호스트 풀을 순차 배정 (표시·배정 공통)."""
     pool = get_zoom_host_pool()
+    buffer = timedelta(minutes=get_zoom_host_buffer_minutes())
     remote_intervals = sorted(
         [item for item in intervals if item.is_remote],
         key=lambda item: (item.start, item.appointment_id),
@@ -206,16 +222,17 @@ def assign_zoom_hosts(intervals: list[CalendarInterval]) -> dict[str, str]:
     assignments: dict[str, str] = {}
 
     for item in remote_intervals:
+        occupied_end = item.end + buffer
         assigned = pool[0]
         for host in pool:
             busy = host_schedules[host]
             if all(
-                not _intervals_overlap(item.start, item.end, start, end)
+                not _intervals_overlap(item.start, occupied_end, start, end)
                 for start, end in busy
             ):
                 assigned = host
                 break
-        host_schedules[assigned].append((item.start, item.end))
+        host_schedules[assigned].append((item.start, occupied_end))
         assignments[item.appointment_id] = assigned
 
     return assignments

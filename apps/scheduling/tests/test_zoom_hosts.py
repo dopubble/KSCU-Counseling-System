@@ -48,6 +48,25 @@ class ZoomHostAssignmentTests(TestCase):
 
     @override_settings(
         ZOOM_LICENSED_USERS="sscukscu@gmail.com,sedulife@mail.kcu.ac",
+        ZOOM_HOST_BUFFER_MINUTES=30,
+    )
+    def test_consecutive_hourly_slots_use_different_hosts(self):
+        start = timezone.now().replace(hour=14, minute=0, second=0, microsecond=0)
+        intervals = [
+            CalendarInterval("a", start, start + timedelta(minutes=50), True),
+            CalendarInterval(
+                "b",
+                start + timedelta(hours=1),
+                start + timedelta(hours=1, minutes=50),
+                True,
+            ),
+        ]
+        host_ids = assign_zoom_hosts(intervals)
+        self.assertEqual(host_ids["a"], "host_01")
+        self.assertEqual(host_ids["b"], "host_02")
+
+    @override_settings(
+        ZOOM_LICENSED_USERS="sscukscu@gmail.com,sedulife@mail.kcu.ac",
     )
     def test_assign_host_emails_for_empty_list(self):
         self.assertEqual(assign_host_emails_for_appointments([]), {})

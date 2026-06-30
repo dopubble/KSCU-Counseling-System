@@ -219,6 +219,8 @@ ZOOM_HOST_KEY = _env_str("ZOOM_HOST_KEY")
 ZOOM_LICENSED_USERS = _env_str("ZOOM_LICENSED_USERS")
 # 관리자 캘린더 호스트 라벨 (미사용 시 Licensed 사용자 수에 맞춰 host_01,host_02 자동)
 ZOOM_HOST_POOL = _env_str("ZOOM_HOST_POOL")
+# 호스트 배정 시 예약 종료 후 점유 완충(분) — 기본 30
+ZOOM_HOST_BUFFER_MINUTES = _env_int("ZOOM_HOST_BUFFER_MINUTES", 30)
 
 # ---------------------------------------------------------------------------
 # Gmail SMTP (상담 신청·취소 요청 알림, 비밀번호 찾기 등)

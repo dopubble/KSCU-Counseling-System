@@ -38,6 +38,46 @@ class AppointmentCalendarTests(TestCase):
         self.assertEqual(assignments["a"], "host_01")
         self.assertEqual(assignments["b"], "host_02")
 
+    def test_assign_zoom_hosts_splits_consecutive_hourly_with_buffer(self):
+        """14:00·15:00 연속 타임 — 30분 버퍼로 서로 다른 호스트."""
+        start = timezone.now().replace(hour=14, minute=0, second=0, microsecond=0)
+        intervals = [
+            CalendarInterval("a", start, start + timedelta(minutes=50), True),
+            CalendarInterval(
+                "b",
+                start + timedelta(hours=1),
+                start + timedelta(hours=1, minutes=50),
+                True,
+            ),
+        ]
+        with override_settings(
+            ZOOM_HOST_POOL="host_01,host_02",
+            ZOOM_HOST_BUFFER_MINUTES=30,
+        ):
+            assignments = assign_zoom_hosts(intervals)
+        self.assertEqual(assignments["a"], "host_01")
+        self.assertEqual(assignments["b"], "host_02")
+
+    def test_assign_zoom_hosts_reuses_host_when_buffer_clear(self):
+        """3시간 간격이면 동일 호스트 재사용 가능."""
+        start = timezone.now().replace(hour=10, minute=0, second=0, microsecond=0)
+        intervals = [
+            CalendarInterval("a", start, start + timedelta(minutes=50), True),
+            CalendarInterval(
+                "b",
+                start + timedelta(hours=3),
+                start + timedelta(hours=3, minutes=50),
+                True,
+            ),
+        ]
+        with override_settings(
+            ZOOM_HOST_POOL="host_01,host_02",
+            ZOOM_HOST_BUFFER_MINUTES=30,
+        ):
+            assignments = assign_zoom_hosts(intervals)
+        self.assertEqual(assignments["a"], "host_01")
+        self.assertEqual(assignments["b"], "host_01")
+
     def test_mock_events_structure(self):
         events = get_mock_calendar_events()
         self.assertGreaterEqual(len(events), 2)
