@@ -33,7 +33,9 @@ LEE_MYUNGRAN_EMAIL = "starking0700@naver.com"
 PARK_MIYEONG_NAME = "박미영"
 PARK_MIYEONG_EMAIL = "myparkrang@naver.com"
 PARK_MIYEONG_COUNSELOR = "이수정"
+PARK_MIYEONG_CASE_NUMBER = "CASE-2026-0025"
 PARK_MIYEONG_SESSION1_LABEL = "2026-06-25 22:00"
+PARK_MIYEONG_SESSION2_LABEL = "2026-06-30 20:00"
 PARK_MIYEONG_ZOOM_HOST_ID = "host_02"
 
 KIM_SUMI_NAME = "김수미"
@@ -203,10 +205,12 @@ def force_appointment_zoom_host(
     counselor_name: str,
     scheduled_label: str,
     host_id: str,
+    session_number: int = 1,
+    case_number: str | None = None,
     dry_run: bool = True,
 ) -> OpsFixupLine:
     """지정 예약 Zoom 호스트를 강제 지정 (자동 배정 알고리즘과 무관)."""
-    task = f"zoom_host_{client_name}_{scheduled_label}"
+    task = f"zoom_host_{client_name}_s{session_number}_{scheduled_label}"
     if not is_zoom_configured():
         return OpsFixupLine(task, "skip", "Zoom 미설정")
 
@@ -218,20 +222,24 @@ def force_appointment_zoom_host(
     if not client:
         return OpsFixupLine(task, "skip", "대상 내담자 없음")
 
+    filters = {
+        "client": client,
+        "counselor__name": counselor_name,
+        "session_number": session_number,
+        "status": AppointmentStatus.CONFIRMED,
+        "case__counseling_method": CounselingMethod.REMOTE,
+    }
+    if case_number:
+        filters["case__case_number"] = case_number
+
     appointment = (
-        Appointment.objects.filter(
-            client=client,
-            counselor__name=counselor_name,
-            session_number=1,
-            status=AppointmentStatus.CONFIRMED,
-            case__counseling_method=CounselingMethod.REMOTE,
-        )
+        Appointment.objects.filter(**filters)
         .select_related("case", "counselor", "zoom_meeting")
         .order_by("-scheduled_at")
         .first()
     )
     if not appointment:
-        return OpsFixupLine(task, "skip", "확정 비대면 1회기 예약 없음")
+        return OpsFixupLine(task, "skip", f"확정 비대면 {session_number}회기 예약 없음")
 
     current_label = _appointment_local_label(appointment)
     if current_label != scheduled_label:
@@ -281,6 +289,22 @@ def ensure_park_miyeong_zoom_host_02(*, dry_run: bool = True) -> OpsFixupLine:
         counselor_name=PARK_MIYEONG_COUNSELOR,
         scheduled_label=PARK_MIYEONG_SESSION1_LABEL,
         host_id=PARK_MIYEONG_ZOOM_HOST_ID,
+        session_number=1,
+        case_number=PARK_MIYEONG_CASE_NUMBER,
+        dry_run=dry_run,
+    )
+
+
+def ensure_park_miyeong_session2_zoom_host_02(*, dry_run: bool = True) -> OpsFixupLine:
+    """박미영(CASE-2026-0025) 2회기 6/30 20:00 → Zoom host_02."""
+    return force_appointment_zoom_host(
+        client_name=PARK_MIYEONG_NAME,
+        client_email=PARK_MIYEONG_EMAIL,
+        counselor_name=PARK_MIYEONG_COUNSELOR,
+        scheduled_label=PARK_MIYEONG_SESSION2_LABEL,
+        host_id=PARK_MIYEONG_ZOOM_HOST_ID,
+        session_number=2,
+        case_number=PARK_MIYEONG_CASE_NUMBER,
         dry_run=dry_run,
     )
 
