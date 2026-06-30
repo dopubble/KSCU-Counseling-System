@@ -1,4 +1,4 @@
-"""운영 DB 수정: 김장서율 삭제, 이명란 대면 전환, Zoom 호스트 불일치 수정."""
+"""운영 DB 수정: 김장서율 삭제, 이명란 비대면 전환, Zoom 호스트 불일치 수정."""
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection
@@ -8,7 +8,7 @@ from apps.counseling.ops_fixup import apply_ops_production_fixup_june2026
 
 class Command(BaseCommand):
     help = (
-        "운영 수정 일괄 적용: 김장서율 삭제, 이명란 대면 전환, Zoom 호스트 불일치 수정.\n"
+        "운영 수정 일괄 적용: 김장서율 삭제, 이명란 비대면 전환, Zoom 호스트 불일치 수정.\n"
         "예) python manage.py ops_production_fixup --apply"
     )
 

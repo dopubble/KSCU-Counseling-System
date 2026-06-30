@@ -365,7 +365,7 @@ def apply_ops_production_fixup_june2026(*, dry_run: bool = True) -> list[OpsFixu
         )
 
     lines.append(
-        switch_client_to_in_person(
+        switch_client_to_remote_with_zoom(
             client_name=LEE_MYUNGRAN_NAME,
             client_email=LEE_MYUNGRAN_EMAIL,
             dry_run=dry_run,
