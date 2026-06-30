@@ -22,6 +22,7 @@ from apps.scheduling.utils import (
     is_zoom_configured,
 )
 from apps.scheduling.zoom_hosts import email_for_host_id
+from apps.scheduling.zoom_links import sync_case_zoom_meeting_url
 from apps.sessions_app.models import ZoomMeeting
 
 KIM_JANGSEOYUL_NAME = "김장서율"
@@ -51,8 +52,14 @@ SOONSUNHEE_ZOOM_HOST_ID = "host_02"
 JEONG_HANGYEOL_NAME = "정한결"
 JEONG_HANGYEOL_EMAIL = "hangyeol3884@naver.com"
 JEONG_HANGYEOL_COUNSELOR = "정영란"
+JEONG_HANGYEOL_CASE_NUMBER = "CASE-2026-0007"
 JEONG_HANGYEOL_SESSION1_LABEL = "2026-06-30 15:00"
 JEONG_HANGYEOL_ZOOM_HOST_ID = "host_02"
+JEONG_HANGYEOL_ZOOM_MEETING_ID = "85365293781"
+JEONG_HANGYEOL_ZOOM_JOIN_URL = (
+    "https://us06web.zoom.us/j/85365293781?pwd=nWC9EwrhZdRzXkbV1wCoboxAz0aZpe.1"
+)
+JEONG_HANGYEOL_ZOOM_PASSWORD = "nWC9EwrhZdRzXkbV1wCoboxAz0aZpe.1"
 
 GUHYUNJEONG_NAME = "구현정"
 
@@ -202,6 +209,92 @@ def _appointment_local_label(appointment: Appointment) -> str:
     return timezone.localtime(appointment.scheduled_at).strftime("%Y-%m-%d %H:%M")
 
 
+def _find_remote_session1_appointment(
+    *,
+    client_name: str,
+    client_email: str,
+    counselor_name: str,
+    scheduled_label: str = "",
+    case_number: str = "",
+) -> Appointment | None:
+    qs = Appointment.objects.filter(
+        session_number=1,
+        status=AppointmentStatus.CONFIRMED,
+        case__counseling_method=CounselingMethod.REMOTE,
+    ).select_related("case", "counselor", "zoom_meeting", "client")
+    case_number = (case_number or "").strip()
+    if case_number:
+        qs = qs.filter(case__case_number=case_number)
+    else:
+        client = _find_client(name=client_name, email=client_email)
+        if not client:
+            return None
+        qs = qs.filter(client=client, counselor__name=counselor_name)
+    appointment = qs.order_by("-scheduled_at").first()
+    if not appointment:
+        return None
+    if scheduled_label and _appointment_local_label(appointment) != scheduled_label:
+        return None
+    return appointment
+
+
+def pin_appointment_zoom_join_url(
+    *,
+    client_name: str,
+    client_email: str,
+    counselor_name: str,
+    join_url: str,
+    meeting_id: str,
+    host_id: str = "",
+    password: str = "",
+    scheduled_label: str = "",
+    case_number: str = "",
+    dry_run: bool = True,
+) -> OpsFixupLine:
+    """외부·수동 생성 Zoom 회의 join URL을 DB에 직접 고정 (API 재생성 없음)."""
+    task = f"zoom_url_{client_name}_{case_number or scheduled_label or 'session1'}"
+    join_url = (join_url or "").strip()
+    meeting_id = (meeting_id or "").strip()
+    if not join_url or not meeting_id:
+        return OpsFixupLine(task, "error", "join_url·meeting_id 필요")
+
+    appointment = _find_remote_session1_appointment(
+        client_name=client_name,
+        client_email=client_email,
+        counselor_name=counselor_name,
+        scheduled_label=scheduled_label,
+        case_number=case_number,
+    )
+    if not appointment:
+        return OpsFixupLine(task, "skip", "확정 비대면 1회기 예약 없음")
+
+    host_email = (email_for_host_id(host_id) or "").strip() if host_id else ""
+    zoom = getattr(appointment, "zoom_meeting", None)
+    stored_url = (zoom.join_url or "").strip() if zoom else ""
+    if stored_url.rstrip("/") == join_url.rstrip("/"):
+        return OpsFixupLine(task, "ok", "이미 동일 join URL")
+
+    if dry_run:
+        return OpsFixupLine(
+            task,
+            "dry_run",
+            f"{stored_url or '(없음)'} → {join_url}",
+        )
+
+    ZoomMeeting.objects.update_or_create(
+        appointment=appointment,
+        defaults={
+            "zoom_meeting_id": meeting_id,
+            "join_url": join_url,
+            "start_url": "",
+            "password": (password or "").strip(),
+            "zoom_host_email": host_email,
+        },
+    )
+    sync_case_zoom_meeting_url(appointment, join_url=join_url)
+    return OpsFixupLine(task, "ok", f"join URL 고정 ({meeting_id})")
+
+
 def force_appointment_zoom_host(
     *,
     client_name: str,
@@ -314,11 +407,14 @@ def ensure_soonsunhee_zoom_host_02(*, dry_run: bool = True) -> OpsFixupLine:
 
 
 def ensure_jeonghangyeol_zoom_host_02(*, dry_run: bool = True) -> OpsFixupLine:
-    return force_appointment_zoom_host(
+    return pin_appointment_zoom_join_url(
         client_name=JEONG_HANGYEOL_NAME,
         client_email=JEONG_HANGYEOL_EMAIL,
         counselor_name=JEONG_HANGYEOL_COUNSELOR,
-        scheduled_label=JEONG_HANGYEOL_SESSION1_LABEL,
+        case_number=JEONG_HANGYEOL_CASE_NUMBER,
+        join_url=JEONG_HANGYEOL_ZOOM_JOIN_URL,
+        meeting_id=JEONG_HANGYEOL_ZOOM_MEETING_ID,
+        password=JEONG_HANGYEOL_ZOOM_PASSWORD,
         host_id=JEONG_HANGYEOL_ZOOM_HOST_ID,
         dry_run=dry_run,
     )
