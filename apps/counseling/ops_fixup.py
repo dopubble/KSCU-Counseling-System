@@ -55,11 +55,6 @@ JEONG_HANGYEOL_COUNSELOR = "정영란"
 JEONG_HANGYEOL_CASE_NUMBER = "CASE-2026-0007"
 JEONG_HANGYEOL_SESSION1_LABEL = "2026-06-30 15:00"
 JEONG_HANGYEOL_ZOOM_HOST_ID = "host_02"
-JEONG_HANGYEOL_ZOOM_MEETING_ID = "85365293781"
-JEONG_HANGYEOL_ZOOM_JOIN_URL = (
-    "https://us06web.zoom.us/j/85365293781?pwd=nWC9EwrhZdRzXkbV1wCoboxAz0aZpe.1"
-)
-JEONG_HANGYEOL_ZOOM_PASSWORD = "nWC9EwrhZdRzXkbV1wCoboxAz0aZpe.1"
 
 GUHYUNJEONG_NAME = "구현정"
 
@@ -295,6 +290,67 @@ def pin_appointment_zoom_join_url(
     return OpsFixupLine(task, "ok", f"join URL 고정 ({meeting_id})")
 
 
+def recreate_appointment_zoom_on_host(
+    *,
+    case_number: str,
+    host_id: str,
+    session_number: int = 1,
+    dry_run: bool = True,
+) -> OpsFixupLine:
+    """확정 비대면 예약 Zoom 회의를 지정 Licensed 호스트로 API 재생성."""
+    task = f"zoom_recreate_{case_number}"
+    if not is_zoom_configured():
+        return OpsFixupLine(task, "skip", "Zoom 미설정")
+
+    target_email = (email_for_host_id(host_id) or "").strip()
+    if not target_email:
+        return OpsFixupLine(task, "error", f"호스트 ID 오류: {host_id}")
+
+    appointment = (
+        Appointment.objects.filter(
+            case__case_number=(case_number or "").strip(),
+            session_number=session_number,
+            status=AppointmentStatus.CONFIRMED,
+            case__counseling_method=CounselingMethod.REMOTE,
+        )
+        .select_related("case", "zoom_meeting")
+        .first()
+    )
+    if not appointment:
+        return OpsFixupLine(task, "skip", "확정 비대면 예약 없음")
+
+    zoom = getattr(appointment, "zoom_meeting", None)
+    old_meeting_id = (zoom.zoom_meeting_id or "").strip() if zoom else ""
+    if dry_run:
+        return OpsFixupLine(
+            task,
+            "dry_run",
+            f"{target_email}로 재생성 (기존 meeting_id={old_meeting_id or '없음'})",
+        )
+
+    try:
+        from apps.scheduling.services import _create_zoom_meeting_for_appointment
+
+        _create_zoom_meeting_for_appointment(
+            appointment,
+            host_user_email=target_email,
+        )
+        if old_meeting_id:
+            refreshed = ZoomMeeting.objects.filter(appointment_id=appointment.pk).first()
+            new_meeting_id = (
+                (refreshed.zoom_meeting_id or "").strip() if refreshed else ""
+            )
+            if new_meeting_id and new_meeting_id != old_meeting_id:
+                delete_zoom_meeting(old_meeting_id)
+    except (ZoomAPIError, ZoomNotConfiguredError, AppointmentServiceError) as exc:
+        return OpsFixupLine(task, "error", str(exc))
+
+    refreshed = ZoomMeeting.objects.filter(appointment_id=appointment.pk).first()
+    meeting_id = (refreshed.zoom_meeting_id or "").strip() if refreshed else ""
+    join_url = (refreshed.join_url or "").strip() if refreshed else ""
+    return OpsFixupLine(task, "ok", f"meeting_id={meeting_id} join={join_url}")
+
+
 def force_appointment_zoom_host(
     *,
     client_name: str,
@@ -407,14 +463,8 @@ def ensure_soonsunhee_zoom_host_02(*, dry_run: bool = True) -> OpsFixupLine:
 
 
 def ensure_jeonghangyeol_zoom_host_02(*, dry_run: bool = True) -> OpsFixupLine:
-    return pin_appointment_zoom_join_url(
-        client_name=JEONG_HANGYEOL_NAME,
-        client_email=JEONG_HANGYEOL_EMAIL,
-        counselor_name=JEONG_HANGYEOL_COUNSELOR,
+    return recreate_appointment_zoom_on_host(
         case_number=JEONG_HANGYEOL_CASE_NUMBER,
-        join_url=JEONG_HANGYEOL_ZOOM_JOIN_URL,
-        meeting_id=JEONG_HANGYEOL_ZOOM_MEETING_ID,
-        password=JEONG_HANGYEOL_ZOOM_PASSWORD,
         host_id=JEONG_HANGYEOL_ZOOM_HOST_ID,
         dry_run=dry_run,
     )
