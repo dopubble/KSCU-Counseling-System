@@ -22,6 +22,7 @@ from apps.scheduling.utils import (
     is_zoom_configured,
 )
 from apps.scheduling.zoom_hosts import email_for_host_id
+from apps.scheduling.zoom_links import sync_case_zoom_meeting_url
 from apps.sessions_app.models import ZoomMeeting
 
 KIM_JANGSEOYUL_NAME = "김장서율"
@@ -62,6 +63,10 @@ GUHYUNJEONG_EMAIL = "kookoo162@daum.net"
 GUHYUNJEONG_COUNSELOR = "양은영"
 GUHYUNJEONG_SESSION1_LABEL = "2026-07-01 10:00"
 GUHYUNJEONG_ZOOM_HOST_EMAIL = "hakyss@mail.kcu.ac"
+GUHYUNJEONG_ZOOM_MEETING_ID = "85846695112"
+GUHYUNJEONG_ZOOM_JOIN_URL = (
+    "https://us06web.zoom.us/j/85846695112?pwd=b3ad5HagBYYyBrl24o8eicBSoFW7L7.1"
+)
 
 LEE_HYUNOK_NAME = "이현옥"
 LEE_HYUNOK_EMAIL = "gusdhrl@empas.com"
@@ -220,6 +225,111 @@ def _appointment_local_label(appointment: Appointment) -> str:
     return timezone.localtime(appointment.scheduled_at).strftime("%Y-%m-%d %H:%M")
 
 
+def _get_fixup_appointment(
+    *,
+    client_name: str,
+    client_email: str,
+    counselor_name: str,
+    scheduled_label: str,
+    session_number: int,
+    case_number: str | None,
+) -> tuple[str, Appointment | None]:
+    task = f"{client_name}_s{session_number}_{scheduled_label or 'any'}"
+    client = _find_client(name=client_name, email=client_email)
+    if not client:
+        return task, None
+
+    filters = {
+        "client": client,
+        "counselor__name": counselor_name,
+        "session_number": session_number,
+        "status": AppointmentStatus.CONFIRMED,
+        "case__counseling_method": CounselingMethod.REMOTE,
+    }
+    if case_number:
+        filters["case__case_number"] = case_number
+
+    appointment = (
+        Appointment.objects.filter(**filters)
+        .select_related("case", "counselor", "zoom_meeting")
+        .order_by("-scheduled_at")
+        .first()
+    )
+    if not appointment:
+        return task, None
+
+    if scheduled_label and not case_number:
+        current_label = _appointment_local_label(appointment)
+        if current_label != scheduled_label:
+            return task, None
+
+    return task, appointment
+
+
+def pin_appointment_zoom_link(
+    *,
+    client_name: str,
+    client_email: str,
+    counselor_name: str,
+    scheduled_label: str,
+    join_url: str,
+    zoom_meeting_id: str = "",
+    zoom_host_email: str = "",
+    session_number: int = 1,
+    case_number: str | None = None,
+    dry_run: bool = True,
+) -> OpsFixupLine:
+    """기존 Zoom 회의 join_url을 DB에 직접 고정 (API로 새 회의 생성하지 않음)."""
+    task, appointment = _get_fixup_appointment(
+        client_name=client_name,
+        client_email=client_email,
+        counselor_name=counselor_name,
+        scheduled_label=scheduled_label,
+        session_number=session_number,
+        case_number=case_number,
+    )
+    task = f"zoom_link_{task}"
+    if not appointment:
+        return OpsFixupLine(task, "skip", f"확정 비대면 {session_number}회기 예약 없음")
+
+    target_url = join_url.strip()
+    if not target_url:
+        return OpsFixupLine(task, "error", "join_url 없음")
+
+    meeting_id = (zoom_meeting_id or "").strip()
+    if not meeting_id:
+        import re
+
+        match = re.search(r"/j/(\d+)", target_url)
+        meeting_id = match.group(1) if match else ""
+
+    zoom = getattr(appointment, "zoom_meeting", None)
+    current_url = (zoom.join_url or "").strip() if zoom else ""
+    case_url = (appointment.case.zoom_meeting_url or "").strip()
+    if current_url == target_url and case_url == target_url:
+        return OpsFixupLine(task, "ok", f"이미 {target_url}")
+
+    if dry_run:
+        return OpsFixupLine(
+            task,
+            "dry_run",
+            f"{current_url or '(없음)'} → {target_url}",
+        )
+
+    ZoomMeeting.objects.update_or_create(
+        appointment=appointment,
+        defaults={
+            "zoom_meeting_id": meeting_id,
+            "join_url": target_url,
+            "start_url": "",
+            "password": "",
+            "zoom_host_email": (zoom_host_email or "").strip(),
+        },
+    )
+    sync_case_zoom_meeting_url(appointment, join_url=target_url)
+    return OpsFixupLine(task, "ok", target_url)
+
+
 def force_appointment_zoom_host(
     *,
     client_name: str,
@@ -241,39 +351,16 @@ def force_appointment_zoom_host(
     if not target_email:
         return OpsFixupLine(task, "error", f"호스트 지정 오류: {host_id or host_email}")
 
-    client = _find_client(name=client_name, email=client_email)
-    if not client:
-        return OpsFixupLine(task, "skip", "대상 내담자 없음")
-
-    filters = {
-        "client": client,
-        "counselor__name": counselor_name,
-        "session_number": session_number,
-        "status": AppointmentStatus.CONFIRMED,
-        "case__counseling_method": CounselingMethod.REMOTE,
-    }
-    if case_number:
-        filters["case__case_number"] = case_number
-
-    appointment = (
-        Appointment.objects.filter(**filters)
-        .select_related("case", "counselor", "zoom_meeting")
-        .order_by("-scheduled_at")
-        .first()
+    task, appointment = _get_fixup_appointment(
+        client_name=client_name,
+        client_email=client_email,
+        counselor_name=counselor_name,
+        scheduled_label=scheduled_label,
+        session_number=session_number,
+        case_number=case_number,
     )
     if not appointment:
         return OpsFixupLine(task, "skip", f"확정 비대면 {session_number}회기 예약 없음")
-
-    current_label = _appointment_local_label(appointment)
-    if scheduled_label and current_label != scheduled_label:
-        if case_number:
-            pass
-        else:
-            return OpsFixupLine(
-                task,
-                "skip",
-                f"일시 불일치 (DB {current_label}, 기대 {scheduled_label})",
-            )
 
     zoom = getattr(appointment, "zoom_meeting", None)
     stored = (zoom.zoom_host_email or "").strip().lower() if zoom else ""
@@ -337,13 +424,15 @@ def ensure_kim_sumi_session2_zoom_host_02(*, dry_run: bool = True) -> OpsFixupLi
 
 
 def ensure_guhyunjeong_session1_hakyss_zoom(*, dry_run: bool = True) -> OpsFixupLine:
-    """구현정 1회기 7/1 10:00 → hakyss@mail.kcu.ac (Licensed 풀 외)."""
-    return force_appointment_zoom_host(
+    """구현정 1회기 7/1 10:00 → hakyss 기존 회의 URL 고정."""
+    return pin_appointment_zoom_link(
         client_name=GUHYUNJEONG_NAME,
         client_email=GUHYUNJEONG_EMAIL,
         counselor_name=GUHYUNJEONG_COUNSELOR,
         scheduled_label=GUHYUNJEONG_SESSION1_LABEL,
-        host_email=GUHYUNJEONG_ZOOM_HOST_EMAIL,
+        join_url=GUHYUNJEONG_ZOOM_JOIN_URL,
+        zoom_meeting_id=GUHYUNJEONG_ZOOM_MEETING_ID,
+        zoom_host_email=GUHYUNJEONG_ZOOM_HOST_EMAIL,
         session_number=1,
         dry_run=dry_run,
     )
