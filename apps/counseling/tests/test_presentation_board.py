@@ -119,7 +119,7 @@ class PresentationBoardTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, post.title)
-        self.assertContains(response, "사례개념화보고서 올리기")
+        self.assertContains(response, "사례개념화 연습 댓글달기")
         self.assertContains(response, "사례개념화 연습")
         self.assertContains(response, "10. 예후 및 장애물")
         self.assertNotContains(response, "메모")
@@ -158,7 +158,7 @@ class PresentationBoardTests(TestCase):
             reverse("counselor:presentation_board_detail", args=[post.pk])
         )
         self.assertEqual(response.status_code, 200)
-        self.assertNotContains(response, "사례개념화보고서 올리기")
+        self.assertNotContains(response, "사례개념화 연습 댓글달기")
 
     def test_list_shows_table_not_accordion(self):
         CasePresentationPost.objects.create(
