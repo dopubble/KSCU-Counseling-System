@@ -74,6 +74,12 @@ def _resolve_event_colors(
 # DB 선필터용 — 최장 상담 시간보다 넉넉한 버퍼(분)
 CALENDAR_RANGE_BUFFER_MINUTES = 180
 
+# 관리자·상담사 캘린더에 표시할 예약 상태 (완료 건도 이력 조회용으로 유지)
+CALENDAR_VISIBLE_APPOINTMENT_STATUSES = (
+    AppointmentStatus.CONFIRMED,
+    AppointmentStatus.COMPLETED,
+)
+
 
 @dataclass(frozen=True)
 class CalendarInterval:
@@ -338,10 +344,10 @@ def build_calendar_events(
     end: datetime | None = None,
     counselor_id=None,
 ) -> list[dict[str, Any]]:
-    """확정(CONFIRMED) 예약만 FullCalendar 이벤트 JSON으로 변환."""
+    """확정·완료 예약을 FullCalendar 이벤트 JSON으로 변환."""
     query_start, query_end = _db_query_bounds(start, end)
     qs = (
-        Appointment.objects.filter(status=AppointmentStatus.CONFIRMED)
+        Appointment.objects.filter(status__in=CALENDAR_VISIBLE_APPOINTMENT_STATUSES)
         .select_related("client", "counselor", "case", "zoom_meeting")
         .order_by("scheduled_at")
     )

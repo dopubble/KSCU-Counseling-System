@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 from apps.counseling.session1_bulk_import import load_session1_matches
 from apps.reports.appointment_calendar import (
+    CALENDAR_VISIBLE_APPOINTMENT_STATUSES,
     _calendar_localtime,
     appointment_in_calendar_events,
     build_calendar_events,
@@ -26,7 +27,7 @@ DEFAULT_JSON = (
 
 class Command(BaseCommand):
     help = (
-        "지정 기간의 CONFIRMED 예약과 build_calendar_events() 결과를 대조합니다.\n"
+        "지정 기간의 확정·완료 예약과 build_calendar_events() 결과를 대조합니다.\n"
         "예시: python manage.py audit_admin_calendar --from 2026-06-01 --to 2026-06-30"
     )
 
@@ -73,7 +74,7 @@ class Command(BaseCommand):
         )
 
         db_qs = (
-            Appointment.objects.filter(status=AppointmentStatus.CONFIRMED)
+            Appointment.objects.filter(status__in=CALENDAR_VISIBLE_APPOINTMENT_STATUSES)
             .filter(
                 scheduled_at__gte=range_start.astimezone(dt_timezone.utc),
                 scheduled_at__lt=range_end.astimezone(dt_timezone.utc),
@@ -93,7 +94,7 @@ class Command(BaseCommand):
 
         self.stdout.write(
             self.style.NOTICE(
-                f"=== 캘린더 감사 {from_date} ~ {to_date} (CONFIRMED {len(db_by_id)}건) ==="
+                f"=== 캘린더 감사 {from_date} ~ {to_date} (표시 대상 {len(db_by_id)}건) ==="
             )
         )
 
@@ -107,7 +108,7 @@ class Command(BaseCommand):
                     f"({apt.get_status_display()}) id={pk}"
                 )
         else:
-            self.stdout.write(self.style.SUCCESS("캘린더 누락 없음 (DB CONFIRMED 전건 표시)."))
+            self.stdout.write(self.style.SUCCESS("캘린더 누락 없음 (표시 대상 전건 표시)."))
 
         if extra_in_calendar:
             self.stdout.write(self.style.WARNING("캘린더에만 있는 ID (DB 범위 밖):"))

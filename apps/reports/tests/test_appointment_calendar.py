@@ -1,3 +1,4 @@
+from datetime import datetime
 from datetime import timedelta
 
 from django.test import Client, TestCase, override_settings
@@ -5,6 +6,13 @@ from django.urls import reverse
 from django.utils import timezone
 
 from apps.accounts.models import User, UserRole, UserStatus
+from apps.counseling.models import (
+    ApplicationStatus,
+    Case,
+    CaseStatus,
+    CounselingApplication,
+    CounselingMethod,
+)
 from apps.reports.appointment_calendar import (
     assign_zoom_hosts,
     appointment_overlaps_range,
@@ -141,6 +149,51 @@ class AppointmentCalendarTests(TestCase):
             )
         }
         self.assertFalse(event_ids & pending_ids)
+
+    def test_completed_appointment_included_in_calendar(self):
+        client_user = User.objects.create_user(
+            email="completed-cal@example.com",
+            password="pass",
+            name="완료내담",
+            role=UserRole.CLIENT,
+        )
+        counselor = User.objects.create_user(
+            email="counselor-cal@example.com",
+            password="pass",
+            name="상담사",
+            role=UserRole.COUNSELOR,
+        )
+        application = CounselingApplication.objects.create(
+            client=client_user,
+            counseling_types=["개인상담"],
+            reason="test",
+            counseling_method=CounselingMethod.IN_PERSON,
+            status=ApplicationStatus.IN_PROGRESS,
+        )
+        case = Case.objects.create(
+            application=application,
+            client=client_user,
+            counselor=counselor,
+            case_number="CASE-CAL-COMPLETED",
+            status=CaseStatus.ACTIVE,
+            counseling_method=CounselingMethod.IN_PERSON,
+        )
+        scheduled_at = timezone.make_aware(datetime(2026, 7, 1, 10, 0))
+        completed = Appointment.objects.create(
+            case=case,
+            counselor=counselor,
+            client=client_user,
+            scheduled_at=scheduled_at,
+            status=AppointmentStatus.COMPLETED,
+            session_number=3,
+            confirmed_at=timezone.now(),
+        )
+
+        day_start = parse_calendar_bound("2026-07-01T00:00:00+09:00")
+        day_end = parse_calendar_bound("2026-07-02T00:00:00+09:00")
+        events = build_calendar_events(start=day_start, end=day_end)
+        event_ids = {event["id"] for event in events}
+        self.assertIn(str(completed.pk), event_ids)
 
     def test_fullcalendar_utc_month_range_includes_june_17(self):
         """FullCalendar month view가 UTC ISO로 전달해도 6/17 확정 일정이 포함되어야 한다."""
