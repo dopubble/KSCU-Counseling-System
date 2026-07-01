@@ -11,10 +11,26 @@
              aria-controls="presentationCommentCollapse{{ comment.pk }}">
             <div class="presentation-comment-summary-main flex-grow-1 min-w-0 d-flex flex-wrap align-items-center gap-2 gap-md-3">
                 <span class="presentation-comment-meta d-inline-flex align-items-center gap-2 min-w-0">
-                    <i class="bi bi-corner-down-right presentation-comment-branch-icon flex-shrink-0"
-                       aria-hidden="true"></i>
-                    <span class="fw-semibold text-counselor text-truncate">{{ comment.author.name }}</span>
-                    <span class="small text-muted text-nowrap flex-shrink-0">{{ comment.created_at|date:"Y-m-d H:i" }}</span>
+                    <svg class="presentation-comment-branch-icon flex-shrink-0"
+                         width="20"
+                         height="20"
+                         viewBox="0 0 20 20"
+                         fill="none"
+                         xmlns="http://www.w3.org/2000/svg"
+                         aria-hidden="true">
+                        <path d="M7 3.5V10a2 2 0 0 0 2 2h5.5"
+                              stroke="currentColor"
+                              stroke-width="1.5"
+                              stroke-linecap="round"
+                              stroke-linejoin="round"/>
+                        <path d="M12.5 10.5L15.5 12L12.5 13.5"
+                              stroke="currentColor"
+                              stroke-width="1.5"
+                              stroke-linecap="round"
+                              stroke-linejoin="round"/>
+                    </svg>
+                    <span class="presentation-comment-author text-truncate">{{ comment.author.name }}</span>
+                    <span class="presentation-comment-time text-nowrap flex-shrink-0">{{ comment.created_at|date:"Y-m-d H:i" }}</span>
                 </span>
                 {% if comment.file %}
                 <span class="badge text-bg-light">

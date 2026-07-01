@@ -144,13 +144,28 @@
 }
 
 .presentation-comment-branch-icon {
-    color: #cbd5e1;
-    font-size: 1.125rem;
-    line-height: 1;
+    color: #c5cdd8;
+    width: 1.25rem;
+    height: 1.25rem;
+    display: block;
 }
 
 .presentation-comment-meta {
     max-width: 100%;
+    gap: 0.5rem !important;
+}
+
+.presentation-comment-author {
+    font-weight: 600;
+    font-size: 0.9375rem;
+    color: #1f2937;
+    line-height: 1.2;
+}
+
+.presentation-comment-time {
+    font-size: 0.8125rem;
+    color: #94a3b8;
+    line-height: 1.2;
 }
 
 .presentation-comment-summary:hover,
