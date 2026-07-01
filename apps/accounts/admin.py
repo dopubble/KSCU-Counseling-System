@@ -132,15 +132,26 @@ class UserAdmin(BaseUserAdmin):
             ),
         )
 
+    def _resolved_role(self, request, obj) -> str:
+        if request.method == "POST":
+            posted_role = (request.POST.get("role") or "").strip()
+            if posted_role:
+                return posted_role
+        return obj.role
+
     def get_inlines(self, request, obj=None):
         if obj is None:
             return ()
-        role = obj.role
+        role = self._resolved_role(request, obj)
         if request.method == "POST":
-            # 저장 시 폼에서 바꾼 역할 기준 — 상담사→수퍼바이저 전환 시 구 프로필 인라인 검증 오류 방지
-            posted_role = (request.POST.get("role") or "").strip()
-            if posted_role:
-                role = posted_role
+            # 화면에서 역할만 바꾸고 저장하면 구 인라인 POST만 오는 경우가 있음 → profile_sync가 처리
+            prefix_by_role = {
+                UserRole.COUNSELOR: "counselor_profile",
+                UserRole.SUPERVISOR: "supervisor_profile",
+            }
+            prefix = prefix_by_role.get(role)
+            if prefix and f"{prefix}-TOTAL_FORMS" not in request.POST:
+                return ()
         if role == UserRole.COUNSELOR:
             return (CounselorProfileInline,)
         if role == UserRole.SUPERVISOR:
