@@ -143,6 +143,16 @@
     transition: background-color 0.15s ease;
 }
 
+.presentation-comment-branch-icon {
+    color: #cbd5e1;
+    font-size: 1.125rem;
+    line-height: 1;
+}
+
+.presentation-comment-meta {
+    max-width: 100%;
+}
+
 .presentation-comment-summary:hover,
 .presentation-comment-summary:focus-visible {
     background-color: var(--counselor-primary-soft);

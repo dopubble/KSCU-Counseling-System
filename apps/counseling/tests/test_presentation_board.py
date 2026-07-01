@@ -191,6 +191,7 @@ class PresentationBoardTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "내용 보기")
         self.assertContains(response, "presentation-comment-collapse")
+        self.assertContains(response, "presentation-comment-branch-icon")
         self.assertContains(response, "동기 제출 현황")
         self.assertContains(response, "/ 1명")
         self.assertContains(response, "presentation-comment-section-label")
