@@ -93,9 +93,9 @@ from apps.scheduling.utils import (
     is_zoom_host_key_configured,
 )
 from apps.documents.models import SessionMaterial
-from apps.counseling.cohort_journal_service import (
-    get_cohort_peer_journals_by_session,
-    get_counselor_cohort,
+from apps.counseling.journal_permissions import (
+    user_can_download_journal_pdf,
+    user_can_view_journal,
 )
 from apps.counseling.privacy import mask_client_summary_fields
 
@@ -1536,21 +1536,11 @@ def _next_session_number(case):
     return (last.session_number + 1) if last else 1
 
 
-def user_can_download_journal_pdf(user, journal):
-    """PDF 다운로드: 해당 사례 담당 상담사만"""
+def user_can_edit_journal(user, journal):
+    """일지 수정: 해당 사례 담당 상담사만"""
     if not user.is_authenticated:
         return False
     return journal.case.counselor_id == user.id
-
-
-def user_can_view_journal(user, journal):
-    """일지 상세 열람 (담당 상담사만)"""
-    return user_can_download_journal_pdf(user, journal)
-
-
-def user_can_edit_journal(user, journal):
-    """일지 수정: 해당 사례 담당 상담사만"""
-    return user_can_download_journal_pdf(user, journal)
 
 
 def user_can_download_initial_record_pdf(user, record):
@@ -1726,30 +1716,9 @@ def counselor_case_detail(request, pk):
 
     appointments = case.appointments.select_related("zoom_meeting").order_by("-scheduled_at")
 
-    counselor_cohort = get_counselor_cohort(request.user)
-    total_sessions = max(case.total_sessions, 1)
-    cohort_journals_by_session: dict[int, list] = {}
-    if counselor_cohort is not None:
-        raw_by_session = get_cohort_peer_journals_by_session(
-            counselor_cohort,
-            max_session=total_sessions,
-        )
-        for session_number, journals in raw_by_session.items():
-            cohort_journals_by_session[session_number] = [
-                _build_cohort_journal_entry(
-                    journal,
-                    requesting_counselor=request.user,
-                    own_case_id=case.pk,
-                )
-                for journal in journals
-            ]
-    for n in range(1, total_sessions + 1):
-        cohort_journals_by_session.setdefault(n, [])
-
     sessions = build_counselor_session_views(
         case,
         prebuilt_cards=session_cards,
-        cohort_journals_by_session=cohort_journals_by_session,
     )
     upcoming_appointment = (
         case.appointments.filter(
@@ -1789,7 +1758,6 @@ def counselor_case_detail(request, pk):
             "schedule_change_requests_for_case": get_schedule_change_requests_for_counselor(
                 case
             ),
-            "counselor_cohort": counselor_cohort,
             "is_admin_view": request.user.is_superuser
             or request.user.role == UserRole.ADMIN,
             "zoom_host_key_configured": is_zoom_host_key_configured(),
@@ -2271,41 +2239,10 @@ def counselor_shared_material_delete(request, case_pk, material_pk):
 @counselor_required
 @require_POST
 def counselor_cohort_journal_pdf(request, journal_pk):
-    """동기 기수 상담일지 PDF 다운로드 (암호화)."""
-    journal = get_object_or_404(
-        CounselingJournal.objects.select_related(
-            "case",
-            "case__client",
-            "case__application",
-            "counselor",
-        ),
-        pk=journal_pk,
+    """[차단] 동기 상담일지 PDF — 상담사 동기 열람 경로 폐지."""
+    raise PermissionDenied(
+        "동기 상담일지 열람이 제한되었습니다. 본인 사례의 상담일지만 이용할 수 있습니다."
     )
-    fallback = (request.POST.get("next") or "").strip() or reverse("counselor:dashboard")
-    if not user_can_download_cohort_journal(request.user, journal):
-        raise PermissionDenied("상담일지 PDF 다운로드 권한이 없습니다.")
-    if journal.is_draft:
-        messages.error(request, "저장 완료된 상담일지만 다운로드할 수 있습니다.")
-        return redirect(fallback)
-
-    pdf_password, redirect_response = _get_pdf_password_from_request(
-        request, redirect_url=fallback
-    )
-    if redirect_response:
-        return redirect_response
-
-    mask_private = journal.case.counselor_id != request.user.pk
-    client_summary = _journal_client_summary(journal.case, mask_private=mask_private)
-    pdf_bytes = build_journal_pdf(
-        journal,
-        client_summary=client_summary,
-        user_password=pdf_password,
-    )
-    filename = journal_pdf_filename(journal)
-    ascii_name = f"journal_{journal.case.case_number}_{journal.session_number}.pdf".replace(
-        "/", "-"
-    )
-    return _pdf_file_response(pdf_bytes, filename=filename, ascii_name=ascii_name)
 
 
 @counselor_required
@@ -2824,21 +2761,14 @@ def _journal_client_summary(case, *, mask_private: bool = False) -> dict:
 
 
 def user_can_download_cohort_journal(user, journal) -> bool:
-    """동기 기수 상담일지 PDF — 같은 기수만."""
-    if not user.is_authenticated or journal.is_draft:
-        return False
-    if user.is_superuser:
-        return True
-    if user.role != UserRole.COUNSELOR:
-        return False
-    cohort = get_counselor_cohort(user)
-    journal_cohort = get_counselor_cohort(journal.counselor)
-    return cohort is not None and cohort == journal_cohort
+    """[Deprecated] 동기 열람 폐지 — supervisor_journal_pdf 사용."""
+    from apps.counseling.journal_permissions import user_can_download_journal_pdf
+
+    return user_can_download_journal_pdf(user, journal)
 
 
-def _build_cohort_journal_entry(journal, *, requesting_counselor, own_case_id):
+def _build_cohort_journal_entry(journal, *, requesting_user, mask_private: bool = True):
     case = journal.case
-    mask_private = case.counselor_id != requesting_counselor.pk
     summary = _journal_client_summary(case, mask_private=mask_private)
     updated = journal.updated_at or journal.created_at
     if updated and timezone.is_aware(updated):
@@ -2855,7 +2785,7 @@ def _build_cohort_journal_entry(journal, *, requesting_counselor, own_case_id):
         "email": summary["email"],
         "student_id": summary.get("student_id", "—"),
         "updated_at": updated.strftime("%m-%d %H:%M") if updated else "—",
-        "is_own_case": case.pk == own_case_id,
+        "is_own_case": case.counselor_id == requesting_user.pk,
         "session_number": journal.session_number,
     }
 

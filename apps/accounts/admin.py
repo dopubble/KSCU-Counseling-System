@@ -3,7 +3,7 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.db.models import Exists, OuterRef
 from django.utils.html import format_html
 
-from .models import AuditLog, ClientProfile, CounselorProfile, User, UserRole
+from .models import AuditLog, ClientProfile, CounselorProfile, SupervisorProfile, User, UserRole
 
 
 class CounselorUserFilter(admin.SimpleListFilter):
@@ -48,6 +48,19 @@ class CounselorProfileInline(admin.StackedInline):
         "max_cases",
         "cohort",
         "is_approved",
+        "created_at",
+        "updated_at",
+    )
+
+
+class SupervisorProfileInline(admin.StackedInline):
+    model = SupervisorProfile
+    can_delete = False
+    extra = 0
+    fk_name = "user"
+    readonly_fields = ("created_at", "updated_at")
+    fields = (
+        "assigned_cohorts",
         "created_at",
         "updated_at",
     )
@@ -120,8 +133,12 @@ class UserAdmin(BaseUserAdmin):
         )
 
     def get_inlines(self, request, obj=None):
-        if obj is not None and obj.role == UserRole.COUNSELOR:
+        if obj is None:
+            return ()
+        if obj.role == UserRole.COUNSELOR:
             return (CounselorProfileInline,)
+        if obj.role == UserRole.SUPERVISOR:
+            return (SupervisorProfileInline,)
         return ()
 
     @admin.display(description="역할", ordering="role")
@@ -129,6 +146,7 @@ class UserAdmin(BaseUserAdmin):
         colors = {
             UserRole.ADMIN: "#6f42c1",
             UserRole.COUNSELOR: "#0d6efd",
+            UserRole.SUPERVISOR: "#fd7e14",
             UserRole.CLIENT: "#198754",
         }
         color = colors.get(obj.role, "#6c757d")
@@ -274,6 +292,23 @@ class ClientProfileAdmin(admin.ModelAdmin):
 
     @admin.display(description="이메일", ordering="user__email")
     def user_email(self, obj: ClientProfile) -> str:
+        return obj.user.email
+
+
+@admin.register(SupervisorProfile)
+class SupervisorProfileAdmin(admin.ModelAdmin):
+    list_display = ("user_name", "user_email", "assigned_cohorts", "updated_at")
+    search_fields = ("user__name", "user__email")
+    list_select_related = ("user",)
+    autocomplete_fields = ("user",)
+    readonly_fields = ("created_at", "updated_at")
+
+    @admin.display(description="이름", ordering="user__name")
+    def user_name(self, obj: SupervisorProfile) -> str:
+        return obj.user.name
+
+    @admin.display(description="이메일", ordering="user__email")
+    def user_email(self, obj: SupervisorProfile) -> str:
         return obj.user.email
 
 
