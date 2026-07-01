@@ -58,6 +58,21 @@ JEONG_HANGYEOL_SESSION2_LABEL = "2026-07-07 15:00"
 JEONG_HANGYEOL_ZOOM_HOST_ID = "host_02"
 
 GUHYUNJEONG_NAME = "구현정"
+GUHYUNJEONG_EMAIL = "kookoo162@daum.net"
+GUHYUNJEONG_COUNSELOR = "양은영"
+GUHYUNJEONG_SESSION1_LABEL = "2026-07-01 10:00"
+GUHYUNJEONG_ZOOM_HOST_EMAIL = "hakyss@mail.kcu.ac"
+
+LEE_HYUNOK_NAME = "이현옥"
+LEE_HYUNOK_EMAIL = "gusdhrl@empas.com"
+LEE_HYUNOK_COUNSELOR = "신영화"
+LEE_HYUNOK_SESSION3_LABEL = "2026-07-01 10:00"
+LEE_HYUNOK_ZOOM_HOST_ID = "host_01"
+
+KIM_SUMI_SESSION2_LABEL = "2026-07-01 10:00"
+KIM_SUMI_SESSION2_ZOOM_HOST_ID = "host_02"
+
+JULY1_10AM_LABEL = "2026-07-01 10:00"
 
 
 @dataclass
@@ -211,19 +226,20 @@ def force_appointment_zoom_host(
     client_email: str,
     counselor_name: str,
     scheduled_label: str,
-    host_id: str,
+    host_id: str = "",
+    host_email: str | None = None,
     session_number: int = 1,
     case_number: str | None = None,
     dry_run: bool = True,
 ) -> OpsFixupLine:
     """지정 예약 Zoom 호스트를 강제 지정 (자동 배정 알고리즘과 무관)."""
-    task = f"zoom_host_{client_name}_s{session_number}_{scheduled_label}"
+    task = f"zoom_host_{client_name}_s{session_number}_{scheduled_label or 'any'}"
     if not is_zoom_configured():
         return OpsFixupLine(task, "skip", "Zoom 미설정")
 
-    target_email = (email_for_host_id(host_id) or "").strip()
+    target_email = (host_email or email_for_host_id(host_id) or "").strip()
     if not target_email:
-        return OpsFixupLine(task, "error", f"호스트 ID 오류: {host_id}")
+        return OpsFixupLine(task, "error", f"호스트 지정 오류: {host_id or host_email}")
 
     client = _find_client(name=client_name, email=client_email)
     if not client:
@@ -262,13 +278,15 @@ def force_appointment_zoom_host(
     zoom = getattr(appointment, "zoom_meeting", None)
     stored = (zoom.zoom_host_email or "").strip().lower() if zoom else ""
     if stored == target_email.lower():
-        return OpsFixupLine(task, "ok", f"이미 {host_id} ({target_email})")
+        label = host_id or target_email
+        return OpsFixupLine(task, "ok", f"이미 {label} ({target_email})")
 
     if dry_run:
+        label = host_id or target_email
         return OpsFixupLine(
             task,
             "dry_run",
-            f"{stored or '(없음)'} → {host_id} ({target_email})",
+            f"{stored or '(없음)'} → {label} ({target_email})",
         )
 
     old_meeting_id = (zoom.zoom_meeting_id or "").strip() if zoom else ""
@@ -289,7 +307,46 @@ def force_appointment_zoom_host(
     except (ZoomAPIError, ZoomNotConfiguredError, AppointmentServiceError) as exc:
         return OpsFixupLine(task, "error", str(exc))
 
-    return OpsFixupLine(task, "ok", f"{host_id} ({target_email})로 재배정")
+    return OpsFixupLine(task, "ok", f"{host_id or target_email} ({target_email})로 재배정")
+
+
+def ensure_lee_hyunok_session3_zoom_host_01(*, dry_run: bool = True) -> OpsFixupLine:
+    """이현옥 3회기 7/1 10:00 → Zoom host_01."""
+    return force_appointment_zoom_host(
+        client_name=LEE_HYUNOK_NAME,
+        client_email=LEE_HYUNOK_EMAIL,
+        counselor_name=LEE_HYUNOK_COUNSELOR,
+        scheduled_label=LEE_HYUNOK_SESSION3_LABEL,
+        host_id=LEE_HYUNOK_ZOOM_HOST_ID,
+        session_number=3,
+        dry_run=dry_run,
+    )
+
+
+def ensure_kim_sumi_session2_zoom_host_02(*, dry_run: bool = True) -> OpsFixupLine:
+    """김수미 2회기 7/1 10:00 → Zoom host_02."""
+    return force_appointment_zoom_host(
+        client_name=KIM_SUMI_NAME,
+        client_email=KIM_SUMI_EMAIL,
+        counselor_name=KIM_SUMI_COUNSELOR,
+        scheduled_label=KIM_SUMI_SESSION2_LABEL,
+        host_id=KIM_SUMI_SESSION2_ZOOM_HOST_ID,
+        session_number=2,
+        dry_run=dry_run,
+    )
+
+
+def ensure_guhyunjeong_session1_hakyss_zoom(*, dry_run: bool = True) -> OpsFixupLine:
+    """구현정 1회기 7/1 10:00 → hakyss@mail.kcu.ac (Licensed 풀 외)."""
+    return force_appointment_zoom_host(
+        client_name=GUHYUNJEONG_NAME,
+        client_email=GUHYUNJEONG_EMAIL,
+        counselor_name=GUHYUNJEONG_COUNSELOR,
+        scheduled_label=GUHYUNJEONG_SESSION1_LABEL,
+        host_email=GUHYUNJEONG_ZOOM_HOST_EMAIL,
+        session_number=1,
+        dry_run=dry_run,
+    )
 
 
 def ensure_park_miyeong_zoom_host_02(*, dry_run: bool = True) -> OpsFixupLine:
@@ -426,6 +483,9 @@ def apply_ops_production_fixup_june2026(*, dry_run: bool = True) -> list[OpsFixu
     lines.append(ensure_park_miyeong_zoom_host_02(dry_run=dry_run))
     lines.append(ensure_park_miyeong_session2_zoom_host_02(dry_run=dry_run))
     lines.append(ensure_jeong_hangyeol_session2_zoom_host_02(dry_run=dry_run))
+    lines.append(ensure_lee_hyunok_session3_zoom_host_01(dry_run=dry_run))
+    lines.append(ensure_kim_sumi_session2_zoom_host_02(dry_run=dry_run))
+    lines.append(ensure_guhyunjeong_session1_hakyss_zoom(dry_run=dry_run))
     return lines
 
 

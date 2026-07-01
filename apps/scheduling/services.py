@@ -393,21 +393,36 @@ def fix_mismatched_zoom_host_assignments(
         )
 
     appointments = list(confirmed_remote_appointments_queryset())
-    expected = assign_host_emails_for_appointments(appointments)
     licensed = get_zoom_licensed_user_emails()
     primary_host = licensed[0].strip().lower() if licensed else ""
+    licensed_set = {email.strip().lower() for email in licensed if email.strip()}
 
+    def _stored_host(appointment: Appointment) -> str:
+        zoom = getattr(appointment, "zoom_meeting", None)
+        return (zoom.zoom_host_email or "").strip().lower() if zoom else ""
+
+    assignable = [
+        apt
+        for apt in appointments
+        if not (_stored_host(apt) and _stored_host(apt) not in licensed_set)
+    ]
+    expected = assign_host_emails_for_appointments(assignable)
     mismatches: list[tuple[Appointment, str, str, str]] = []
     skipped = 0
 
     for appointment in appointments:
+        stored_host = _stored_host(appointment)
+        if stored_host and stored_host not in licensed_set:
+            skipped += 1
+            continue
+
         zoom = getattr(appointment, "zoom_meeting", None)
         meeting_id = (zoom.zoom_meeting_id or "").strip() if zoom else ""
         if not meeting_id:
             skipped += 1
             continue
 
-        stored = (zoom.zoom_host_email or "").strip().lower()
+        stored = stored_host
         exp = (expected.get(str(appointment.pk), "") or "").strip().lower()
         if not exp or stored == exp:
             skipped += 1

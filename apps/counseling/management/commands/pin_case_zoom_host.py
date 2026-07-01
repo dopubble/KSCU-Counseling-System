@@ -15,7 +15,12 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--case", required=True, help="사례 번호 (예: CASE-2026-0025)")
         parser.add_argument("--session", type=int, required=True, help="회차 번호")
-        parser.add_argument("--host", required=True, help="host_01 또는 host_02")
+        parser.add_argument("--host", default="", help="host_01 또는 host_02")
+        parser.add_argument(
+            "--host-email",
+            default="",
+            help="Licensed 풀 외 Zoom 계정 이메일 (예: hakyss@mail.kcu.ac)",
+        )
         parser.add_argument("--client-name", default="", help="내담자 이름 (선택)")
         parser.add_argument("--client-email", default="", help="내담자 이메일 (선택)")
         parser.add_argument("--counselor-name", default="", help="상담사 이름 (선택)")
@@ -41,12 +46,18 @@ class Command(BaseCommand):
             case.counselor.name if case.counselor else ""
         )
 
+        host = (options.get("host") or "").strip()
+        host_email = (options.get("host_email") or "").strip()
+        if not host and not host_email:
+            raise CommandError("--host 또는 --host-email 중 하나는 필수입니다.")
+
         result = force_appointment_zoom_host(
             client_name=client_name,
             client_email=client_email,
             counselor_name=counselor_name,
             scheduled_label="",
-            host_id=options["host"],
+            host_id=host,
+            host_email=host_email or None,
             session_number=options["session"],
             case_number=options["case"],
             dry_run=not options["apply"],

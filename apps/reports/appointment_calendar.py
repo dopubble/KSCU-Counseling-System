@@ -403,6 +403,8 @@ def build_calendar_events(
                     from apps.scheduling.zoom_hosts import host_id_for_email
 
                     host_id = host_id_for_email(zoom_meeting.zoom_host_email)
+                    if not host_id and zoom_meeting.zoom_host_email.strip():
+                        host_id = "host_03"
                 if not host_id:
                     host_id = host_assignments.get(str(apt.id), "")
 
