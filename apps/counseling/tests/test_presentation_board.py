@@ -122,6 +122,28 @@ class PresentationBoardTests(TestCase):
         self.assertContains(response, "사례개념화보고서 올리기")
         self.assertContains(response, "사례개념화 연습")
         self.assertContains(response, "10. 예후 및 장애물")
+        self.assertNotContains(response, "메모")
+
+    def test_peer_can_comment_without_file(self):
+        post = CasePresentationPost.objects.create(
+            cohort=1,
+            author=self.counselor_a,
+            title="[사례발표] 발표자",
+            file=self.sample_file,
+        )
+        client = Client()
+        client.force_login(self.counselor_b)
+        response = client.post(
+            reverse("counselor:presentation_board_comment_create", args=[post.pk]),
+            {
+                "cohort": "1",
+                "content": PRESENTATION_BOARD_COMMENT_CONTENT_TEMPLATE,
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        comment = CasePresentationComment.objects.get(post=post)
+        self.assertFalse(comment.file)
+        self.assertIn("사례개념화 연습", comment.content)
 
     def test_detail_page_author_cannot_comment(self):
         post = CasePresentationPost.objects.create(

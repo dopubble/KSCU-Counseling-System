@@ -184,7 +184,7 @@ def presentation_board_comment_create(request, post_pk):
         post=post,
         author=request.user,
         content=(form.cleaned_data.get("content") or "").strip(),
-        file=form.cleaned_data["file"],
+        file=form.cleaned_data.get("file"),
     )
     messages.success(request, "사례개념화보고서 댓글이 등록되었습니다.")
     return redirect("counselor:presentation_board_detail", post_pk=post.pk)

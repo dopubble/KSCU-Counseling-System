@@ -392,6 +392,7 @@ class CasePresentationComment(models.Model):
     file = models.FileField(
         "첨부 파일",
         upload_to=_presentation_comment_upload_path,
+        blank=True,
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -648,6 +648,7 @@ class PresentationBoardCommentForm(forms.Form):
     )
     file = forms.FileField(
         label="사례개념화보고서 파일",
+        required=False,
         widget=forms.ClearableFileInput(
             attrs={"class": "form-control", "accept": ACCEPT_ATTR}
         ),
@@ -656,7 +657,7 @@ class PresentationBoardCommentForm(forms.Form):
     def clean_file(self):
         file_obj = self.cleaned_data.get("file")
         if not file_obj:
-            raise forms.ValidationError("사례개념화보고서 파일을 첨부해 주세요.")
+            return None
         ext = os.path.splitext(file_obj.name)[1].lower()
         if ext not in self.ALLOWED_EXTENSIONS:
             raise forms.ValidationError(self.INVALID_TYPE_MESSAGE)

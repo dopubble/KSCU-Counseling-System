@@ -79,10 +79,12 @@
                             <td class="small text-muted">{{ comment.created_at|date:"Y-m-d" }}</td>
                             <td class="text-end">
                                 <div class="d-inline-flex flex-wrap gap-1 justify-content-end">
+                                    {% if comment.file %}
                                     <a href="{% url 'counselor:presentation_board_comment_file' comment.pk %}"
                                        class="btn btn-sm btn-outline-secondary">
                                         <i class="bi bi-download"></i>
                                     </a>
+                                    {% endif %}
                                     {% if comment.author_id == user.pk or is_staff_viewer %}
                                     <form method="post"
                                           action="{% url 'counselor:presentation_board_comment_delete' comment.pk %}"
@@ -121,11 +123,10 @@
                 {% csrf_token %}
                 <input type="hidden" name="cohort" value="{{ cohort }}">
                 <div class="mb-3">
-                    <label class="form-label fw-semibold" for="id_comment_content">메모 <span class="text-muted fw-normal">(선택)</span></label>
                     {{ comment_form.content }}
                 </div>
                 <div class="mb-3">
-                    <label class="form-label fw-semibold" for="id_comment_file">첨부 파일</label>
+                    <label class="form-label fw-semibold" for="id_file">첨부 파일 <span class="text-muted fw-normal">(선택)</span></label>
                     {{ comment_form.file }}
                     <p class="form-text small mb-0">PDF, HWP, HWPX, Word · 최대 10MB · 비밀번호 260706 권장</p>
                 </div>
