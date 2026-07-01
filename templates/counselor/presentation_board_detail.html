@@ -59,49 +59,39 @@
         </div>
         <div class="card-body p-0">
             {% if comments %}
-            <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0 counselor-table">
-                    <thead>
-                        <tr>
-                            <th style="width: 7rem;">작성자</th>
-                            <th>메모</th>
-                            <th style="width: 7rem;">등록일</th>
-                            <th class="text-end" style="width: 8rem;">파일</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for comment in comments %}
-                        <tr>
-                            <td class="fw-semibold small">{{ comment.author.name }}</td>
-                            <td class="small text-muted">
-                                {% if comment.content %}{{ comment.content|truncatechars:80 }}{% else %}—{% endif %}
-                            </td>
-                            <td class="small text-muted">{{ comment.created_at|date:"Y-m-d" }}</td>
-                            <td class="text-end">
-                                <div class="d-inline-flex flex-wrap gap-1 justify-content-end">
-                                    {% if comment.file %}
-                                    <a href="{% url 'counselor:presentation_board_comment_file' comment.pk %}"
-                                       class="btn btn-sm btn-outline-secondary">
-                                        <i class="bi bi-download"></i>
-                                    </a>
-                                    {% endif %}
-                                    {% if comment.author_id == user.pk or is_staff_viewer %}
-                                    <form method="post"
-                                          action="{% url 'counselor:presentation_board_comment_delete' comment.pk %}"
-                                          class="mb-0"
-                                          onsubmit="return confirm('댓글을 삭제하시겠습니까?');">
-                                        {% csrf_token %}
-                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="삭제">
-                                            <i class="bi bi-trash"></i>
-                                        </button>
-                                    </form>
-                                    {% endif %}
-                                </div>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+            <div class="presentation-board-comment-list">
+                {% for comment in comments %}
+                <article class="presentation-board-comment px-3 px-md-4 py-3{% if not forloop.last %} border-bottom{% endif %}">
+                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                        <span class="fw-semibold small">{{ comment.author.name }}</span>
+                        <span class="small text-muted">{{ comment.created_at|date:"Y-m-d H:i" }}</span>
+                    </div>
+                    {% if comment.content %}
+                    <div class="client-pre-wrap small mb-0">{{ comment.content|linebreaksbr }}</div>
+                    {% else %}
+                    <p class="small text-muted mb-0">—</p>
+                    {% endif %}
+                    {% if comment.file or comment.author_id == user.pk or is_staff_viewer %}
+                    <div class="d-flex flex-wrap gap-2 mt-3">
+                        {% if comment.file %}
+                        <a href="{% url 'counselor:presentation_board_comment_file' comment.pk %}"
+                           class="btn btn-sm btn-outline-secondary">
+                            <i class="bi bi-download me-1"></i>{{ comment.filename }}
+                        </a>
+                        {% endif %}
+                        {% if comment.author_id == user.pk or is_staff_viewer %}
+                        <form method="post"
+                              action="{% url 'counselor:presentation_board_comment_delete' comment.pk %}"
+                              class="mb-0"
+                              onsubmit="return confirm('댓글을 삭제하시겠습니까?');">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-danger">삭제</button>
+                        </form>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </article>
+                {% endfor %}
             </div>
             {% else %}
             <div class="text-center py-4 px-3">

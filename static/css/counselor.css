@@ -122,6 +122,14 @@
     white-space: nowrap;
 }
 
+.presentation-board-comment-list .border-bottom {
+    border-color: var(--counselor-border) !important;
+}
+
+.presentation-board-comment .client-pre-wrap {
+    color: #334155;
+}
+
 .badge-counselor-active {
     background-color: #d1e7dd;
     color: #0f5132;
