@@ -165,7 +165,7 @@ class Command(BaseCommand):
             self.stdout.write("")
             self.stdout.write(
                 self.style.WARNING(
-                    f"{mismatch} mismatch(es). Fix: python manage.py recreate_zoom_meetings --apply"
+                    f"{mismatch} mismatch(es). Fix: python manage.py fix_zoom_host_mismatches --apply"
                 )
             )
         else:

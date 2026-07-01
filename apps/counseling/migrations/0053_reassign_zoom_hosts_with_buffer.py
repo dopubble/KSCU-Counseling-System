@@ -10,9 +10,9 @@ logger = logging.getLogger(__name__)
 def reassign_zoom_hosts_with_buffer(apps, schema_editor):
     """
     마이그레이션에서 Zoom API를 호출하면 preDeploy 실패 시 새 코드가 배포되지 않습니다.
-    버퍼 배정 로직은 앱 코드에 포함되며, 기존 예약 재배정은 배포 후 수동 실행:
-      python manage.py recreate_zoom_meetings --apply
-      python manage.py ops_production_fixup --apply
+    버퍼 배정 로직은 앱 코드에 포함되며, 기존 예약 재배정은 배포 후 Shell에서 실행:
+      python manage.py fix_zoom_host_mismatches --apply
+      python manage.py ops_production_fixup --apply --continue-on-error
     """
     engine = connection.settings_dict.get("ENGINE", "")
     if "sqlite" in engine:

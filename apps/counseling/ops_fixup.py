@@ -435,7 +435,11 @@ def fix_zoom_host_mismatches(*, dry_run: bool = True) -> OpsFixupLine:
         return OpsFixupLine("fix_zoom_host_mismatches", "skip", "Zoom 미설정")
 
     try:
-        fixed, skipped, messages = fix_mismatched_zoom_host_assignments(dry_run=dry_run)
+        fixed, skipped, messages = fix_mismatched_zoom_host_assignments(
+            dry_run=dry_run,
+            scheduled_from=timezone.now(),
+            stop_on_rate_limit=True,
+        )
     except ZoomNotConfiguredError as exc:
         return OpsFixupLine("fix_zoom_host_mismatches", "skip", str(exc))
 

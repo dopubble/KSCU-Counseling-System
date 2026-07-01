@@ -28,6 +28,7 @@ from .remote_zoom_capacity import ensure_remote_zoom_capacity
 from .in_person_room_capacity import ensure_in_person_room_capacity
 from .zoom_hosts import (
     assign_host_emails_for_appointments,
+    get_zoom_licensed_user_emails,
     confirmed_remote_appointments_queryset,
     resolve_zoom_host_email_for_appointment,
 )
@@ -362,13 +363,28 @@ def backfill_missing_zoom_meetings(
     return created, skipped, errors
 
 
+def _is_zoom_daily_quota_error(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return (
+        "429" in msg
+        or "rate limit" in msg
+        or "too many" in msg
+        or "400 meeting create" in msg
+        or "400 meeting update" in msg
+    )
+
+
 def fix_mismatched_zoom_host_assignments(
     *,
     dry_run: bool = False,
     notify_link_change: bool = False,
+    scheduled_from: datetime | None = None,
+    scheduled_to: datetime | None = None,
+    limit: int | None = None,
+    stop_on_rate_limit: bool = True,
 ) -> tuple[int, int, list[str]]:
     """
-    zoom_host_email이 호스트 배정 알고리즘과 다르면 올바른 Licensed 호스트로 재생성.
+    zoom_host_email이 호스트 배정 알고리즘(30분 버퍼 포함)과 다르면 재생성.
     반환: (fixed, skipped, errors)
     """
     if not is_zoom_configured():
@@ -378,8 +394,11 @@ def fix_mismatched_zoom_host_assignments(
 
     appointments = list(confirmed_remote_appointments_queryset())
     expected = assign_host_emails_for_appointments(appointments)
-    fixed = skipped = 0
-    errors: list[str] = []
+    licensed = get_zoom_licensed_user_emails()
+    primary_host = licensed[0].strip().lower() if licensed else ""
+
+    mismatches: list[tuple[Appointment, str, str, str]] = []
+    skipped = 0
 
     for appointment in appointments:
         zoom = getattr(appointment, "zoom_meeting", None)
@@ -394,15 +413,41 @@ def fix_mismatched_zoom_host_assignments(
             skipped += 1
             continue
 
+        if scheduled_from is not None and appointment.scheduled_at < scheduled_from:
+            skipped += 1
+            continue
+        if scheduled_to is not None and appointment.scheduled_at >= scheduled_to:
+            skipped += 1
+            continue
+
         label = (
             f"{appointment.case.client.name} "
             f"{appointment.scheduled_at:%Y-%m-%d %H:%M}"
         )
+        mismatches.append((appointment, stored, exp, label))
+
+    # host_02(비-primary) 대상 먼저 — host_01 일일 API 한도 보호
+    mismatches.sort(
+        key=lambda item: (
+            item[2] == primary_host,
+            item[0].scheduled_at,
+            str(item[0].pk),
+        )
+    )
+    if limit is not None and limit > 0:
+        mismatches = mismatches[:limit]
+
+    fixed = 0
+    errors: list[str] = []
+
+    for appointment, stored, exp, label in mismatches:
         if dry_run:
             fixed += 1
             errors.append(f"[would fix] {label}: {stored or '(empty)'} -> {exp}")
             continue
 
+        zoom = getattr(appointment, "zoom_meeting", None)
+        meeting_id = (zoom.zoom_meeting_id or "").strip() if zoom else ""
         previous_url = (
             capture_appointment_zoom_join_url(appointment) if notify_link_change else ""
         )
@@ -432,6 +477,11 @@ def fix_mismatched_zoom_host_assignments(
                 appointment.pk,
                 exc,
             )
+            if stop_on_rate_limit and _is_zoom_daily_quota_error(exc):
+                errors.append(
+                    "[rate limit] Zoom 일일 API 한도 도달 — 나머지는 내일 재시도하세요."
+                )
+                break
 
     return fixed, skipped, errors
 
