@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 
 from django.core.management.base import BaseCommand
 from django.db import connection
+from django.utils import timezone
 
 from apps.scheduling.zoom_links import resolve_appointment_zoom_join_url
 from apps.scheduling.models import Appointment, AppointmentStatus
@@ -32,7 +33,7 @@ class Command(BaseCommand):
         "확정 비대면 예약별 Zoom 링크 출처를 비교합니다.\n"
         "  · dashboard_url = ZoomMeeting.join_url 우선 (내담자·상담사 대시보드)\n"
         "  · case_url = Case.zoom_meeting_url (확정 이메일에 포함)\n"
-        "예) python manage.py audit_zoom_links --clients 김수미,성순희 --date 2026-06-26"
+        "예) python manage.py audit_zoom_links --clients 정진아 --date 2026-07-01 --hour 20"
     )
 
     def add_arguments(self, parser):
@@ -42,6 +43,7 @@ class Command(BaseCommand):
             help="쉼표 구분 내담자 이름",
         )
         parser.add_argument("--date", default="", help="YYYY-MM-DD (선택)")
+        parser.add_argument("--hour", type=int, default=None, help="시간(0-23) KST, --date와 함께")
 
     def handle(self, *args, **options):
         engine = connection.settings_dict.get("ENGINE", "")
@@ -65,12 +67,21 @@ class Command(BaseCommand):
         if date_text:
             qs = qs.filter(scheduled_at__date=date_text)
 
-        if not qs.exists():
+        hour = options.get("hour")
+        appointments = list(qs)
+        if hour is not None:
+            appointments = [
+                apt
+                for apt in appointments
+                if timezone.localtime(apt.scheduled_at).hour == hour
+            ]
+
+        if not appointments:
             self.stdout.write(self.style.WARNING("대상 예약 없음"))
             return
 
         mismatch_rows = 0
-        for apt in qs:
+        for apt in appointments:
             case = apt.case
             zm = getattr(apt, "zoom_meeting", None)
             dashboard_url = resolve_appointment_zoom_join_url(apt, case)
@@ -92,7 +103,10 @@ class Command(BaseCommand):
             if not same_dashboard_case:
                 mismatch_rows += 1
 
-            self.stdout.write(f"=== {apt.client.name} | {apt.scheduled_at:%Y-%m-%d %H:%M} ===")
+            self.stdout.write(
+                f"=== {apt.client.name} | {timezone.localtime(apt.scheduled_at):%Y-%m-%d %H:%M} "
+                f"| {apt.session_number}회차 ==="
+            )
             self.stdout.write(f"  counselor: {apt.counselor.name if apt.counselor else '-'}")
             self.stdout.write(f"  zoom_host_email: {host_email or '(empty)'}")
             self.stdout.write(f"  zoom_meeting_id (DB): {db_meeting_id or '(empty)'}")
@@ -113,4 +127,6 @@ class Command(BaseCommand):
                 )
             self.stdout.write("")
 
-        self.stdout.write(f"Checked {qs.count()} appointment(s), URL mismatches: {mismatch_rows}")
+        self.stdout.write(
+            f"Checked {len(appointments)} appointment(s), URL mismatches: {mismatch_rows}"
+        )

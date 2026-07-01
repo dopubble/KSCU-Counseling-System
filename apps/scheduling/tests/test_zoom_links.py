@@ -23,6 +23,7 @@ from apps.counseling.services import _resolve_appointment_zoom_url
 from apps.scheduling.models import Appointment, AppointmentStatus
 from apps.scheduling.services import _create_zoom_meeting_for_appointment
 from apps.scheduling.zoom_links import (
+    appointment_zoom_link_is_locked,
     resolve_appointment_zoom_join_url,
     sync_case_zoom_meeting_url,
 )
@@ -145,3 +146,12 @@ class ZoomLinkResolverTests(TestCase):
         self.assertIn("99999999999", mail.outbox[0].body)
         self.case.refresh_from_db()
         self.assertEqual(self.case.zoom_meeting_url, "https://zoom.us/j/99999999999")
+
+    def test_appointment_zoom_link_is_locked_when_join_url_and_meeting_id_exist(self):
+        self.assertTrue(appointment_zoom_link_is_locked(self.appointment))
+        zm = ZoomMeeting.objects.get(appointment=self.appointment)
+        zm.join_url = ""
+        zm.zoom_meeting_id = ""
+        zm.save(update_fields=["join_url", "zoom_meeting_id"])
+        fresh = Appointment.objects.select_related("zoom_meeting").get(pk=self.appointment.pk)
+        self.assertFalse(appointment_zoom_link_is_locked(fresh))

@@ -22,7 +22,7 @@ from apps.scheduling.utils import (
     is_zoom_configured,
 )
 from apps.scheduling.zoom_hosts import email_for_host_id
-from apps.scheduling.zoom_links import sync_case_zoom_meeting_url
+from apps.scheduling.zoom_links import sync_case_zoom_meeting_url, appointment_zoom_link_is_locked
 from apps.sessions_app.models import ZoomMeeting
 
 KIM_JANGSEOYUL_NAME = "김장서율"
@@ -306,6 +306,17 @@ def pin_appointment_zoom_link(
     zoom = getattr(appointment, "zoom_meeting", None)
     current_url = (zoom.join_url or "").strip() if zoom else ""
     case_url = (appointment.case.zoom_meeting_url or "").strip()
+    if appointment_zoom_link_is_locked(appointment):
+        if case_url != current_url:
+            if dry_run:
+                return OpsFixupLine(
+                    task,
+                    "dry_run",
+                    f"Case URL만 동기화: {case_url or '(없음)'} → {current_url}",
+                )
+            sync_case_zoom_meeting_url(appointment, join_url=current_url)
+            return OpsFixupLine(task, "ok", f"확정 join_url 유지, Case URL 동기화")
+        return OpsFixupLine(task, "ok", f"이미 {current_url}")
     if current_url == target_url and case_url == target_url:
         return OpsFixupLine(task, "ok", f"이미 {target_url}")
 
@@ -364,6 +375,16 @@ def force_appointment_zoom_host(
 
     zoom = getattr(appointment, "zoom_meeting", None)
     stored = (zoom.zoom_host_email or "").strip().lower() if zoom else ""
+    if appointment_zoom_link_is_locked(appointment):
+        sync_case_zoom_meeting_url(appointment)
+        label = host_id or target_email
+        if stored == target_email.lower():
+            return OpsFixupLine(task, "ok", f"확정 join_url 유지 ({label})")
+        return OpsFixupLine(
+            task,
+            "skip",
+            f"확정 join_url 잠금 — API 재생성 생략 (stored={stored or 'empty'}, target={target_email})",
+        )
     if stored == target_email.lower():
         label = host_id or target_email
         return OpsFixupLine(task, "ok", f"이미 {label} ({target_email})")
@@ -565,16 +586,14 @@ def apply_ops_production_fixup_june2026(*, dry_run: bool = True) -> list[OpsFixu
             dry_run=dry_run,
         )
     )
-    lines.append(fix_zoom_host_mismatches(dry_run=dry_run))
+    # Zoom 호스트 자동 재배정은 배포 시 실행하지 않음 — API 재생성으로 링크가 바뀔 수 있음.
+    # 필요 시 수동: python manage.py fix_zoom_host_mismatches (dry-run 후 --apply)
     lines.append(ensure_guhyunjeong_session1_time(dry_run=dry_run))
     lines.append(ensure_kim_sumi_zoom_host_01(dry_run=dry_run))
     lines.append(ensure_soonsunhee_zoom_host_02(dry_run=dry_run))
     lines.append(ensure_park_miyeong_zoom_host_02(dry_run=dry_run))
     lines.append(ensure_park_miyeong_session2_zoom_host_02(dry_run=dry_run))
     lines.append(ensure_jeong_hangyeol_session2_zoom_host_02(dry_run=dry_run))
-    lines.append(ensure_lee_hyunok_session3_zoom_host_01(dry_run=dry_run))
-    lines.append(ensure_kim_sumi_session2_zoom_host_02(dry_run=dry_run))
-    lines.append(ensure_guhyunjeong_session1_hakyss_zoom(dry_run=dry_run))
     return lines
 
 

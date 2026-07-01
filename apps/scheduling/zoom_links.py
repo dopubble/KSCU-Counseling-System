@@ -9,6 +9,19 @@ if TYPE_CHECKING:
     from apps.scheduling.models import Appointment
 
 
+def appointment_zoom_link_is_locked(appointment: "Appointment") -> bool:
+    """
+    확정 예약에 join_url·meeting_id가 저장되어 있으면 True.
+    자동 Zoom 재생성·URL 일괄 sync 대상에서 제외한다.
+    """
+    zoom = getattr(appointment, "zoom_meeting", None)
+    if zoom is None:
+        return False
+    join_url = (zoom.join_url or "").strip()
+    meeting_id = (zoom.zoom_meeting_id or "").strip()
+    return bool(join_url and meeting_id)
+
+
 def is_zoom_host_url(url: str) -> bool:
     """start_url(/s/)·zak 토큰 URL은 참가 링크로 쓰지 않음."""
     normalized = (url or "").strip().lower()

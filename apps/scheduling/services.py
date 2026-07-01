@@ -33,6 +33,7 @@ from .zoom_hosts import (
     resolve_zoom_host_email_for_appointment,
 )
 from .zoom_links import (
+    appointment_zoom_link_is_locked,
     capture_appointment_zoom_join_url,
     resolve_appointment_zoom_join_url,
     sync_case_zoom_meeting_url,
@@ -385,6 +386,7 @@ def fix_mismatched_zoom_host_assignments(
 ) -> tuple[int, int, list[str]]:
     """
     zoom_host_email이 호스트 배정 알고리즘(30분 버퍼 포함)과 다르면 재생성.
+    join_url·meeting_id가 이미 있는 확정 예약은 건드리지 않는다.
     반환: (fixed, skipped, errors)
     """
     if not is_zoom_configured():
@@ -411,6 +413,10 @@ def fix_mismatched_zoom_host_assignments(
     skipped = 0
 
     for appointment in appointments:
+        if appointment_zoom_link_is_locked(appointment):
+            skipped += 1
+            continue
+
         stored_host = _stored_host(appointment)
         if stored_host and stored_host not in licensed_set:
             skipped += 1
@@ -524,6 +530,9 @@ def recreate_all_zoom_meetings(
 
     if dry_run:
         for appointment in appointments:
+            if appointment_zoom_link_is_locked(appointment):
+                skipped += 1
+                continue
             host_email = host_emails.get(str(appointment.pk), "")
             label = f"{appointment.case.client.name} {appointment.scheduled_at:%Y-%m-%d %H:%M}"
             errors.append(f"[would recreate] {label} -> {host_email or '(default host)'}")
@@ -531,6 +540,9 @@ def recreate_all_zoom_meetings(
         return recreated, skipped, errors
 
     for appointment in appointments:
+        if appointment_zoom_link_is_locked(appointment):
+            skipped += 1
+            continue
         client_name = appointment.case.client.name
         label = f"{client_name} ({appointment.pk})"
         host_email = host_emails.get(str(appointment.pk), "")
@@ -824,6 +836,10 @@ def sync_existing_zoom_join_urls(
         case = appointment.case
         meeting_id = zoom_meeting.zoom_meeting_id
 
+        if appointment_zoom_link_is_locked(appointment):
+            skipped += 1
+            continue
+
         if dry_run:
             updated += 1
             cases_to_refresh[case.pk] = case
@@ -867,20 +883,33 @@ def sync_existing_zoom_join_urls(
             )
 
     if not dry_run:
+        now = timezone.now()
         for case in cases_to_refresh.values():
-            latest_appointment = (
+            next_appointment = (
                 Appointment.objects.filter(
                     case=case,
                     status=AppointmentStatus.CONFIRMED,
+                    scheduled_at__gte=now,
                     zoom_meeting__join_url__gt="",
                 )
                 .select_related("zoom_meeting")
-                .order_by("-confirmed_at", "-zoom_meeting__created_at")
+                .order_by("scheduled_at", "session_number")
                 .first()
             )
-            if latest_appointment is None:
+            if next_appointment is None:
+                next_appointment = (
+                    Appointment.objects.filter(
+                        case=case,
+                        status=AppointmentStatus.CONFIRMED,
+                        zoom_meeting__join_url__gt="",
+                    )
+                    .select_related("zoom_meeting")
+                    .order_by("-scheduled_at", "-confirmed_at")
+                    .first()
+                )
+            if next_appointment is None:
                 continue
-            sync_case_zoom_meeting_url(latest_appointment)
+            sync_case_zoom_meeting_url(next_appointment)
 
     return updated, skipped, failed, errors
 
