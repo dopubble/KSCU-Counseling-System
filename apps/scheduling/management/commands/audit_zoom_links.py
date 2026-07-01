@@ -36,7 +36,8 @@ class Command(BaseCommand):
     help = (
         "확정 비대면 예약별 Zoom 링크 출처를 비교합니다.\n"
         "  · dashboard_url = ZoomMeeting.join_url 우선 (내담자·상담사 대시보드)\n"
-        "  · case_url = Case.zoom_meeting_url (확정 이메일에 포함)\n"
+        "  · email_url = resolve_appointment_zoom_join_url (확정·변경 알림 메일과 동일)\n"
+        "  · case_url = Case.zoom_meeting_url (DB 저장값, join_url 없을 때만 메일 fallback)\n"
         "예) python manage.py audit_zoom_links --from-date 2026-07-01 --to-date 2026-08-07\n"
         "예) python manage.py audit_zoom_links --clients 정진아 --date 2026-07-01 --hour 20"
     )
@@ -123,11 +124,20 @@ class Command(BaseCommand):
             case_mid = _meeting_id_from_url(case_url)
             join_mid = _meeting_id_from_url(db_join)
 
+            email_url = dashboard_url
+            case_stored = case_url
+
             same_dashboard_case = (
-                not dashboard_url
-                or not case_url
+                not email_url
+                or not case_stored
                 or dash_mid == case_mid
-                or dashboard_url.rstrip("/") == case_url.rstrip("/")
+                or email_url.rstrip("/") == case_stored.rstrip("/")
+            )
+            case_only_mismatch = (
+                bool(email_url)
+                and bool(case_stored)
+                and email_url.rstrip("/") != case_stored.rstrip("/")
+                and dash_mid == join_mid
             )
             missing_zoom = not locked
 
@@ -149,19 +159,26 @@ class Command(BaseCommand):
             self.stdout.write(f"  zoom_host: {host_id} ({host_email or 'empty'})")
             self.stdout.write(f"  link_locked: {'yes' if locked else 'no'}")
             self.stdout.write(f"  zoom_meeting_id (DB): {db_meeting_id or '(empty)'}")
-            self.stdout.write(f"  dashboard_url (client+counselor): {dashboard_url or '(empty)'}")
-            self.stdout.write(f"  case_url (confirmation email): {case_url or '(empty)'}")
+            self.stdout.write(f"  email_url (확정·변경 메일): {email_url or '(empty)'}")
+            self.stdout.write(f"  case_url (DB fallback): {case_stored or '(empty)'}")
+            self.stdout.write(f"  db_join (ZoomMeeting): {db_join or '(empty)'}")
             self.stdout.write(
                 f"  meeting_id from URL: dashboard={dash_mid or '-'} "
                 f"case={case_mid or '-'} db_join={join_mid or '-'}"
             )
             if same_dashboard_case:
-                self.stdout.write(self.style.SUCCESS("  dashboard vs email URL: MATCH"))
+                self.stdout.write(self.style.SUCCESS("  email vs dashboard: MATCH"))
             else:
                 self.stdout.write(
                     self.style.ERROR(
-                        "  dashboard vs email URL: MISMATCH "
-                        "(내담자 이메일·대시보드 링크 불일치 가능)"
+                        "  email vs dashboard: MISMATCH "
+                        "(내담자·상담사 화면과 메일 링크 불일치)"
+                    )
+                )
+            if case_only_mismatch:
+                self.stdout.write(
+                    self.style.WARNING(
+                        "  case_url only stale — 메일·대시보드는 ZoomMeeting 기준 (실제 발송 영향 없음)"
                     )
                 )
             self.stdout.write("")
