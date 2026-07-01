@@ -35,10 +35,11 @@ def _meeting_id_from_url(url: str) -> str:
 class Command(BaseCommand):
     help = (
         "확정 비대면 예약별 Zoom 링크 출처를 비교합니다.\n"
-        "  · dashboard_url = ZoomMeeting.join_url 우선 (내담자·상담사 대시보드)\n"
-        "  · email_url = resolve_appointment_zoom_join_url (확정·변경 알림 메일과 동일)\n"
-        "  · case_url = Case.zoom_meeting_url (DB 저장값, join_url 없을 때만 메일 fallback)\n"
+        "  · active_url = resolve_appointment_zoom_join_url (내담자·상담사·메일 공통)\n"
+        "  · case_url = Case.zoom_meeting_url (join_url 없을 때만 fallback)\n"
+        "  · db_join = ZoomMeeting.join_url\n"
         "예) python manage.py audit_zoom_links --from-date 2026-07-01 --to-date 2026-08-07\n"
+        "예) python manage.py audit_zoom_links --case-stale-only\n"
         "예) python manage.py audit_zoom_links --clients 정진아 --date 2026-07-01 --hour 20"
     )
 
@@ -55,7 +56,12 @@ class Command(BaseCommand):
         parser.add_argument(
             "--mismatch-only",
             action="store_true",
-            help="dashboard vs email MISMATCH 건만 출력",
+            help="내담자·상담사·메일 링크가 서로 다른 건만 출력",
+        )
+        parser.add_argument(
+            "--case-stale-only",
+            action="store_true",
+            help="Case.zoom_meeting_url만 예약 join_url과 다른 건 (정리용)",
         )
         parser.add_argument(
             "--missing-only",
@@ -106,11 +112,12 @@ class Command(BaseCommand):
             return
 
         mismatch_rows = 0
+        case_stale_rows = 0
         missing_rows = 0
         for apt in appointments:
             case = apt.case
             zm = getattr(apt, "zoom_meeting", None)
-            dashboard_url = resolve_appointment_zoom_join_url(apt, case)
+            active_url = resolve_appointment_zoom_join_url(apt, case)
             case_url = (case.zoom_meeting_url or "").strip()
             db_join = (zm.join_url if zm else "") or ""
             db_meeting_id = (zm.zoom_meeting_id if zm else "") or ""
@@ -120,35 +127,35 @@ class Command(BaseCommand):
             )
             locked = appointment_zoom_link_is_locked(apt)
 
-            dash_mid = _meeting_id_from_url(dashboard_url)
+            active_mid = _meeting_id_from_url(active_url)
             case_mid = _meeting_id_from_url(case_url)
             join_mid = _meeting_id_from_url(db_join)
 
-            email_url = dashboard_url
-            case_stored = case_url
-
-            same_dashboard_case = (
-                not email_url
-                or not case_stored
-                or dash_mid == case_mid
-                or email_url.rstrip("/") == case_stored.rstrip("/")
+            # 내담자·상담사·메일은 모두 resolve_appointment_zoom_join_url → active_url
+            email_dashboard_match = (
+                not active_url
+                or not db_join
+                or active_url.rstrip("/") == db_join.rstrip("/")
             )
-            case_only_mismatch = (
-                bool(email_url)
-                and bool(case_stored)
-                and email_url.rstrip("/") != case_stored.rstrip("/")
-                and dash_mid == join_mid
+            case_stale = (
+                bool(active_url)
+                and bool(case_url)
+                and active_url.rstrip("/") != case_url.rstrip("/")
             )
             missing_zoom = not locked
 
-            if missing_zoom and not options.get("mismatch_only"):
-                missing_rows += 1
-            if not same_dashboard_case:
+            if not email_dashboard_match:
                 mismatch_rows += 1
+            if case_stale:
+                case_stale_rows += 1
+            if missing_zoom:
+                missing_rows += 1
 
             if options.get("missing_only") and not missing_zoom:
                 continue
-            if options.get("mismatch_only") and same_dashboard_case:
+            if options.get("mismatch_only") and email_dashboard_match:
+                continue
+            if options.get("case_stale_only") and not case_stale:
                 continue
 
             self.stdout.write(
@@ -159,37 +166,46 @@ class Command(BaseCommand):
             self.stdout.write(f"  zoom_host: {host_id} ({host_email or 'empty'})")
             self.stdout.write(f"  link_locked: {'yes' if locked else 'no'}")
             self.stdout.write(f"  zoom_meeting_id (DB): {db_meeting_id or '(empty)'}")
-            self.stdout.write(f"  email_url (확정·변경 메일): {email_url or '(empty)'}")
-            self.stdout.write(f"  case_url (DB fallback): {case_stored or '(empty)'}")
+            self.stdout.write(
+                f"  active_url (내담자·상담사·메일): {active_url or '(empty)'}"
+            )
+            self.stdout.write(f"  case_url (Case DB): {case_url or '(empty)'}")
             self.stdout.write(f"  db_join (ZoomMeeting): {db_join or '(empty)'}")
             self.stdout.write(
-                f"  meeting_id from URL: dashboard={dash_mid or '-'} "
-                f"case={case_mid or '-'} db_join={join_mid or '-'}"
+                f"  meeting_id: active={active_mid or '-'} case={case_mid or '-'} "
+                f"db_join={join_mid or '-'}"
             )
-            if same_dashboard_case:
-                self.stdout.write(self.style.SUCCESS("  email vs dashboard: MATCH"))
+            if email_dashboard_match:
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        "  내담자·상담사·메일: MATCH (동일 active_url)"
+                    )
+                )
             else:
                 self.stdout.write(
                     self.style.ERROR(
-                        "  email vs dashboard: MISMATCH "
-                        "(내담자·상담사 화면과 메일 링크 불일치)"
+                        "  내담자·상담사·메일: MISMATCH — 조사 필요"
                     )
                 )
-            if case_only_mismatch:
+            if case_stale:
                 self.stdout.write(
                     self.style.WARNING(
-                        "  case_url only stale — 메일·대시보드는 ZoomMeeting 기준 (실제 발송 영향 없음)"
+                        "  Case URL만 이전 회기/옛 링크 — active_url과 다름 (정리 권장)"
                     )
                 )
+            elif case_url:
+                self.stdout.write(self.style.SUCCESS("  Case URL: MATCH"))
             self.stdout.write("")
 
         self.stdout.write(
             f"Checked {len(appointments)} appointment(s), "
-            f"URL mismatches: {mismatch_rows}, missing zoom: {missing_rows}"
+            f"real mismatches: {mismatch_rows}, case_url stale: {case_stale_rows}, "
+            f"missing zoom: {missing_rows}"
         )
-        if mismatch_rows:
+        if case_stale_rows:
             self.stdout.write(
                 self.style.WARNING(
-                    "MISMATCH 수정(링크 유지): python manage.py sync_locked_case_zoom_urls --apply ..."
+                    "Case URL 정리(링크 변경 없음): "
+                    "python manage.py sync_locked_case_zoom_urls --apply"
                 )
             )
