@@ -1,0 +1,40 @@
+<div class="modal fade" id="presentationBoardPostModal" tabindex="-1" aria-labelledby="presentationBoardPostModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <form method="post"
+                  action="{% url 'counselor:presentation_board_post_create' %}"
+                  enctype="multipart/form-data">
+                {% csrf_token %}
+                <input type="hidden" name="cohort" value="{{ cohort }}">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="presentationBoardPostModalLabel">수퍼비전보고서 등록</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">
+                        양식으로 작성한 파일을 첨부해 주세요. 비밀번호는 수퍼비전 날짜(예: <strong>260706</strong>) 설정을 권장합니다.
+                    </p>
+                    <div class="mb-3">
+                        <label for="presentationPostTitle" class="form-label fw-semibold">제목</label>
+                        {{ post_form.title }}
+                    </div>
+                    <div class="mb-3">
+                        <label for="presentationPostContent" class="form-label fw-semibold">내용 <span class="text-muted fw-normal">(선택)</span></label>
+                        {{ post_form.content }}
+                    </div>
+                    <div class="mb-0">
+                        <label for="presentationPostFile" class="form-label fw-semibold">첨부 파일</label>
+                        {{ post_form.file }}
+                        <p class="form-text small text-muted mb-0 mt-2">PDF, HWP, HWPX, Word · 최대 10MB</p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-counselor">
+                        <i class="bi bi-check-lg me-1" aria-hidden="true"></i>등록
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

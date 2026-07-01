@@ -4,7 +4,7 @@
        href="{% url 'counselor:dashboard' %}#counselor-active-cases">내 사례</a>
 </li>
 <li class="nav-item">
-    <a class="nav-link {% if ns == 'counselor' and url_name == 'presentation_board' %}active{% endif %}"
+    <a class="nav-link {% if ns == 'counselor' and url_name == 'presentation_board' or ns == 'counselor' and url_name == 'presentation_board_detail' %}active{% endif %}"
        href="{% url 'counselor:presentation_board' %}">사례발표 게시판</a>
 </li>
 <li class="nav-item">

@@ -13,177 +13,116 @@
 {% block content %}
     {% page_header title="사례발표 게시판" subtitle="{{ cohort }}기 동기 수퍼비전 · 사례발표 자료 공유" heading_tag="h1" title_class="h3 fw-semibold site-page-title mb-0" header_class="site-page-header mb-4" c1_label="대시보드" c1_url_name="counselor:dashboard" c1_icon="bi-briefcase" c2_label="사례발표 게시판" %}
 
-    <div class="alert alert-info border-0 shadow-sm mb-4" role="note">
-        <h2 class="h6 fw-semibold mb-2"><i class="bi bi-info-circle me-1"></i>안내</h2>
-        <ul class="small mb-0 ps-3">
-            <li><strong>7월 6일</strong> 사례발표 — 발표하시는 분은 <strong>수퍼비전(사례발표)보고서</strong>를 게시글로 올려 주세요.</li>
-            <li>비밀보장을 위해 한글 파일에 <strong>수퍼비전 날짜 비밀번호(예: 260706)</strong>를 설정해 올려 주시면 좋습니다. (첫 회차는 설정이 어려우시면 다음부터 적용하셔도 됩니다.)</li>
-            <li>발표자를 제외한 동기는 보고서를 <strong>다운로드·열람</strong>한 뒤, <strong>사례개념화보고서</strong>를 해당 게시글 <strong>댓글</strong>로 올려 주세요. (수퍼비전 전날까지)</li>
-        </ul>
-    </div>
-
-    <div class="card border-0 shadow-sm mb-4">
-        <div class="card-body">
-            <h2 class="h6 fw-semibold mb-3">양식 다운로드</h2>
-            <div class="d-flex flex-wrap gap-2">
-                <a href="{% url 'counselor:presentation_board_form_download' 'supervision_report' %}"
-                   class="btn btn-sm btn-outline-primary">
-                    <i class="bi bi-download me-1"></i>{{ form_templates.supervision_report.label }}
-                </a>
-                <a href="{% url 'counselor:presentation_board_form_download' 'conceptualization' %}"
-                   class="btn btn-sm btn-outline-primary">
-                    <i class="bi bi-download me-1"></i>{{ form_templates.conceptualization.label }}
-                </a>
+    <div class="card border-0 shadow-sm mb-3 presentation-board-toolbar">
+        <div class="card-body py-3">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <button class="btn btn-sm btn-outline-secondary"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#presentationBoardGuide"
+                        aria-expanded="false"
+                        aria-controls="presentationBoardGuide">
+                    <i class="bi bi-info-circle me-1"></i>이용 안내
+                </button>
+                <div class="d-flex flex-wrap gap-2">
+                    <a href="{% url 'counselor:presentation_board_form_download' 'supervision_report' %}"
+                       class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-download me-1"></i>수퍼비전 양식
+                    </a>
+                    <a href="{% url 'counselor:presentation_board_form_download' 'conceptualization' %}"
+                       class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-download me-1"></i>개념화 양식
+                    </a>
+                </div>
+            </div>
+            <p class="small text-muted mb-0 mt-2">
+                7/6 사례발표 · 발표자는 보고서 등록 · 동기는 열람 후 개념화 댓글 제출 (전날까지)
+            </p>
+            <div class="collapse mt-3" id="presentationBoardGuide">
+                <div class="alert alert-info border-0 mb-0 py-3" role="note">
+                    <ul class="small mb-0 ps-3">
+                        <li><strong>7월 6일</strong> 사례발표 — 발표하시는 분은 <strong>수퍼비전(사례발표)보고서</strong>를 등록해 주세요.</li>
+                        <li>비밀보장을 위해 한글 파일에 <strong>수퍼비전 날짜 비밀번호(예: 260706)</strong>를 설정해 올려 주시면 좋습니다. (첫 회차는 생략 가능)</li>
+                        <li>발표자를 제외한 동기는 보고서를 <strong>다운로드·열람</strong>한 뒤, <strong>사례개념화보고서</strong>를 해당 글 상세에서 <strong>댓글</strong>로 올려 주세요. (수퍼비전 전날까지)</li>
+                    </ul>
+                </div>
             </div>
         </div>
     </div>
 
-    {% if can_create_post %}
-    <div class="card border-0 shadow-sm mb-4">
-        <div class="card-header bg-white py-3">
-            <h2 class="h6 fw-semibold mb-0">
-                <i class="bi bi-megaphone me-2 text-counselor"></i>수퍼비전보고서 올리기
-            </h2>
-        </div>
-        <div class="card-body">
-            <form method="post"
-                  action="{% url 'counselor:presentation_board_post_create' %}"
-                  enctype="multipart/form-data">
-                {% csrf_token %}
-                <input type="hidden" name="cohort" value="{{ cohort }}">
-                <div class="mb-3">
-                    <label class="form-label fw-semibold" for="id_title">제목</label>
-                    {{ post_form.title }}
-                </div>
-                <div class="mb-3">
-                    <label class="form-label fw-semibold" for="id_content">내용 <span class="text-muted fw-normal">(선택)</span></label>
-                    {{ post_form.content }}
-                </div>
-                <div class="mb-3">
-                    <label class="form-label fw-semibold" for="id_file">첨부 파일</label>
-                    {{ post_form.file }}
-                    <p class="form-text small mb-0">PDF, HWP, HWPX, Word · 최대 10MB</p>
-                </div>
-                <button type="submit" class="btn btn-primary">게시글 등록</button>
-            </form>
-        </div>
-    </div>
-    {% endif %}
-
-    <div class="card border-0 shadow-sm">
-        <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+    <div class="card border-0 shadow-sm counselor-table-card">
+        <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2 py-3">
             <h2 class="h6 fw-semibold mb-0">
                 <i class="bi bi-collection me-2 text-counselor"></i>{{ cohort }}기 게시글
+                <span class="badge text-bg-light ms-1">{{ posts|length }}건</span>
             </h2>
-            <span class="badge text-bg-light">{{ posts|length }}건</span>
+            {% if can_create_post %}
+            <button type="button"
+                    class="btn btn-sm btn-primary"
+                    data-bs-toggle="modal"
+                    data-bs-target="#presentationBoardPostModal">
+                <i class="bi bi-plus-lg me-1"></i>보고서 등록하기
+            </button>
+            {% endif %}
         </div>
         <div class="card-body p-0">
             {% if posts %}
-            <div class="accordion accordion-flush" id="presentationBoardAccordion">
-                {% for post in posts %}
-                <div class="accordion-item">
-                    <h2 class="accordion-header" id="presentationHeading{{ post.pk }}">
-                        <button class="accordion-button collapsed" type="button"
-                                data-bs-toggle="collapse"
-                                data-bs-target="#presentationCollapse{{ post.pk }}"
-                                aria-expanded="false">
-                            <span class="me-2 text-truncate">{{ post.title }}</span>
-                            <span class="badge text-bg-secondary ms-auto me-2 flex-shrink-0">{{ post.author.name }}</span>
-                        </button>
-                    </h2>
-                    <div id="presentationCollapse{{ post.pk }}"
-                         class="accordion-collapse collapse"
-                         data-bs-parent="#presentationBoardAccordion">
-                        <div class="accordion-body">
-                            <div class="small text-muted mb-3">
-                                {{ post.created_at|date:"Y-m-d H:i" }} · {{ post.author.name }}
-                            </div>
-                            {% if post.content %}
-                            <div class="mb-3 client-pre-wrap">{{ post.content|linebreaksbr }}</div>
-                            {% endif %}
-                            <a href="{% url 'counselor:presentation_board_post_file' post.pk %}"
-                               class="btn btn-sm btn-outline-primary mb-3">
-                                <i class="bi bi-download me-1"></i>{{ post.filename }}
-                            </a>
-
-                            {% if post.author_id == user.pk %}
-                            <p class="small text-muted mb-3">발표자 본인 게시글입니다. 사례개념화보고서는 동기 상담사가 댓글로 올립니다.</p>
-                            {% endif %}
-
-                            <div class="border-top pt-3 mb-3">
-                                <h3 class="h6 fw-semibold mb-3">사례개념화보고서 댓글 ({{ post.comments.all|length }}건)</h3>
-                                {% for comment in post.comments.all %}
-                                <div class="border rounded p-3 mb-2 bg-light">
-                                    <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
-                                        <span class="fw-semibold small">{{ comment.author.name }}</span>
-                                        <span class="text-muted small">{{ comment.created_at|date:"Y-m-d H:i" }}</span>
-                                    </div>
-                                    {% if comment.content %}
-                                    <p class="small mb-2 client-pre-wrap">{{ comment.content|linebreaksbr }}</p>
-                                    {% endif %}
-                                    <div class="d-flex flex-wrap align-items-center gap-2">
-                                        <a href="{% url 'counselor:presentation_board_comment_file' comment.pk %}"
-                                           class="btn btn-sm btn-outline-secondary">
-                                            <i class="bi bi-download me-1"></i>{{ comment.filename }}
-                                        </a>
-                                        {% if comment.author_id == user.pk or is_staff_viewer %}
-                                        <form method="post"
-                                              action="{% url 'counselor:presentation_board_comment_delete' comment.pk %}"
-                                              class="mb-0"
-                                              onsubmit="return confirm('댓글을 삭제하시겠습니까?');">
-                                            {% csrf_token %}
-                                            <button type="submit" class="btn btn-sm btn-outline-danger">삭제</button>
-                                        </form>
-                                        {% endif %}
-                                    </div>
-                                </div>
-                                {% empty %}
-                                <p class="text-muted small mb-0">아직 댓글이 없습니다.</p>
-                                {% endfor %}
-                            </div>
-
-                            {% if post.author_id != user.pk or is_staff_viewer %}
-                            <div class="border-top pt-3 mb-3">
-                                <h3 class="h6 fw-semibold mb-2">사례개념화보고서 올리기</h3>
-                                <form method="post"
-                                      action="{% url 'counselor:presentation_board_comment_create' post.pk %}"
-                                      enctype="multipart/form-data">
-                                    {% csrf_token %}
-                                    <input type="hidden" name="cohort" value="{{ cohort }}">
-                                    <div class="mb-2">
-                                        <textarea name="content" class="form-control" rows="2" placeholder="간단한 메모 (선택)"></textarea>
-                                    </div>
-                                    <div class="mb-2">
-                                        <input type="file" name="file" class="form-control" accept=".pdf,.hwp,.hwpx,.doc,.docx" required>
-                                    </div>
-                                    <button type="submit" class="btn btn-sm btn-counselor">댓글 등록</button>
-                                </form>
-                            </div>
-                            {% endif %}
-
-                            {% if post.author_id == user.pk or is_staff_viewer %}
-                            <div class="mt-3 pt-3 border-top">
-                                <form method="post"
-                                      action="{% url 'counselor:presentation_board_post_delete' post.pk %}"
-                                      onsubmit="return confirm('게시글과 댓글을 모두 삭제하시겠습니까?');">
-                                    {% csrf_token %}
-                                    <button type="submit" class="btn btn-sm btn-outline-danger">게시글 삭제</button>
-                                </form>
-                            </div>
-                            {% endif %}
-                        </div>
-                    </div>
-                </div>
-                {% endfor %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0 counselor-table presentation-board-table">
+                    <thead>
+                        <tr>
+                            <th class="text-muted small" style="width: 3rem;">No</th>
+                            <th>제목</th>
+                            <th style="width: 7rem;">작성자</th>
+                            <th style="width: 7rem;">등록일</th>
+                            <th class="text-center" style="width: 4rem;">댓글</th>
+                            <th class="text-end" style="width: 5rem;"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for post in posts %}
+                        <tr class="presentation-board-row"
+                            onclick="window.location='{% url 'counselor:presentation_board_detail' post.pk %}'">
+                            <td class="text-muted small">{{ forloop.counter }}</td>
+                            <td class="fw-semibold text-counselor presentation-board-title">{{ post.title }}</td>
+                            <td class="small">{{ post.author.name }}</td>
+                            <td class="small text-muted">{{ post.created_at|date:"Y-m-d" }}</td>
+                            <td class="text-center">
+                                <span class="badge text-bg-light">{{ post.comment_count }}</span>
+                            </td>
+                            <td class="text-end">
+                                <a href="{% url 'counselor:presentation_board_detail' post.pk %}"
+                                   class="btn btn-sm btn-outline-primary"
+                                   onclick="event.stopPropagation();">
+                                    보기
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
             {% else %}
             <div class="text-center py-5 px-3">
-                <p class="text-muted mb-0">등록된 사례발표 보고서가 없습니다.</p>
-                <p class="small text-muted mt-1">발표자분께서 위 양식으로 작성 후 게시글을 올려 주세요.</p>
+                <p class="text-muted mb-2">등록된 사례발표 보고서가 없습니다.</p>
+                {% if can_create_post %}
+                <button type="button"
+                        class="btn btn-sm btn-primary"
+                        data-bs-toggle="modal"
+                        data-bs-target="#presentationBoardPostModal">
+                    <i class="bi bi-plus-lg me-1"></i>첫 보고서 등록하기
+                </button>
+                {% else %}
+                <p class="small text-muted mb-0">발표자분께서 양식을 작성해 등록해 주세요.</p>
+                {% endif %}
             </div>
             {% endif %}
         </div>
     </div>
+
+    {% if can_create_post %}
+    {% include "counselor/partials/presentation_board_post_modal.html" %}
+    {% endif %}
 {% endblock %}
     </div>
 </div>

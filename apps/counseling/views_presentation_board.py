@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
+from django.db.models import Count
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_POST
@@ -59,7 +60,17 @@ def _presentation_posts_for_cohort(cohort: int):
     return (
         CasePresentationPost.objects.filter(cohort=cohort)
         .select_related("author")
-        .prefetch_related("comments__author")
+        .annotate(comment_count=Count("comments"))
+        .order_by("-created_at")
+    )
+
+
+def _get_presentation_post_or_404(post_pk):
+    return get_object_or_404(
+        CasePresentationPost.objects.select_related("author").annotate(
+            comment_count=Count("comments")
+        ),
+        pk=post_pk,
     )
 
 
@@ -85,6 +96,32 @@ def presentation_board(request):
 
 
 @counselor_required
+@require_GET
+def presentation_board_detail(request, post_pk):
+    post = _get_presentation_post_or_404(post_pk)
+    require_presentation_board_access(request.user, post.cohort)
+    comments = list(
+        post.comments.select_related("author").order_by("created_at")
+    )
+    can_comment = user_can_comment_on_presentation_post(request.user, post)
+    return render(
+        request,
+        "counselor/presentation_board_detail.html",
+        {
+            "cohort": post.cohort,
+            "post": post,
+            "comments": comments,
+            "comment_form": PresentationBoardCommentForm(),
+            "can_comment": can_comment,
+            "can_delete_post": user_can_delete_presentation_post(request.user, post),
+            "is_staff_viewer": user_is_platform_staff(request.user),
+            "is_author": post.author_id == request.user.pk,
+            "page_subtitle": f"{post.cohort}기 · {post.author.name}",
+        },
+    )
+
+
+@counselor_required
 @require_POST
 def presentation_board_post_create(request):
     cohort = _board_cohort_or_403(request)
@@ -99,7 +136,7 @@ def presentation_board_post_create(request):
                 break
         return redirect("counselor:presentation_board")
 
-    CasePresentationPost.objects.create(
+    post = CasePresentationPost.objects.create(
         cohort=cohort,
         author=request.user,
         title=form.cleaned_data["title"].strip(),
@@ -107,7 +144,7 @@ def presentation_board_post_create(request):
         file=form.cleaned_data["file"],
     )
     messages.success(request, "사례발표 보고서가 등록되었습니다.")
-    return redirect("counselor:presentation_board")
+    return redirect("counselor:presentation_board_detail", post_pk=post.pk)
 
 
 @counselor_required
@@ -141,7 +178,7 @@ def presentation_board_comment_create(request, post_pk):
             if errors:
                 messages.error(request, errors[0])
                 break
-        return redirect("counselor:presentation_board")
+        return redirect("counselor:presentation_board_detail", post_pk=post.pk)
 
     CasePresentationComment.objects.create(
         post=post,
@@ -150,7 +187,7 @@ def presentation_board_comment_create(request, post_pk):
         file=form.cleaned_data["file"],
     )
     messages.success(request, "사례개념화보고서 댓글이 등록되었습니다.")
-    return redirect("counselor:presentation_board")
+    return redirect("counselor:presentation_board_detail", post_pk=post.pk)
 
 
 @counselor_required
@@ -167,7 +204,7 @@ def presentation_board_comment_delete(request, comment_pk):
         comment.file.delete(save=False)
     comment.delete()
     messages.success(request, "댓글이 삭제되었습니다.")
-    return redirect("counselor:presentation_board")
+    return redirect("counselor:presentation_board_detail", post_pk=comment.post_id)
 
 
 @counselor_required

@@ -80,6 +80,10 @@ class PresentationBoardTests(TestCase):
         )
         self.assertEqual(response.status_code, 302)
         post = CasePresentationPost.objects.get()
+        self.assertRedirects(
+            response,
+            reverse("counselor:presentation_board_detail", args=[post.pk]),
+        )
         self.assertEqual(post.cohort, 1)
         self.assertEqual(post.author_id, self.counselor_a.pk)
 
@@ -94,7 +98,56 @@ class PresentationBoardTests(TestCase):
             {"cohort": "1", "content": "개념화 제출", "file": comment_file},
         )
         self.assertEqual(response.status_code, 302)
+        self.assertRedirects(
+            response,
+            reverse("counselor:presentation_board_detail", args=[post.pk]),
+        )
         self.assertEqual(CasePresentationComment.objects.filter(post=post).count(), 1)
+
+    def test_detail_page_peer_sees_comment_form(self):
+        post = CasePresentationPost.objects.create(
+            cohort=1,
+            author=self.counselor_a,
+            title="[사례발표] 발표자",
+            file=self.sample_file,
+        )
+        client = Client()
+        client.force_login(self.counselor_b)
+        response = client.get(
+            reverse("counselor:presentation_board_detail", args=[post.pk])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, post.title)
+        self.assertContains(response, "사례개념화보고서 올리기")
+
+    def test_detail_page_author_cannot_comment(self):
+        post = CasePresentationPost.objects.create(
+            cohort=1,
+            author=self.counselor_a,
+            title="[사례발표] 발표자",
+            file=self.sample_file,
+        )
+        client = Client()
+        client.force_login(self.counselor_a)
+        response = client.get(
+            reverse("counselor:presentation_board_detail", args=[post.pk])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "사례개념화보고서 올리기")
+
+    def test_list_shows_table_not_accordion(self):
+        CasePresentationPost.objects.create(
+            cohort=1,
+            author=self.counselor_a,
+            title="[사례발표] 발표자",
+            file=self.sample_file,
+        )
+        client = Client()
+        client.force_login(self.counselor_b)
+        response = client.get(reverse("counselor:presentation_board"))
+        self.assertContains(response, "presentation-board-table")
+        self.assertContains(response, "보기")
+        self.assertNotContains(response, "accordion")
 
     def test_presenter_cannot_comment_on_own_post(self):
         post = CasePresentationPost.objects.create(

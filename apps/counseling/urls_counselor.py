@@ -15,6 +15,11 @@ urlpatterns = [
         name="presentation_board",
     ),
     path(
+        "presentation-board/<uuid:post_pk>/",
+        views_presentation_board.presentation_board_detail,
+        name="presentation_board_detail",
+    ),
+    path(
         "presentation-board/post/create/",
         views_presentation_board.presentation_board_post_create,
         name="presentation_board_post_create",

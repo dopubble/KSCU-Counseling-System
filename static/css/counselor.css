@@ -102,6 +102,26 @@
     background-color: var(--counselor-primary-soft);
 }
 
+.presentation-board-row {
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.presentation-board-row:hover {
+    background-color: var(--counselor-primary-soft);
+}
+
+.presentation-board-title {
+    max-width: 28rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.presentation-board-toolbar .btn-outline-primary {
+    white-space: nowrap;
+}
+
 .badge-counselor-active {
     background-color: #d1e7dd;
     color: #0f5132;
