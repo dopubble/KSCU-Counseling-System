@@ -135,9 +135,15 @@ class UserAdmin(BaseUserAdmin):
     def get_inlines(self, request, obj=None):
         if obj is None:
             return ()
-        if obj.role == UserRole.COUNSELOR:
+        role = obj.role
+        if request.method == "POST":
+            # 저장 시 폼에서 바꾼 역할 기준 — 상담사→수퍼바이저 전환 시 구 프로필 인라인 검증 오류 방지
+            posted_role = (request.POST.get("role") or "").strip()
+            if posted_role:
+                role = posted_role
+        if role == UserRole.COUNSELOR:
             return (CounselorProfileInline,)
-        if obj.role == UserRole.SUPERVISOR:
+        if role == UserRole.SUPERVISOR:
             return (SupervisorProfileInline,)
         return ()
 

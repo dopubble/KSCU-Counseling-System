@@ -18,7 +18,16 @@ def sync_user_role_profiles(user) -> None:
         return
 
     if user.role == UserRole.SUPERVISOR:
-        SupervisorProfile.objects.get_or_create(user=user)
+        counselor = CounselorProfile.objects.filter(user=user).first()
+        migrated_cohorts: list[int] = []
+        if counselor and counselor.cohort:
+            migrated_cohorts = [int(counselor.cohort)]
+
+        sp, _ = SupervisorProfile.objects.get_or_create(user=user)
+        if migrated_cohorts and not (sp.assigned_cohorts or []):
+            sp.assigned_cohorts = migrated_cohorts
+            sp.save(update_fields=["assigned_cohorts", "updated_at"])
+
         CounselorProfile.objects.filter(user=user).delete()
         return
 
