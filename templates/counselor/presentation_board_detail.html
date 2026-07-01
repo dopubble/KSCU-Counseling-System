@@ -7,6 +7,10 @@
 <link href="{% static 'css/counselor.css' %}" rel="stylesheet">
 {% endblock %}
 
+{% block extra_js %}
+<script src="{% static 'js/presentation_board_comments.js' %}"></script>
+{% endblock %}
+
 {% block layout %}
 <div class="site-page counselor-page py-4 py-lg-5">
     <div class="container site-container">
@@ -52,47 +56,38 @@
 
     <div class="card border-0 shadow-sm mb-4">
         <div class="card-header bg-white py-3">
-            <h2 class="h6 fw-semibold mb-0">
-                <i class="bi bi-chat-left-text me-2 text-counselor"></i>사례개념화보고서
-                <span class="badge text-bg-light ms-1">{{ comments|length }}건</span>
-            </h2>
+            <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
+                <div>
+                    <h2 class="h6 fw-semibold mb-2">
+                        <i class="bi bi-chat-left-text me-2 text-counselor"></i>사례개념화보고서
+                        <span class="badge text-bg-light ms-1">{{ comment_count }}건</span>
+                    </h2>
+                    <p class="small text-muted mb-0">
+                        동기 제출 현황
+                        <span class="fw-semibold text-counselor">{{ comment_count }}</span>
+                        / {{ comment_peer_total }}명
+                        {% if comment_peer_total %}
+                        <span class="text-muted">({{ comment_participation_pct }}%)</span>
+                        {% endif %}
+                    </p>
+                </div>
+                {% if comment_peer_total %}
+                <div class="presentation-comment-progress flex-grow-1" style="min-width: 10rem; max-width: 14rem;">
+                    <div class="progress presentation-comment-progress-bar" role="progressbar"
+                         aria-valuenow="{{ comment_participation_pct }}"
+                         aria-valuemin="0"
+                         aria-valuemax="100"
+                         aria-label="사례개념화 제출률">
+                        <div class="progress-bar presentation-comment-progress-fill"
+                             style="width: {{ comment_participation_pct }}%"></div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
         </div>
         <div class="card-body p-0">
             {% if comments %}
-            <div class="presentation-board-comment-list">
-                {% for comment in comments %}
-                <article class="presentation-board-comment px-3 px-md-4 py-3{% if not forloop.last %} border-bottom{% endif %}">
-                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-                        <span class="fw-semibold small">{{ comment.author.name }}</span>
-                        <span class="small text-muted">{{ comment.created_at|date:"Y-m-d H:i" }}</span>
-                    </div>
-                    {% if comment.content %}
-                    <div class="client-pre-wrap small mb-0">{{ comment.content|linebreaksbr }}</div>
-                    {% else %}
-                    <p class="small text-muted mb-0">—</p>
-                    {% endif %}
-                    {% if comment.file or comment.author_id == user.pk or is_staff_viewer %}
-                    <div class="d-flex flex-wrap gap-2 mt-3">
-                        {% if comment.file %}
-                        <a href="{% url 'counselor:presentation_board_comment_file' comment.pk %}"
-                           class="btn btn-sm btn-outline-secondary">
-                            <i class="bi bi-download me-1"></i>{{ comment.filename }}
-                        </a>
-                        {% endif %}
-                        {% if comment.author_id == user.pk or is_staff_viewer %}
-                        <form method="post"
-                              action="{% url 'counselor:presentation_board_comment_delete' comment.pk %}"
-                              class="mb-0"
-                              onsubmit="return confirm('댓글을 삭제하시겠습니까?');">
-                            {% csrf_token %}
-                            <button type="submit" class="btn btn-sm btn-outline-danger">삭제</button>
-                        </form>
-                        {% endif %}
-                    </div>
-                    {% endif %}
-                </article>
-                {% endfor %}
-            </div>
+            {% include "counselor/partials/presentation_board_comment_list.html" %}
             {% else %}
             <div class="text-center py-4 px-3">
                 <p class="text-muted small mb-0">아직 사례개념화보고서가 없습니다.</p>

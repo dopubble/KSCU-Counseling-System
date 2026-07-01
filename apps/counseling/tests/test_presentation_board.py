@@ -4,7 +4,10 @@ from django.urls import reverse
 
 from apps.accounts.models import CounselorProfile, User, UserRole, UserStatus
 from apps.counseling.models import CasePresentationComment, CasePresentationPost
-from apps.counseling.presentation_board import PRESENTATION_BOARD_COMMENT_CONTENT_TEMPLATE
+from apps.counseling.presentation_board import (
+    PRESENTATION_BOARD_COMMENT_CONTENT_TEMPLATE,
+    format_presentation_comment_content,
+)
 
 
 class PresentationBoardTests(TestCase):
@@ -167,6 +170,39 @@ class PresentationBoardTests(TestCase):
         self.assertContains(response, "10. 예후 및 장애물")
         self.assertContains(response, long_tail)
         self.assertNotContains(response, "…")
+
+    def test_detail_comment_accordion_and_participation(self):
+        post = CasePresentationPost.objects.create(
+            cohort=1,
+            author=self.counselor_a,
+            title="[사례발표] 발표자",
+            file=self.sample_file,
+        )
+        CasePresentationComment.objects.create(
+            post=post,
+            author=self.counselor_b,
+            content="호소문제\n내용",
+        )
+        client = Client()
+        client.force_login(self.counselor_a)
+        response = client.get(
+            reverse("counselor:presentation_board_detail", args=[post.pk])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "내용 보기")
+        self.assertContains(response, "presentation-comment-collapse")
+        self.assertContains(response, "동기 제출 현황")
+        self.assertContains(response, "/ 1명")
+        self.assertContains(response, "presentation-comment-section-label")
+
+    def test_format_presentation_comment_highlights_sections(self):
+        rendered = str(
+            format_presentation_comment_content("호소문제\n\n2. 촉발요인\n일반 내용")
+        )
+        self.assertIn("presentation-comment-section-label", rendered)
+        self.assertIn("호소문제", rendered)
+        self.assertIn("2. 촉발요인", rendered)
+        self.assertIn("일반 내용", rendered)
 
     def test_detail_page_author_cannot_comment(self):
         post = CasePresentationPost.objects.create(

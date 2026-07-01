@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import html
+import re
 from pathlib import Path
 
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
+from django.utils.safestring import mark_safe
 
-from apps.accounts.models import User, UserRole
+from apps.accounts.models import CounselorProfile, User, UserRole, UserStatus
 from apps.counseling.cohort_journal_service import get_counselor_cohort
 from apps.counseling.models import CasePresentationComment, CasePresentationPost
 
@@ -57,6 +60,55 @@ PRESENTATION_BOARD_COMMENT_CONTENT_TEMPLATE = """사례개념화 연습
 9. 상담개입
      
 10. 예후 및 장애물"""
+
+
+_PRESENTATION_COMMENT_SECTION_RE = re.compile(
+    r"^(\s*)("
+    r"사례개념화 연습|"
+    r"호소문제|"
+    r"감정|"
+    r"행동|"
+    r"관계|"
+    r"사고(?:\s+자동적 사고)?|"
+    r"자동적 사고|"
+    r"중간신념|"
+    r"핵심신념|"
+    r"\d+\.\s*.+"
+    r")(\s*)$"
+)
+
+
+def count_presentation_comment_peers(cohort: int, *, exclude_author_id) -> int:
+    """사례개념화 댓글 대상 동기 수(발표자 제외)."""
+    return (
+        CounselorProfile.objects.filter(
+            cohort=cohort,
+            is_approved=True,
+            user__role=UserRole.COUNSELOR,
+            user__status=UserStatus.ACTIVE,
+        )
+        .exclude(user_id=exclude_author_id)
+        .count()
+    )
+
+
+def format_presentation_comment_content(text: str):
+    """사례개념화 댓글 본문 — 항목 라벨 강조, 줄바꿈 유지."""
+    if not text:
+        return ""
+    rendered_lines: list[str] = []
+    for line in text.splitlines():
+        match = _PRESENTATION_COMMENT_SECTION_RE.match(line)
+        if match:
+            indent, label, tail = match.groups()
+            rendered_lines.append(
+                f'{html.escape(indent)}'
+                f'<span class="presentation-comment-section-label">{html.escape(label)}</span>'
+                f"{html.escape(tail)}"
+            )
+        else:
+            rendered_lines.append(html.escape(line))
+    return mark_safe("<br>".join(rendered_lines))
 
 
 def user_is_platform_staff(user: User) -> bool:

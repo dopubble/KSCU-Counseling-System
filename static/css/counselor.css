@@ -122,12 +122,56 @@
     white-space: nowrap;
 }
 
-.presentation-board-comment-list .border-bottom {
+.presentation-comment-progress-bar {
+    height: 0.45rem;
+    background-color: #e2e8f0;
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.presentation-comment-progress-bar .progress-bar,
+.presentation-comment-progress-fill {
+    background-color: var(--counselor-primary);
+}
+
+.presentation-board-comment-accordion .border-bottom {
     border-color: var(--counselor-border) !important;
 }
 
-.presentation-board-comment .client-pre-wrap {
+.presentation-comment-summary {
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.presentation-comment-summary:hover,
+.presentation-comment-summary:focus-visible {
+    background-color: var(--counselor-primary-soft);
+    outline: none;
+}
+
+.presentation-comment-body {
+    background: #f8fafc;
+    border-top: 1px solid var(--counselor-border);
+}
+
+.presentation-comment-content {
     color: #334155;
+    line-height: 1.7;
+}
+
+.presentation-comment-section-label {
+    display: inline-block;
+    margin: 0.35rem 0 0.15rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 0.35rem;
+    background: #e2e8f0;
+    color: #1e293b;
+    font-weight: 600;
+    font-size: 0.8125rem;
+}
+
+.presentation-comment-actions {
+    border-color: var(--counselor-border) !important;
 }
 
 .badge-counselor-active {

@@ -1,0 +1,44 @@
+(function () {
+    function bindPresentationCommentAccordion(root) {
+        root.querySelectorAll(".presentation-comment-collapse").forEach(function (collapseEl) {
+            var summary = root.querySelector(
+                '[data-bs-target="#' + collapseEl.id + '"]'
+            );
+            if (!summary) {
+                return;
+            }
+            var label = summary.querySelector(".presentation-comment-toggle-label");
+            var icon = summary.querySelector(".presentation-comment-toggle-icon");
+            collapseEl.addEventListener("shown.bs.collapse", function () {
+                summary.setAttribute("aria-expanded", "true");
+                if (label) {
+                    label.textContent = "접기";
+                }
+                if (icon) {
+                    icon.classList.replace("bi-chevron-down", "bi-chevron-up");
+                }
+            });
+            collapseEl.addEventListener("hidden.bs.collapse", function () {
+                summary.setAttribute("aria-expanded", "false");
+                if (label) {
+                    label.textContent = "내용 보기";
+                }
+                if (icon) {
+                    icon.classList.replace("bi-chevron-up", "bi-chevron-down");
+                }
+            });
+            summary.addEventListener("keydown", function (event) {
+                if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    bootstrap.Collapse.getOrCreateInstance(collapseEl).toggle();
+                }
+            });
+        });
+    }
+
+    document.addEventListener("DOMContentLoaded", function () {
+        document
+            .querySelectorAll(".presentation-board-comment-accordion")
+            .forEach(bindPresentationCommentAccordion);
+    });
+})();

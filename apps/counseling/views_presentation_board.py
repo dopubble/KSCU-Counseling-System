@@ -16,6 +16,7 @@ from apps.counseling.forms import PresentationBoardCommentForm, PresentationBoar
 from apps.counseling.models import CasePresentationComment, CasePresentationPost
 from apps.counseling.presentation_board import (
     PRESENTATION_FORM_TEMPLATES,
+    count_presentation_comment_peers,
     get_presentation_form_path,
     require_presentation_board_access,
     resolve_viewer_cohort,
@@ -103,6 +104,14 @@ def presentation_board_detail(request, post_pk):
     comments = list(
         post.comments.select_related("author").order_by("created_at")
     )
+    comment_count = len(comments)
+    comment_peer_total = count_presentation_comment_peers(
+        post.cohort,
+        exclude_author_id=post.author_id,
+    )
+    comment_participation_pct = (
+        round(100 * comment_count / comment_peer_total) if comment_peer_total else 0
+    )
     can_comment = user_can_comment_on_presentation_post(request.user, post)
     return render(
         request,
@@ -111,6 +120,9 @@ def presentation_board_detail(request, post_pk):
             "cohort": post.cohort,
             "post": post,
             "comments": comments,
+            "comment_count": comment_count,
+            "comment_peer_total": comment_peer_total,
+            "comment_participation_pct": comment_participation_pct,
             "comment_form": PresentationBoardCommentForm(),
             "can_comment": can_comment,
             "can_delete_post": user_can_delete_presentation_post(request.user, post),

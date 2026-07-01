@@ -1,0 +1,60 @@
+{% load presentation_board_tags %}
+<div class="presentation-board-comment-accordion" id="presentationCommentAccordion">
+    {% for comment in comments %}
+    <article class="presentation-comment-item{% if not forloop.last %} border-bottom{% endif %}">
+        <div class="presentation-comment-summary d-flex flex-wrap align-items-center gap-2 gap-md-3 px-3 px-md-4 py-3"
+             role="button"
+             tabindex="0"
+             data-bs-toggle="collapse"
+             data-bs-target="#presentationCommentCollapse{{ comment.pk }}"
+             aria-expanded="false"
+             aria-controls="presentationCommentCollapse{{ comment.pk }}">
+            <div class="presentation-comment-summary-main flex-grow-1 min-w-0 d-flex flex-wrap align-items-center gap-2 gap-md-3">
+                <span class="fw-semibold text-counselor">{{ comment.author.name }}</span>
+                <span class="small text-muted">{{ comment.created_at|date:"Y-m-d H:i" }}</span>
+                {% if comment.file %}
+                <span class="badge text-bg-light">
+                    <i class="bi bi-paperclip" aria-hidden="true"></i> 첨부
+                </span>
+                {% endif %}
+            </div>
+            <span class="btn btn-sm btn-outline-primary presentation-comment-toggle flex-shrink-0">
+                <span class="presentation-comment-toggle-label">내용 보기</span>
+                <i class="bi bi-chevron-down presentation-comment-toggle-icon ms-1" aria-hidden="true"></i>
+            </span>
+        </div>
+        <div id="presentationCommentCollapse{{ comment.pk }}"
+             class="collapse presentation-comment-collapse"
+             data-comment-id="{{ comment.pk }}">
+            <div class="presentation-comment-body px-3 px-md-4 pb-3">
+                {% if comment.content %}
+                <div class="presentation-comment-content client-pre-wrap small mb-0">
+                    {{ comment.content|format_presentation_comment }}
+                </div>
+                {% else %}
+                <p class="small text-muted mb-0">작성된 내용이 없습니다.</p>
+                {% endif %}
+                {% if comment.file or comment.author_id == user.pk or is_staff_viewer %}
+                <div class="d-flex flex-wrap gap-2 mt-3 pt-3 border-top presentation-comment-actions">
+                    {% if comment.file %}
+                    <a href="{% url 'counselor:presentation_board_comment_file' comment.pk %}"
+                       class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-download me-1"></i>{{ comment.filename }}
+                    </a>
+                    {% endif %}
+                    {% if comment.author_id == user.pk or is_staff_viewer %}
+                    <form method="post"
+                          action="{% url 'counselor:presentation_board_comment_delete' comment.pk %}"
+                          class="mb-0"
+                          onsubmit="return confirm('댓글을 삭제하시겠습니까?');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-outline-danger">삭제</button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </article>
+    {% endfor %}
+</div>
