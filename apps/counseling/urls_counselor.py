@@ -3,11 +3,52 @@ from django.urls import path
 from apps.scheduling.views import appointment_manage
 
 from . import chat_views, views
+from . import views_presentation_board
 
 app_name = "counselor"
 
 urlpatterns = [
     path("", views.counselor_dashboard, name="dashboard"),
+    path(
+        "presentation-board/",
+        views_presentation_board.presentation_board,
+        name="presentation_board",
+    ),
+    path(
+        "presentation-board/post/create/",
+        views_presentation_board.presentation_board_post_create,
+        name="presentation_board_post_create",
+    ),
+    path(
+        "presentation-board/post/<uuid:post_pk>/delete/",
+        views_presentation_board.presentation_board_post_delete,
+        name="presentation_board_post_delete",
+    ),
+    path(
+        "presentation-board/post/<uuid:post_pk>/file/",
+        views_presentation_board.presentation_board_post_file,
+        name="presentation_board_post_file",
+    ),
+    path(
+        "presentation-board/post/<uuid:post_pk>/comment/create/",
+        views_presentation_board.presentation_board_comment_create,
+        name="presentation_board_comment_create",
+    ),
+    path(
+        "presentation-board/comment/<uuid:comment_pk>/delete/",
+        views_presentation_board.presentation_board_comment_delete,
+        name="presentation_board_comment_delete",
+    ),
+    path(
+        "presentation-board/comment/<uuid:comment_pk>/file/",
+        views_presentation_board.presentation_board_comment_file,
+        name="presentation_board_comment_file",
+    ),
+    path(
+        "presentation-board/forms/<str:template_key>/",
+        views_presentation_board.presentation_board_form_download,
+        name="presentation_board_form_download",
+    ),
     path("case/<uuid:pk>/", views.counselor_case_detail, name="case_detail"),
     path(
         "case/<uuid:pk>/chat/unread/",

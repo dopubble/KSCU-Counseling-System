@@ -575,3 +575,91 @@ class BoardPostForm(forms.Form):
         cleaned["content"] = content
         return cleaned
 
+
+class PresentationBoardPostForm(forms.Form):
+    """사례발표 게시판 — 수퍼비전(사례발표)보고서 게시글."""
+
+    ALLOWED_EXTENSIONS = {".pdf", ".hwp", ".hwpx", ".doc", ".docx"}
+    MAX_FILE_SIZE = 10 * 1024 * 1024
+    ACCEPT_ATTR = ".pdf,.hwp,.hwpx,.doc,.docx"
+    INVALID_TYPE_MESSAGE = "PDF, HWP, HWPX, Word 파일만 업로드할 수 있습니다."
+    MAX_SIZE_MESSAGE = "파일 크기는 10MB 이하여야 합니다."
+
+    title = forms.CharField(
+        label="제목",
+        max_length=200,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "예: [사례발표] 홍길동 — 수퍼비전보고서",
+            }
+        ),
+    )
+    content = forms.CharField(
+        label="내용",
+        required=False,
+        widget=forms.Textarea(
+            attrs={
+                "class": "form-control",
+                "rows": 3,
+                "placeholder": "안내 사항이 있으면 입력해 주세요. (선택)",
+            }
+        ),
+    )
+    file = forms.FileField(
+        label="수퍼비전보고서 파일",
+        widget=forms.ClearableFileInput(
+            attrs={"class": "form-control", "accept": ACCEPT_ATTR}
+        ),
+    )
+
+    def clean_file(self):
+        file_obj = self.cleaned_data.get("file")
+        if not file_obj:
+            raise forms.ValidationError("수퍼비전보고서 파일을 첨부해 주세요.")
+        ext = os.path.splitext(file_obj.name)[1].lower()
+        if ext not in self.ALLOWED_EXTENSIONS:
+            raise forms.ValidationError(self.INVALID_TYPE_MESSAGE)
+        if file_obj.size > self.MAX_FILE_SIZE:
+            raise forms.ValidationError(self.MAX_SIZE_MESSAGE)
+        return file_obj
+
+
+class PresentationBoardCommentForm(forms.Form):
+    """사례발표 게시판 — 사례개념화보고서 댓글."""
+
+    ALLOWED_EXTENSIONS = PresentationBoardPostForm.ALLOWED_EXTENSIONS
+    MAX_FILE_SIZE = PresentationBoardPostForm.MAX_FILE_SIZE
+    ACCEPT_ATTR = PresentationBoardPostForm.ACCEPT_ATTR
+    INVALID_TYPE_MESSAGE = PresentationBoardPostForm.INVALID_TYPE_MESSAGE
+    MAX_SIZE_MESSAGE = PresentationBoardPostForm.MAX_SIZE_MESSAGE
+
+    content = forms.CharField(
+        label="내용",
+        required=False,
+        widget=forms.Textarea(
+            attrs={
+                "class": "form-control",
+                "rows": 2,
+                "placeholder": "간단한 메모 (선택)",
+            }
+        ),
+    )
+    file = forms.FileField(
+        label="사례개념화보고서 파일",
+        widget=forms.ClearableFileInput(
+            attrs={"class": "form-control", "accept": ACCEPT_ATTR}
+        ),
+    )
+
+    def clean_file(self):
+        file_obj = self.cleaned_data.get("file")
+        if not file_obj:
+            raise forms.ValidationError("사례개념화보고서 파일을 첨부해 주세요.")
+        ext = os.path.splitext(file_obj.name)[1].lower()
+        if ext not in self.ALLOWED_EXTENSIONS:
+            raise forms.ValidationError(self.INVALID_TYPE_MESSAGE)
+        if file_obj.size > self.MAX_FILE_SIZE:
+            raise forms.ValidationError(self.MAX_SIZE_MESSAGE)
+        return file_obj
+

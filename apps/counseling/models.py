@@ -312,3 +312,102 @@ class SessionScheduleChangeRequest(models.Model):
 
     def __str__(self):
         return f"{self.case.case_number} {self.session_number}회기 일정 변경"
+
+
+def _presentation_post_upload_path(instance, filename: str) -> str:
+    import os
+
+    from django.utils.text import get_valid_filename
+
+    basename = get_valid_filename(os.path.basename((filename or "").replace("\\", "/")))
+    date_path = timezone.now().strftime("%Y/%m/%d")
+    return f"presentation_board/{instance.cohort}/posts/{date_path}/{basename}"
+
+
+def _presentation_comment_upload_path(instance, filename: str) -> str:
+    import os
+
+    from django.utils.text import get_valid_filename
+
+    basename = get_valid_filename(os.path.basename((filename or "").replace("\\", "/")))
+    date_path = timezone.now().strftime("%Y/%m/%d")
+    cohort = instance.post.cohort if instance.post_id else 0
+    return f"presentation_board/{cohort}/comments/{instance.post_id}/{date_path}/{basename}"
+
+
+class CasePresentationPost(models.Model):
+    """기수 사례발표 게시판 — 수퍼비전(사례발표)보고서 게시글."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    cohort = models.PositiveIntegerField("기수", db_index=True)
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="case_presentation_posts",
+        verbose_name="작성자",
+    )
+    title = models.CharField("제목", max_length=200)
+    content = models.TextField("내용", blank=True)
+    file = models.FileField(
+        "첨부 파일",
+        upload_to=_presentation_post_upload_path,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "사례발표 게시글"
+        verbose_name_plural = "사례발표 게시글"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.cohort}기 — {self.title}"
+
+    @property
+    def filename(self) -> str:
+        import os
+
+        if not self.file:
+            return ""
+        return os.path.basename(self.file.name.replace("\\", "/"))
+
+
+class CasePresentationComment(models.Model):
+    """사례발표 게시글 댓글 — 사례개념화보고서."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    post = models.ForeignKey(
+        CasePresentationPost,
+        on_delete=models.CASCADE,
+        related_name="comments",
+        verbose_name="게시글",
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="case_presentation_comments",
+        verbose_name="작성자",
+    )
+    content = models.TextField("내용", blank=True)
+    file = models.FileField(
+        "첨부 파일",
+        upload_to=_presentation_comment_upload_path,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "사례발표 댓글"
+        verbose_name_plural = "사례발표 댓글"
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"댓글 — {self.post.title}"
+
+    @property
+    def filename(self) -> str:
+        import os
+
+        if not self.file:
+            return ""
+        return os.path.basename(self.file.name.replace("\\", "/"))
