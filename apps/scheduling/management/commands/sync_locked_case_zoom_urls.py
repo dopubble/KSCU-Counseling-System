@@ -25,6 +25,8 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--clients", default="", help="쉼표 구분 내담자 이름")
         parser.add_argument("--date", default="", help="YYYY-MM-DD")
+        parser.add_argument("--from-date", default="", help="YYYY-MM-DD 시작 (포함)")
+        parser.add_argument("--to-date", default="", help="YYYY-MM-DD 끝 (포함)")
         parser.add_argument("--hour", type=int, default=None, help="0-23 KST")
         parser.add_argument("--apply", action="store_true", help="실제 Case URL 저장")
 
@@ -36,6 +38,8 @@ class Command(BaseCommand):
 
         names = [n.strip() for n in (options.get("clients") or "").split(",") if n.strip()]
         date_text = (options.get("date") or "").strip()
+        from_text = (options.get("from_date") or "").strip()
+        to_text = (options.get("to_date") or "").strip()
         hour = options.get("hour")
 
         qs = (
@@ -50,6 +54,11 @@ class Command(BaseCommand):
             qs = qs.filter(client__name__in=names)
         if date_text:
             qs = qs.filter(scheduled_at__date=date_text)
+        elif from_text or to_text:
+            if from_text:
+                qs = qs.filter(scheduled_at__date__gte=from_text)
+            if to_text:
+                qs = qs.filter(scheduled_at__date__lte=to_text)
 
         appointments = list(qs)
         if hour is not None:
