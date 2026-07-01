@@ -9,6 +9,7 @@ from apps.counseling.constants import (
     normalize_counseling_types,
 )
 from apps.counseling.models import CounselingMethod
+from apps.counseling.presentation_board import PRESENTATION_BOARD_COMMENT_CONTENT_TEMPLATE
 
 
 
@@ -637,11 +638,11 @@ class PresentationBoardCommentForm(forms.Form):
     content = forms.CharField(
         label="내용",
         required=False,
+        initial=PRESENTATION_BOARD_COMMENT_CONTENT_TEMPLATE,
         widget=forms.Textarea(
             attrs={
                 "class": "form-control",
-                "rows": 2,
-                "placeholder": "간단한 메모 (선택)",
+                "rows": 22,
             }
         ),
     )

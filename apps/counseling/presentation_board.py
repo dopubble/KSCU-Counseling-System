@@ -25,6 +25,40 @@ PRESENTATION_FORM_TEMPLATES = {
 }
 
 
+PRESENTATION_BOARD_COMMENT_CONTENT_TEMPLATE = """사례개념화 연습
+     
+     
+호소문제
+     
+2. 촉발요인
+     
+3. 부정적 패턴
+     
+감정
+     
+사고 자동적 사고
+     중간신념 
+     핵심신념
+     
+행동
+     
+관계
+     
+4. 유발요인
+     
+5. 유지요인
+     
+6. 상담목표
+     
+7. 상담초점
+     
+8. 상담전략
+     
+9. 상담개입
+     
+10. 예후 및 장애물"""
+
+
 def user_is_platform_staff(user: User) -> bool:
     return bool(user.is_authenticated and (user.is_superuser or user.role == UserRole.ADMIN))
 

@@ -4,6 +4,7 @@ from django.urls import reverse
 
 from apps.accounts.models import CounselorProfile, User, UserRole, UserStatus
 from apps.counseling.models import CasePresentationComment, CasePresentationPost
+from apps.counseling.presentation_board import PRESENTATION_BOARD_COMMENT_CONTENT_TEMPLATE
 
 
 class PresentationBoardTests(TestCase):
@@ -119,6 +120,8 @@ class PresentationBoardTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, post.title)
         self.assertContains(response, "사례개념화보고서 올리기")
+        self.assertContains(response, "사례개념화 연습")
+        self.assertContains(response, "10. 예후 및 장애물")
 
     def test_detail_page_author_cannot_comment(self):
         post = CasePresentationPost.objects.create(
