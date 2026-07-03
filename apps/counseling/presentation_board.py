@@ -64,6 +64,7 @@ PRESENTATION_BOARD_COMMENT_CONTENT_TEMPLATE = """사례개념화 연습
 
 
 PRESENTATION_FILE_PASSWORD_MIN_LENGTH = 4
+PRESENTATION_BOARD_LEGACY_FILE_DOWNLOAD_PASSWORD = "260706"
 PRESENTATION_FILE_PASSWORD_NOTICE = (
     "동기가 올린 파일은 웹에서 암호 확인 후에만 다운로드할 수 있습니다. "
     "한글 파일에 설정한 열람 암호와 동일하게 입력해 주세요."
@@ -75,9 +76,12 @@ def hash_presentation_file_password(raw_password: str) -> str:
 
 
 def verify_presentation_file_password(raw_password: str, stored_hash: str) -> bool:
-    if not stored_hash:
+    cleaned = (raw_password or "").strip()
+    if len(cleaned) < PRESENTATION_FILE_PASSWORD_MIN_LENGTH:
         return False
-    return check_password((raw_password or "").strip(), stored_hash)
+    if stored_hash:
+        return check_password(cleaned, stored_hash)
+    return cleaned == PRESENTATION_BOARD_LEGACY_FILE_DOWNLOAD_PASSWORD
 
 
 def user_can_download_presentation_file_without_password(user: User, author_id) -> bool:

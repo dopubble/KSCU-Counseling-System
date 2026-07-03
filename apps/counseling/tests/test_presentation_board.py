@@ -126,6 +126,32 @@ class PresentationBoardTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("attachment", response.get("Content-Disposition", ""))
 
+    def test_peer_can_download_legacy_post_with_default_password(self):
+        post = self._create_post(download_password="")
+        client = Client()
+        client.force_login(self.counselor_b)
+        response = client.post(
+            reverse("counselor:presentation_board_post_file", args=[post.pk]),
+            {"file_password": "260706"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("attachment", response.get("Content-Disposition", ""))
+
+    def test_author_can_set_download_password_on_legacy_post(self):
+        post = self._create_post(download_password="")
+        client = Client()
+        client.force_login(self.counselor_a)
+        response = client.post(
+            reverse(
+                "counselor:presentation_board_post_set_download_password",
+                args=[post.pk],
+            ),
+            {"download_password": "991122"},
+        )
+        self.assertEqual(response.status_code, 302)
+        post.refresh_from_db()
+        self.assertTrue(verify_presentation_file_password("991122", post.file_password_hash))
+
     def test_presenter_post_and_peer_comment(self):
         client = Client()
         client.force_login(self.counselor_a)
