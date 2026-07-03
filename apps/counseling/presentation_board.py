@@ -67,7 +67,7 @@ PRESENTATION_FILE_PASSWORD_MIN_LENGTH = 4
 PRESENTATION_BOARD_LEGACY_FILE_DOWNLOAD_PASSWORD = "260706"
 PRESENTATION_FILE_PASSWORD_NOTICE = (
     "동기가 올린 파일은 웹에서 암호 확인 후에만 다운로드할 수 있습니다. "
-    "한글 파일에 설정한 열람 암호와 동일하게 입력해 주세요."
+    "한글 파일 열람 암호(예: 260706)를 입력해 주세요."
 )
 
 

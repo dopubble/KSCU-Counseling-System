@@ -152,6 +152,26 @@ class PresentationBoardTests(TestCase):
         post.refresh_from_db()
         self.assertTrue(verify_presentation_file_password("991122", post.file_password_hash))
 
+    def test_migration_backfills_legacy_post_password(self):
+        post = self._create_post(download_password="")
+        self.assertEqual(post.file_password_hash, "")
+
+        from django.contrib.auth.hashers import make_password
+
+        legacy_hash = make_password("260706")
+        CasePresentationPost.objects.filter(pk=post.pk).update(
+            file_password_hash=legacy_hash
+        )
+        post.refresh_from_db()
+
+        client = Client()
+        client.force_login(self.counselor_b)
+        response = client.post(
+            reverse("counselor:presentation_board_post_file", args=[post.pk]),
+            {"file_password": "260706"},
+        )
+        self.assertEqual(response.status_code, 200)
+
     def test_presenter_post_and_peer_comment(self):
         client = Client()
         client.force_login(self.counselor_a)
