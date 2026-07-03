@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 
 from django.conf import settings
+from django.contrib.auth.hashers import check_password, make_password
 from django.core.exceptions import PermissionDenied
 from django.utils.safestring import mark_safe
 
@@ -60,6 +61,33 @@ PRESENTATION_BOARD_COMMENT_CONTENT_TEMPLATE = """사례개념화 연습
 9. 상담개입
      
 10. 예후 및 장애물"""
+
+
+PRESENTATION_FILE_PASSWORD_MIN_LENGTH = 4
+PRESENTATION_FILE_PASSWORD_NOTICE = (
+    "동기가 올린 파일은 웹에서 암호 확인 후에만 다운로드할 수 있습니다. "
+    "한글 파일에 설정한 열람 암호와 동일하게 입력해 주세요."
+)
+
+
+def hash_presentation_file_password(raw_password: str) -> str:
+    return make_password((raw_password or "").strip())
+
+
+def verify_presentation_file_password(raw_password: str, stored_hash: str) -> bool:
+    if not stored_hash:
+        return False
+    return check_password((raw_password or "").strip(), stored_hash)
+
+
+def user_can_download_presentation_file_without_password(user: User, author_id) -> bool:
+    if user_is_platform_staff(user):
+        return True
+    return user.pk == author_id
+
+
+def requires_presentation_file_password(user: User, author_id) -> bool:
+    return not user_can_download_presentation_file_without_password(user, author_id)
 
 
 _PRESENTATION_COMMENT_SECTION_RE = re.compile(

@@ -40,5 +40,31 @@
         document
             .querySelectorAll(".presentation-board-comment-accordion")
             .forEach(bindPresentationCommentAccordion);
+
+        var fileModal = document.getElementById("presentationBoardFileDownloadModal");
+        if (fileModal) {
+            fileModal.addEventListener("show.bs.modal", function (event) {
+                var trigger = event.relatedTarget;
+                if (!trigger) {
+                    return;
+                }
+                var form = document.getElementById("presentationBoardFileDownloadForm");
+                var nextInput = document.getElementById("presentationBoardFileDownloadNext");
+                var nameEl = document.getElementById("presentationBoardFileDownloadName");
+                var passwordInput = document.getElementById("presentationBoardFilePassword");
+                if (form) {
+                    form.action = trigger.getAttribute("data-file-action") || "";
+                }
+                if (nextInput) {
+                    nextInput.value = window.location.pathname + window.location.search;
+                }
+                if (nameEl) {
+                    nameEl.textContent = trigger.getAttribute("data-file-label") || "";
+                }
+                if (passwordInput) {
+                    passwordInput.value = "";
+                }
+            });
+        }
     });
 })();

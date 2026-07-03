@@ -57,10 +57,21 @@
                 {% if comment.file or comment.author_id == user.pk or is_staff_viewer %}
                 <div class="d-flex flex-wrap gap-2 mt-3 pt-3 border-top presentation-comment-actions">
                     {% if comment.file %}
+                    {% if comment.author_id == user.pk or is_staff_viewer %}
                     <a href="{% url 'counselor:presentation_board_comment_file' comment.pk %}"
                        class="btn btn-sm btn-outline-secondary">
                         <i class="bi bi-download me-1"></i>{{ comment.filename }}
                     </a>
+                    {% else %}
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary"
+                            data-bs-toggle="modal"
+                            data-bs-target="#presentationBoardFileDownloadModal"
+                            data-file-action="{% url 'counselor:presentation_board_comment_file' comment.pk %}"
+                            data-file-label="{{ comment.filename }}">
+                        <i class="bi bi-download me-1"></i>{{ comment.filename }}
+                    </button>
+                    {% endif %}
                     {% endif %}
                     {% if comment.author_id == user.pk or is_staff_viewer %}
                     <form method="post"

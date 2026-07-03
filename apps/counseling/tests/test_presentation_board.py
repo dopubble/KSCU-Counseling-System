@@ -1,3 +1,4 @@
+from django.contrib.auth.hashers import make_password
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase
 from django.urls import reverse
@@ -7,10 +8,13 @@ from apps.counseling.models import CasePresentationComment, CasePresentationPost
 from apps.counseling.presentation_board import (
     PRESENTATION_BOARD_COMMENT_CONTENT_TEMPLATE,
     format_presentation_comment_content,
+    verify_presentation_file_password,
 )
 
 
 class PresentationBoardTests(TestCase):
+    DEFAULT_FILE_PASSWORD = "260706"
+
     def setUp(self):
         self.counselor_a = User.objects.create_user(
             email="presenter@example.com",
@@ -49,6 +53,19 @@ class PresentationBoardTests(TestCase):
             content_type="application/octet-stream",
         )
 
+    def _create_post(self, *, download_password=DEFAULT_FILE_PASSWORD, **kwargs):
+        kwargs.setdefault("cohort", 1)
+        kwargs.setdefault("author", self.counselor_a)
+        kwargs.setdefault("title", "[사례발표] 발표자")
+        kwargs.setdefault("file", self.sample_file)
+        password_hash = ""
+        if download_password:
+            password_hash = make_password(download_password)
+        return CasePresentationPost.objects.create(
+            file_password_hash=password_hash,
+            **kwargs,
+        )
+
     def test_cohort_peer_can_view_board(self):
         client = Client()
         client.force_login(self.counselor_b)
@@ -57,18 +74,57 @@ class PresentationBoardTests(TestCase):
         self.assertContains(response, "사례발표 게시판")
 
     def test_other_cohort_cannot_access_foreign_post_file(self):
-        post = CasePresentationPost.objects.create(
-            cohort=1,
-            author=self.counselor_a,
-            title="[사례발표] 발표자",
-            file=self.sample_file,
-        )
+        post = self._create_post()
         client = Client()
         client.force_login(self.other_cohort)
         response = client.get(
             reverse("counselor:presentation_board_post_file", args=[post.pk])
         )
         self.assertEqual(response.status_code, 403)
+
+    def test_peer_cannot_download_post_file_without_password(self):
+        post = self._create_post()
+        client = Client()
+        client.force_login(self.counselor_b)
+        response = client.get(
+            reverse("counselor:presentation_board_post_file", args=[post.pk])
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_peer_can_download_post_file_with_correct_password(self):
+        post = self._create_post(download_password="260706")
+        client = Client()
+        client.force_login(self.counselor_b)
+        response = client.post(
+            reverse("counselor:presentation_board_post_file", args=[post.pk]),
+            {"file_password": "260706"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("attachment", response.get("Content-Disposition", ""))
+
+    def test_peer_wrong_password_redirects_with_error(self):
+        post = self._create_post(download_password="260706")
+        client = Client()
+        client.force_login(self.counselor_b)
+        response = client.post(
+            reverse("counselor:presentation_board_post_file", args=[post.pk]),
+            {"file_password": "wrong1"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response.url,
+            reverse("counselor:presentation_board_detail", args=[post.pk]),
+        )
+
+    def test_author_can_download_own_post_without_password(self):
+        post = self._create_post(download_password="260706")
+        client = Client()
+        client.force_login(self.counselor_a)
+        response = client.get(
+            reverse("counselor:presentation_board_post_file", args=[post.pk])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("attachment", response.get("Content-Disposition", ""))
 
     def test_presenter_post_and_peer_comment(self):
         client = Client()
@@ -80,6 +136,7 @@ class PresentationBoardTests(TestCase):
                 "title": "[사례발표] 발표자 — 수퍼비전보고서",
                 "content": "",
                 "file": self.sample_file,
+                "download_password": "260706",
             },
         )
         self.assertEqual(response.status_code, 302)
@@ -90,6 +147,7 @@ class PresentationBoardTests(TestCase):
         )
         self.assertEqual(post.cohort, 1)
         self.assertEqual(post.author_id, self.counselor_a.pk)
+        self.assertTrue(verify_presentation_file_password("260706", post.file_password_hash))
 
         client.force_login(self.counselor_b)
         comment_file = SimpleUploadedFile(
@@ -99,7 +157,12 @@ class PresentationBoardTests(TestCase):
         )
         response = client.post(
             reverse("counselor:presentation_board_comment_create", args=[post.pk]),
-            {"cohort": "1", "content": "개념화 제출", "file": comment_file},
+            {
+                "cohort": "1",
+                "content": "개념화 제출",
+                "file": comment_file,
+                "download_password": "260706",
+            },
         )
         self.assertEqual(response.status_code, 302)
         self.assertRedirects(
@@ -109,12 +172,7 @@ class PresentationBoardTests(TestCase):
         self.assertEqual(CasePresentationComment.objects.filter(post=post).count(), 1)
 
     def test_detail_page_peer_sees_comment_form(self):
-        post = CasePresentationPost.objects.create(
-            cohort=1,
-            author=self.counselor_a,
-            title="[사례발표] 발표자",
-            file=self.sample_file,
-        )
+        post = self._create_post()
         client = Client()
         client.force_login(self.counselor_b)
         response = client.get(
@@ -126,14 +184,10 @@ class PresentationBoardTests(TestCase):
         self.assertContains(response, "사례개념화 연습")
         self.assertContains(response, "10. 예후 및 장애물")
         self.assertNotContains(response, "메모")
+        self.assertContains(response, "presentationBoardFileDownloadModal")
 
     def test_peer_can_comment_without_file(self):
-        post = CasePresentationPost.objects.create(
-            cohort=1,
-            author=self.counselor_a,
-            title="[사례발표] 발표자",
-            file=self.sample_file,
-        )
+        post = self._create_post()
         client = Client()
         client.force_login(self.counselor_b)
         response = client.post(
@@ -149,12 +203,7 @@ class PresentationBoardTests(TestCase):
         self.assertIn("사례개념화 연습", comment.content)
 
     def test_detail_shows_full_comment_content(self):
-        post = CasePresentationPost.objects.create(
-            cohort=1,
-            author=self.counselor_a,
-            title="[사례발표] 발표자",
-            file=self.sample_file,
-        )
+        post = self._create_post()
         long_tail = "10. 예후 및 장애물 — 전체 내용이 보여야 합니다."
         CasePresentationComment.objects.create(
             post=post,
@@ -172,12 +221,7 @@ class PresentationBoardTests(TestCase):
         self.assertNotContains(response, "…")
 
     def test_detail_comment_accordion_and_participation(self):
-        post = CasePresentationPost.objects.create(
-            cohort=1,
-            author=self.counselor_a,
-            title="[사례발표] 발표자",
-            file=self.sample_file,
-        )
+        post = self._create_post()
         CasePresentationComment.objects.create(
             post=post,
             author=self.counselor_b,
@@ -206,12 +250,7 @@ class PresentationBoardTests(TestCase):
         self.assertIn("일반 내용", rendered)
 
     def test_detail_page_author_cannot_comment(self):
-        post = CasePresentationPost.objects.create(
-            cohort=1,
-            author=self.counselor_a,
-            title="[사례발표] 발표자",
-            file=self.sample_file,
-        )
+        post = self._create_post()
         client = Client()
         client.force_login(self.counselor_a)
         response = client.get(
@@ -221,12 +260,7 @@ class PresentationBoardTests(TestCase):
         self.assertNotContains(response, "사례개념화 연습 댓글달기")
 
     def test_list_shows_table_not_accordion(self):
-        CasePresentationPost.objects.create(
-            cohort=1,
-            author=self.counselor_a,
-            title="[사례발표] 발표자",
-            file=self.sample_file,
-        )
+        self._create_post()
         client = Client()
         client.force_login(self.counselor_b)
         response = client.get(reverse("counselor:presentation_board"))
@@ -235,12 +269,7 @@ class PresentationBoardTests(TestCase):
         self.assertNotContains(response, "accordion")
 
     def test_presenter_cannot_comment_on_own_post(self):
-        post = CasePresentationPost.objects.create(
-            cohort=1,
-            author=self.counselor_a,
-            title="[사례발표] 발표자",
-            file=self.sample_file,
-        )
+        post = self._create_post()
         client = Client()
         client.force_login(self.counselor_a)
         response = client.post(
@@ -249,6 +278,7 @@ class PresentationBoardTests(TestCase):
                 "cohort": "1",
                 "content": "",
                 "file": SimpleUploadedFile("x.hwp", b"x", content_type="application/octet-stream"),
+                "download_password": "260706",
             },
         )
         self.assertEqual(response.status_code, 403)

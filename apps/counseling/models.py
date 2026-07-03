@@ -352,6 +352,11 @@ class CasePresentationPost(models.Model):
         "첨부 파일",
         upload_to=_presentation_post_upload_path,
     )
+    file_password_hash = models.CharField(
+        "파일 다운로드 암호 해시",
+        max_length=128,
+        blank=True,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -392,6 +397,11 @@ class CasePresentationComment(models.Model):
     file = models.FileField(
         "첨부 파일",
         upload_to=_presentation_comment_upload_path,
+        blank=True,
+    )
+    file_password_hash = models.CharField(
+        "파일 다운로드 암호 해시",
+        max_length=128,
         blank=True,
     )
     created_at = models.DateTimeField(auto_now_add=True)

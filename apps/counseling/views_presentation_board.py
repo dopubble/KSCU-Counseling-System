@@ -7,7 +7,8 @@ from django.core.exceptions import PermissionDenied
 from django.db.models import Count
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
-from django.views.decorators.http import require_GET, require_POST
+from django.urls import reverse
+from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
 from apps.accounts.decorators import counselor_required
 from apps.accounts.models import CounselorProfile
@@ -15,16 +16,21 @@ from apps.counseling.cohort_journal_service import get_counselor_cohort
 from apps.counseling.forms import PresentationBoardCommentForm, PresentationBoardPostForm
 from apps.counseling.models import CasePresentationComment, CasePresentationPost
 from apps.counseling.presentation_board import (
+    PRESENTATION_FILE_PASSWORD_MIN_LENGTH,
+    PRESENTATION_FILE_PASSWORD_NOTICE,
     PRESENTATION_FORM_TEMPLATES,
     count_presentation_comment_peers,
     get_presentation_form_path,
+    hash_presentation_file_password,
     require_presentation_board_access,
     resolve_viewer_cohort,
     user_can_comment_on_presentation_post,
     user_can_create_presentation_post,
     user_can_delete_presentation_comment,
     user_can_delete_presentation_post,
+    user_can_download_presentation_file_without_password,
     user_is_platform_staff,
+    verify_presentation_file_password,
 )
 
 
@@ -73,6 +79,61 @@ def _get_presentation_post_or_404(post_pk):
         ),
         pk=post_pk,
     )
+
+
+def _presentation_file_response(file_field, *, filename: str) -> FileResponse:
+    return FileResponse(
+        file_field.open("rb"),
+        as_attachment=True,
+        filename=filename,
+    )
+
+
+def _redirect_after_file_download_failure(request, *, fallback_url: str):
+    next_url = (request.POST.get("next") or "").strip()
+    if next_url.startswith("/"):
+        return redirect(next_url)
+    return redirect(fallback_url)
+
+
+def _serve_presentation_file(
+    request,
+    *,
+    file_field,
+    filename: str,
+    file_password_hash: str,
+    author_id,
+    fallback_url: str,
+):
+    if not file_field:
+        raise Http404("File not found")
+
+    if user_can_download_presentation_file_without_password(request.user, author_id):
+        return _presentation_file_response(file_field, filename=filename)
+
+    if request.method == "GET":
+        raise PermissionDenied("암호 확인 후 다운로드할 수 있습니다.")
+
+    password = (request.POST.get("file_password") or "").strip()
+    if len(password) < PRESENTATION_FILE_PASSWORD_MIN_LENGTH:
+        messages.error(
+            request,
+            f"다운로드 암호는 {PRESENTATION_FILE_PASSWORD_MIN_LENGTH}자 이상 입력해 주세요.",
+        )
+        return _redirect_after_file_download_failure(request, fallback_url=fallback_url)
+
+    if not file_password_hash:
+        messages.error(
+            request,
+            "이 파일에는 다운로드 암호가 설정되어 있지 않습니다. 발표자에게 문의해 주세요.",
+        )
+        return _redirect_after_file_download_failure(request, fallback_url=fallback_url)
+
+    if not verify_presentation_file_password(password, file_password_hash):
+        messages.error(request, "암호가 일치하지 않습니다.")
+        return _redirect_after_file_download_failure(request, fallback_url=fallback_url)
+
+    return _presentation_file_response(file_field, filename=filename)
 
 
 @counselor_required
@@ -129,6 +190,15 @@ def presentation_board_detail(request, post_pk):
             "is_staff_viewer": user_is_platform_staff(request.user),
             "is_author": post.author_id == request.user.pk,
             "page_subtitle": f"{post.cohort}기 · {post.author.name}",
+            "file_password_notice": PRESENTATION_FILE_PASSWORD_NOTICE,
+            "post_file_download_url": reverse(
+                "counselor:presentation_board_post_file",
+                kwargs={"post_pk": post.pk},
+            ),
+            "post_file_requires_password": not user_can_download_presentation_file_without_password(
+                request.user,
+                post.author_id,
+            ),
         },
     )
 
@@ -154,6 +224,9 @@ def presentation_board_post_create(request):
         title=form.cleaned_data["title"].strip(),
         content=(form.cleaned_data.get("content") or "").strip(),
         file=form.cleaned_data["file"],
+        file_password_hash=hash_presentation_file_password(
+            form.cleaned_data["download_password"]
+        ),
     )
     messages.success(request, "사례발표 보고서가 등록되었습니다.")
     return redirect("counselor:presentation_board_detail", post_pk=post.pk)
@@ -192,11 +265,18 @@ def presentation_board_comment_create(request, post_pk):
                 break
         return redirect("counselor:presentation_board_detail", post_pk=post.pk)
 
+    password_hash = ""
+    if form.cleaned_data.get("file"):
+        password_hash = hash_presentation_file_password(
+            form.cleaned_data.get("download_password") or ""
+        )
+
     CasePresentationComment.objects.create(
         post=post,
         author=request.user,
         content=(form.cleaned_data.get("content") or "").strip(),
         file=form.cleaned_data.get("file"),
+        file_password_hash=password_hash,
     )
     messages.success(request, "사례개념화보고서 댓글이 등록되었습니다.")
     return redirect("counselor:presentation_board_detail", post_pk=post.pk)
@@ -220,33 +300,43 @@ def presentation_board_comment_delete(request, comment_pk):
 
 
 @counselor_required
-@require_GET
+@require_http_methods(["GET", "POST"])
 def presentation_board_post_file(request, post_pk):
     post = get_object_or_404(CasePresentationPost, pk=post_pk)
     require_presentation_board_access(request.user, post.cohort)
-    if not post.file:
-        raise Http404("File not found")
-    return FileResponse(
-        post.file.open("rb"),
-        as_attachment=True,
+    fallback_url = reverse(
+        "counselor:presentation_board_detail",
+        kwargs={"post_pk": post.pk},
+    )
+    return _serve_presentation_file(
+        request,
+        file_field=post.file,
         filename=post.filename,
+        file_password_hash=post.file_password_hash,
+        author_id=post.author_id,
+        fallback_url=fallback_url,
     )
 
 
 @counselor_required
-@require_GET
+@require_http_methods(["GET", "POST"])
 def presentation_board_comment_file(request, comment_pk):
     comment = get_object_or_404(
         CasePresentationComment.objects.select_related("post"),
         pk=comment_pk,
     )
     require_presentation_board_access(request.user, comment.post.cohort)
-    if not comment.file:
-        raise Http404("File not found")
-    return FileResponse(
-        comment.file.open("rb"),
-        as_attachment=True,
+    fallback_url = reverse(
+        "counselor:presentation_board_detail",
+        kwargs={"post_pk": comment.post_id},
+    )
+    return _serve_presentation_file(
+        request,
+        file_field=comment.file,
         filename=comment.filename,
+        file_password_hash=comment.file_password_hash,
+        author_id=comment.author_id,
+        fallback_url=fallback_url,
     )
 
 

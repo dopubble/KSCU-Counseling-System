@@ -33,10 +33,10 @@
             {% if post.content %}
             <div class="client-pre-wrap mb-3">{{ post.content|linebreaksbr }}</div>
             {% endif %}
-            <a href="{% url 'counselor:presentation_board_post_file' post.pk %}"
-               class="btn btn-outline-primary">
-                <i class="bi bi-download me-1"></i>{{ post.filename }}
-            </a>
+            {% include "counselor/partials/presentation_board_file_download_button.html" with download_url=post_file_download_url filename=post.filename button_class="btn btn-outline-primary" show_icon=True requires_password=post_file_requires_password %}
+            {% if post_file_requires_password %}
+            <p class="small text-muted mb-0 mt-2">{{ file_password_notice }}</p>
+            {% endif %}
             {% if is_author %}
             <p class="small text-muted mt-3 mb-0">
                 발표자 본인 게시글입니다. 사례개념화보고서는 동기 상담사가 아래 댓글로 올립니다.
@@ -115,11 +115,16 @@
                     {{ comment_form.file }}
                     <p class="form-text small mb-0">PDF, HWP, HWPX, Word · 최대 10MB</p>
                 </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold" for="id_download_password">첨부 파일 다운로드 암호 <span class="text-muted fw-normal">(첨부 시 필수)</span></label>
+                    {{ comment_form.download_password }}
+                </div>
                 <button type="submit" class="btn btn-counselor text-white">댓글 등록</button>
             </form>
         </div>
     </div>
     {% endif %}
+    {% include "counselor/partials/presentation_board_file_password_modal.html" %}
 {% endblock %}
     </div>
 </div>

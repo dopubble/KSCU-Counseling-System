@@ -9,7 +9,10 @@ from apps.counseling.constants import (
     normalize_counseling_types,
 )
 from apps.counseling.models import CounselingMethod
-from apps.counseling.presentation_board import PRESENTATION_BOARD_COMMENT_CONTENT_TEMPLATE
+from apps.counseling.presentation_board import (
+    PRESENTATION_BOARD_COMMENT_CONTENT_TEMPLATE,
+    PRESENTATION_FILE_PASSWORD_MIN_LENGTH,
+)
 
 
 
@@ -613,6 +616,18 @@ class PresentationBoardPostForm(forms.Form):
             attrs={"class": "form-control", "accept": ACCEPT_ATTR}
         ),
     )
+    download_password = forms.CharField(
+        label="파일 다운로드 암호",
+        min_length=PRESENTATION_FILE_PASSWORD_MIN_LENGTH,
+        widget=forms.PasswordInput(
+            attrs={
+                "class": "form-control",
+                "autocomplete": "new-password",
+                "placeholder": "예: 260706 (한글 파일 암호와 동일)",
+            }
+        ),
+        help_text="동기가 파일을 받을 때 웹에서 입력하는 암호입니다. 한글 파일 열람 암호와 같게 설정해 주세요.",
+    )
 
     def clean_file(self):
         file_obj = self.cleaned_data.get("file")
@@ -653,6 +668,29 @@ class PresentationBoardCommentForm(forms.Form):
             attrs={"class": "form-control", "accept": ACCEPT_ATTR}
         ),
     )
+    download_password = forms.CharField(
+        label="첨부 파일 다운로드 암호",
+        required=False,
+        min_length=PRESENTATION_FILE_PASSWORD_MIN_LENGTH,
+        widget=forms.PasswordInput(
+            attrs={
+                "class": "form-control",
+                "autocomplete": "new-password",
+                "placeholder": "첨부 시 한글 파일 암호와 동일하게",
+            }
+        ),
+    )
+
+    def clean(self):
+        cleaned = super().clean()
+        file_obj = cleaned.get("file")
+        password = (cleaned.get("download_password") or "").strip()
+        if file_obj and len(password) < PRESENTATION_FILE_PASSWORD_MIN_LENGTH:
+            self.add_error(
+                "download_password",
+                f"첨부 파일이 있으면 다운로드 암호를 {PRESENTATION_FILE_PASSWORD_MIN_LENGTH}자 이상 입력해 주세요.",
+            )
+        return cleaned
 
     def clean_file(self):
         file_obj = self.cleaned_data.get("file")
