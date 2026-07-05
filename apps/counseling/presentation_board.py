@@ -180,6 +180,13 @@ def user_can_delete_presentation_comment(user: User, comment: CasePresentationCo
     return comment.author_id == user.pk
 
 
+def user_can_edit_presentation_comment(user: User, comment: CasePresentationComment) -> bool:
+    """댓글 작성자만 본인 댓글을 수정할 수 있습니다."""
+    if user.role == UserRole.SUPERVISOR:
+        return False
+    return comment.author_id == user.pk
+
+
 def get_presentation_form_path(template_key: str) -> Path:
     meta = PRESENTATION_FORM_TEMPLATES.get(template_key)
     if meta is None:

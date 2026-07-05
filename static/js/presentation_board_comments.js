@@ -1,4 +1,31 @@
 (function () {
+    function bindPresentationCommentEdit(root) {
+        root.querySelectorAll(".presentation-comment-edit-btn").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var body = btn.closest(".presentation-comment-body");
+                if (!body) {
+                    return;
+                }
+                var collapse = body.closest(".presentation-comment-collapse");
+                if (collapse && !collapse.classList.contains("show") && window.bootstrap) {
+                    window.bootstrap.Collapse.getOrCreateInstance(collapse).show();
+                }
+                body.querySelector(".presentation-comment-view")?.classList.add("d-none");
+                body.querySelector(".presentation-comment-edit")?.classList.remove("d-none");
+            });
+        });
+        root.querySelectorAll(".presentation-comment-edit-cancel").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var body = btn.closest(".presentation-comment-body");
+                if (!body) {
+                    return;
+                }
+                body.querySelector(".presentation-comment-view")?.classList.remove("d-none");
+                body.querySelector(".presentation-comment-edit")?.classList.add("d-none");
+            });
+        });
+    }
+
     function bindPresentationCommentAccordion(root) {
         root.querySelectorAll(".presentation-comment-collapse").forEach(function (collapseEl) {
             var summary = root.querySelector(
@@ -209,7 +236,10 @@
     document.addEventListener("DOMContentLoaded", function () {
         document
             .querySelectorAll(".presentation-board-comment-accordion")
-            .forEach(bindPresentationCommentAccordion);
+            .forEach(function (root) {
+                bindPresentationCommentAccordion(root);
+                bindPresentationCommentEdit(root);
+            });
 
         bindPresentationBoardBulkDownload();
 

@@ -326,6 +326,112 @@ class PresentationBoardTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(CasePresentationComment.objects.filter(post=post).count(), 0)
 
+    def test_author_can_edit_own_comment_content(self):
+        post = self._create_post()
+        comment = CasePresentationComment.objects.create(
+            post=post,
+            author=self.counselor_b,
+            content="수정 전 코멘트",
+        )
+        client = Client()
+        client.force_login(self.counselor_b)
+        response = client.post(
+            reverse("counselor:presentation_board_comment_edit", args=[comment.pk]),
+            {"content": "수정 후 코멘트"},
+        )
+        self.assertEqual(response.status_code, 302)
+        comment.refresh_from_db()
+        self.assertEqual(comment.content, "수정 후 코멘트")
+
+    def test_author_can_replace_comment_file(self):
+        post = self._create_post()
+        comment = CasePresentationComment.objects.create(
+            post=post,
+            author=self.counselor_b,
+            content="PDF 교체",
+            file=SimpleUploadedFile(
+                "old.pdf",
+                MINIMAL_PDF,
+                content_type="application/pdf",
+            ),
+        )
+        client = Client()
+        client.force_login(self.counselor_b)
+        response = client.post(
+            reverse("counselor:presentation_board_comment_edit", args=[comment.pk]),
+            {
+                "content": "PDF 교체",
+                "file": SimpleUploadedFile(
+                    "new.pdf",
+                    MINIMAL_PDF,
+                    content_type="application/pdf",
+                ),
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        comment.refresh_from_db()
+        self.assertTrue(comment.file.name.endswith("new.pdf"))
+
+    def test_peer_cannot_edit_others_comment(self):
+        post = self._create_post()
+        comment = CasePresentationComment.objects.create(
+            post=post,
+            author=self.counselor_b,
+            content="동기 댓글",
+        )
+        client = Client()
+        client.force_login(self.counselor_a)
+        response = client.post(
+            reverse("counselor:presentation_board_comment_edit", args=[comment.pk]),
+            {"content": "발표자가 수정 시도"},
+        )
+        self.assertEqual(response.status_code, 403)
+        comment.refresh_from_db()
+        self.assertEqual(comment.content, "동기 댓글")
+
+    def test_detail_shows_edit_button_for_own_comment_only(self):
+        post = self._create_post()
+        comment = CasePresentationComment.objects.create(
+            post=post,
+            author=self.counselor_b,
+            content="내 댓글",
+        )
+        client = Client()
+        client.force_login(self.counselor_b)
+        response = client.get(
+            reverse("counselor:presentation_board_detail", args=[post.pk])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "presentation-comment-edit-btn")
+        self.assertContains(
+            response,
+            reverse("counselor:presentation_board_comment_edit", args=[comment.pk]),
+        )
+
+        client.force_login(self.counselor_a)
+        response = client.get(
+            reverse("counselor:presentation_board_detail", args=[post.pk])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "presentation-comment-edit-btn")
+
+    def test_edit_requires_content_or_file(self):
+        post = self._create_post()
+        comment = CasePresentationComment.objects.create(
+            post=post,
+            author=self.counselor_b,
+            content="내용만",
+        )
+        client = Client()
+        client.force_login(self.counselor_b)
+        response = client.post(
+            reverse("counselor:presentation_board_comment_edit", args=[comment.pk]),
+            {"content": ""},
+        )
+        self.assertEqual(response.status_code, 302)
+        comment.refresh_from_db()
+        self.assertEqual(comment.content, "내용만")
+
     def test_detail_shows_full_comment_content(self):
         post = self._create_post()
         body = "사례개념화 코멘트 — 전체 내용이 보여야 합니다."

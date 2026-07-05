@@ -693,3 +693,66 @@ class PresentationBoardCommentForm(forms.Form):
         cleaned["content"] = content
         return cleaned
 
+
+class PresentationBoardCommentEditForm(forms.Form):
+    """사례발표 게시판 — 사례개념화보고서 댓글 수정."""
+
+    ALLOWED_EXTENSIONS = PresentationBoardCommentForm.ALLOWED_EXTENSIONS
+    MAX_FILE_SIZE = PresentationBoardCommentForm.MAX_FILE_SIZE
+    ACCEPT_ATTR = PresentationBoardCommentForm.ACCEPT_ATTR
+    INVALID_TYPE_MESSAGE = PresentationBoardCommentForm.INVALID_TYPE_MESSAGE
+    MAX_SIZE_MESSAGE = PresentationBoardCommentForm.MAX_SIZE_MESSAGE
+
+    content = forms.CharField(
+        label="코멘트",
+        required=False,
+        widget=forms.Textarea(
+            attrs={
+                "class": "form-control",
+                "rows": 3,
+                "placeholder": "간단한 코멘트를 입력해 주세요. (선택)",
+            }
+        ),
+    )
+    file = forms.FileField(
+        label="PDF 첨부",
+        required=False,
+        widget=forms.ClearableFileInput(
+            attrs={"class": "form-control", "accept": ACCEPT_ATTR}
+        ),
+    )
+    remove_file = forms.BooleanField(
+        label="기존 PDF 삭제",
+        required=False,
+    )
+
+    def __init__(self, *args, has_existing_file=False, **kwargs):
+        self.has_existing_file = has_existing_file
+        super().__init__(*args, **kwargs)
+        if not has_existing_file:
+            del self.fields["remove_file"]
+
+    def clean_file(self):
+        file_obj = self.cleaned_data.get("file")
+        if not file_obj:
+            return None
+        ext = os.path.splitext(file_obj.name)[1].lower()
+        if ext not in self.ALLOWED_EXTENSIONS:
+            raise forms.ValidationError(self.INVALID_TYPE_MESSAGE)
+        if file_obj.size > self.MAX_FILE_SIZE:
+            raise forms.ValidationError(self.MAX_SIZE_MESSAGE)
+        return file_obj
+
+    def clean(self):
+        cleaned = super().clean()
+        content = (cleaned.get("content") or "").strip()
+        file_obj = cleaned.get("file")
+        remove_file = cleaned.get("remove_file", False)
+        keeps_existing_file = self.has_existing_file and not remove_file
+        if not content and not file_obj and not keeps_existing_file:
+            raise forms.ValidationError(
+                "코멘트 또는 PDF 첨부 파일 중 하나는 입력해 주세요."
+            )
+        cleaned["content"] = content
+        return cleaned
+

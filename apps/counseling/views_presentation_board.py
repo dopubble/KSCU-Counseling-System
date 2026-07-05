@@ -17,7 +17,11 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 from apps.accounts.decorators import counselor_required, presentation_board_viewer_required
 from apps.accounts.models import CounselorProfile
 from apps.counseling.cohort_journal_service import get_counselor_cohort
-from apps.counseling.forms import PresentationBoardCommentForm, PresentationBoardPostForm
+from apps.counseling.forms import (
+    PresentationBoardCommentEditForm,
+    PresentationBoardCommentForm,
+    PresentationBoardPostForm,
+)
 from apps.counseling.models import CasePresentationComment, CasePresentationPost
 from apps.counseling.presentation_board import (
     PRESENTATION_BULK_ZIP_PASSWORD_NOTICE,
@@ -34,6 +38,7 @@ from apps.counseling.presentation_board import (
     user_can_create_presentation_post,
     user_can_delete_presentation_comment,
     user_can_delete_presentation_post,
+    user_can_edit_presentation_comment,
     user_is_platform_staff,
     user_is_supervisor_viewer,
 )
@@ -388,6 +393,44 @@ def presentation_board_comment_create(request, post_pk):
     )
     messages.success(request, "사례개념화보고서 댓글이 등록되었습니다.")
     return redirect("counselor:presentation_board_detail", post_pk=post.pk)
+
+
+@counselor_required
+@require_POST
+def presentation_board_comment_edit(request, comment_pk):
+    comment = get_object_or_404(
+        CasePresentationComment.objects.select_related("post"),
+        pk=comment_pk,
+    )
+    require_presentation_board_access(request.user, comment.post.cohort)
+    if not user_can_edit_presentation_comment(request.user, comment):
+        raise PermissionDenied("수정 권한이 없습니다.")
+
+    form = PresentationBoardCommentEditForm(
+        request.POST,
+        request.FILES,
+        has_existing_file=bool(comment.file),
+    )
+    if not form.is_valid():
+        for errors in form.errors.values():
+            if errors:
+                messages.error(request, errors[0])
+                break
+        return redirect("counselor:presentation_board_detail", post_pk=comment.post_id)
+
+    comment.content = form.cleaned_data["content"]
+    new_file = form.cleaned_data.get("file")
+    remove_file = form.cleaned_data.get("remove_file", False)
+    if new_file:
+        if comment.file:
+            comment.file.delete(save=False)
+        comment.file = new_file
+    elif remove_file and comment.file:
+        comment.file.delete(save=False)
+        comment.file = ""
+    comment.save(update_fields=["content", "file", "updated_at"])
+    messages.success(request, "댓글이 수정되었습니다.")
+    return redirect("counselor:presentation_board_detail", post_pk=comment.post_id)
 
 
 @counselor_required

@@ -40,6 +40,11 @@ urlpatterns = [
         name="presentation_board_comment_create",
     ),
     path(
+        "presentation-board/comment/<uuid:comment_pk>/edit/",
+        views_presentation_board.presentation_board_comment_edit,
+        name="presentation_board_comment_edit",
+    ),
+    path(
         "presentation-board/comment/<uuid:comment_pk>/delete/",
         views_presentation_board.presentation_board_comment_delete,
         name="presentation_board_comment_delete",
