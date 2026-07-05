@@ -67,9 +67,9 @@
                             class="btn btn-sm btn-outline-secondary"
                             data-bs-toggle="modal"
                             data-bs-target="#presentationBoardFileDownloadModal"
-                            data-file-action="{% url 'counselor:presentation_board_comment_file' comment.pk %}"
+                            data-file-fetch-url="{% url 'counselor:presentation_board_comment_file' comment.pk %}"
                             data-file-label="{{ comment.filename }}">
-                        <i class="bi bi-download me-1"></i>{{ comment.filename }}
+                        <i class="bi bi-download me-1"></i>암호 다운로드
                     </button>
                     {% endif %}
                     {% endif %}

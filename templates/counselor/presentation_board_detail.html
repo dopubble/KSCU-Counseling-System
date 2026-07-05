@@ -9,6 +9,7 @@
 
 {% block extra_js %}
 <script src="{% static 'js/presentation_board_comments.js' %}"></script>
+<script type="module" src="{% static 'js/presentation_board_pdf_download.js' %}"></script>
 {% endblock %}
 
 {% block layout %}
@@ -33,7 +34,7 @@
             {% if post.content %}
             <div class="client-pre-wrap mb-3">{{ post.content|linebreaksbr }}</div>
             {% endif %}
-            {% include "counselor/partials/presentation_board_file_download_button.html" with download_url=post_file_download_url filename=post.filename button_class="btn btn-outline-primary" show_icon=True requires_password=post_file_requires_password %}
+            {% include "counselor/partials/presentation_board_file_download_button.html" with download_url=post_file_download_url filename=post.filename button_class="btn btn-outline-primary" show_icon=True requires_password=post_file_requires_password button_label=post_file_requires_password|yesno:"암호 다운로드," %}
             {% if post_file_requires_password %}
             <p class="small text-muted mb-0 mt-2">{{ file_password_notice }}</p>
             {% endif %}
@@ -113,7 +114,7 @@
                 <div class="mb-0">
                     <label class="form-label fw-semibold" for="id_file">첨부 파일 <span class="text-muted fw-normal">(선택)</span></label>
                     {{ comment_form.file }}
-                    <p class="form-text small mb-0">PDF, HWP, HWPX, Word · 최대 10MB</p>
+                    <p class="form-text small mb-0">PDF · 최대 10MB</p>
                 </div>
                 <button type="submit" class="btn btn-counselor text-white">댓글 등록</button>
             </form>

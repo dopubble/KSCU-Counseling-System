@@ -582,10 +582,10 @@ class BoardPostForm(forms.Form):
 class PresentationBoardPostForm(forms.Form):
     """사례발표 게시판 — 수퍼비전(사례발표)보고서 게시글."""
 
-    ALLOWED_EXTENSIONS = {".pdf", ".hwp", ".hwpx", ".doc", ".docx"}
+    ALLOWED_EXTENSIONS = {".pdf"}
     MAX_FILE_SIZE = 10 * 1024 * 1024
-    ACCEPT_ATTR = ".pdf,.hwp,.hwpx,.doc,.docx"
-    INVALID_TYPE_MESSAGE = "PDF, HWP, HWPX, Word 파일만 업로드할 수 있습니다."
+    ACCEPT_ATTR = ".pdf,application/pdf"
+    INVALID_TYPE_MESSAGE = "PDF 파일만 업로드할 수 있습니다."
     MAX_SIZE_MESSAGE = "파일 크기는 10MB 이하여야 합니다."
 
     title = forms.CharField(

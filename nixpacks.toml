@@ -7,7 +7,7 @@ DJANGO_SETTINGS_MODULE = "kscu_counseling.settings.production"
 SECRET_KEY = "nixpacks-build-placeholder-change-in-railway"
 
 [phases.setup]
-nixPkgs = ["...", "libreoffice"]
+nixPkgs = ["..."]
 
 [phases.build]
 cmds = ["python manage.py collectstatic --noinput"]

@@ -1,6 +1,3 @@
-import io
-
-import pyzipper
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase
 from django.urls import reverse
@@ -12,10 +9,17 @@ from apps.counseling.presentation_board import (
     format_presentation_comment_content,
 )
 
+MINIMAL_PDF = (
+    b"%PDF-1.4\n"
+    b"1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+    b"2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
+    b"3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R>>endobj\n"
+    b"trailer<</Root 1 0 R>>\n"
+    b"%%EOF\n"
+)
+
 
 class PresentationBoardTests(TestCase):
-    PEER_ZIP_PASSWORD = "peer1234"
-
     def setUp(self):
         self.counselor_a = User.objects.create_user(
             email="presenter@example.com",
@@ -49,9 +53,9 @@ class PresentationBoardTests(TestCase):
             profile.save(update_fields=["cohort", "is_approved", "updated_at"])
 
         self.sample_file = SimpleUploadedFile(
-            "report.hwp",
-            b"hwp-content-bytes",
-            content_type="application/octet-stream",
+            "report.pdf",
+            MINIMAL_PDF,
+            content_type="application/pdf",
         )
 
     def _create_post(self, **kwargs):
@@ -60,11 +64,6 @@ class PresentationBoardTests(TestCase):
         kwargs.setdefault("title", "[사례발표] 발표자")
         kwargs.setdefault("file", self.sample_file)
         return CasePresentationPost.objects.create(**kwargs)
-
-    def _extract_zip_with_password(self, zip_bytes: bytes, password: str) -> dict[str, bytes]:
-        with pyzipper.ZipFile(io.BytesIO(zip_bytes), "r") as zf:
-            zf.setpassword(password.encode("utf-8"))
-            return {name: zf.read(name) for name in zf.namelist()}
 
     def test_cohort_peer_can_view_board(self):
         client = Client()
@@ -82,72 +81,27 @@ class PresentationBoardTests(TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
-    def test_peer_cannot_download_post_file_without_password(self):
+    def test_peer_can_fetch_post_pdf_for_client_encryption(self):
         post = self._create_post()
         client = Client()
         client.force_login(self.counselor_b)
         response = client.get(
             reverse("counselor:presentation_board_post_file", args=[post.pk])
         )
-        self.assertEqual(response.status_code, 403)
-
-    def _minimal_pdf_bytes(self) -> bytes:
-        import pikepdf
-
-        pdf = pikepdf.Pdf.new()
-        pdf.add_blank_page()
-        buf = io.BytesIO()
-        pdf.save(buf)
-        return buf.getvalue()
-
-    def test_peer_download_pdf_returns_encrypted_pdf(self):
-        post = self._create_post()
-        pdf_file = SimpleUploadedFile(
-            "report.pdf",
-            self._minimal_pdf_bytes(),
-            content_type="application/pdf",
-        )
-        post.file = pdf_file
-        post.save(update_fields=["file", "updated_at"])
-
-        client = Client()
-        client.force_login(self.counselor_b)
-        response = client.post(
-            reverse("counselor:presentation_board_post_file", args=[post.pk]),
-            {"file_password": self.PEER_ZIP_PASSWORD},
-        )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "application/pdf")
-        self.assertIn(".pdf", response.get("Content-Disposition", ""))
-        self.assertEqual(response.get("X-Presentation-Delivery"), "pdf")
+        body = b"".join(response.streaming_content)
+        self.assertIn(b"%PDF", body)
 
-    def test_peer_download_hwp_falls_back_to_zip_without_libreoffice(self):
+    def test_post_file_endpoint_rejects_post_method(self):
         post = self._create_post()
         client = Client()
         client.force_login(self.counselor_b)
         response = client.post(
             reverse("counselor:presentation_board_post_file", args=[post.pk]),
-            {"file_password": self.PEER_ZIP_PASSWORD},
+            {"file_password": "peer1234"},
         )
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get("X-Presentation-Delivery"), "zip")
-        self.assertEqual(response["Content-Type"], "application/zip")
-        extracted = self._extract_zip_with_password(response.content, self.PEER_ZIP_PASSWORD)
-        self.assertTrue(extracted)
-
-    def test_peer_short_password_redirects_with_error(self):
-        post = self._create_post()
-        client = Client()
-        client.force_login(self.counselor_b)
-        response = client.post(
-            reverse("counselor:presentation_board_post_file", args=[post.pk]),
-            {"file_password": "abc"},
-        )
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(
-            response.url,
-            reverse("counselor:presentation_board_detail", args=[post.pk]),
-        )
+        self.assertEqual(response.status_code, 405)
 
     def test_author_can_download_own_post_without_password(self):
         post = self._create_post()
@@ -158,8 +112,47 @@ class PresentationBoardTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertIn("attachment", response.get("Content-Disposition", ""))
-        self.assertIn(".hwp", response.get("Content-Disposition", ""))
-        self.assertNotEqual(response["Content-Type"], "application/zip")
+        self.assertIn(".pdf", response.get("Content-Disposition", ""))
+
+    def test_post_create_rejects_non_pdf(self):
+        client = Client()
+        client.force_login(self.counselor_a)
+        hwp_file = SimpleUploadedFile(
+            "report.hwp",
+            b"hwp-content",
+            content_type="application/octet-stream",
+        )
+        response = client.post(
+            reverse("counselor:presentation_board_post_create"),
+            {
+                "cohort": "1",
+                "title": "[사례발표] 발표자",
+                "content": "",
+                "file": hwp_file,
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(CasePresentationPost.objects.count(), 0)
+
+    def test_comment_create_rejects_non_pdf_attachment(self):
+        post = self._create_post()
+        client = Client()
+        client.force_login(self.counselor_b)
+        hwp_file = SimpleUploadedFile(
+            "concept.hwp",
+            b"hwp-content",
+            content_type="application/octet-stream",
+        )
+        response = client.post(
+            reverse("counselor:presentation_board_comment_create", args=[post.pk]),
+            {
+                "cohort": "1",
+                "content": "개념화 제출",
+                "file": hwp_file,
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(CasePresentationComment.objects.count(), 0)
 
     def test_new_post_has_no_stored_password_on_create(self):
         client = Client()
@@ -201,9 +194,9 @@ class PresentationBoardTests(TestCase):
 
         client.force_login(self.counselor_b)
         comment_file = SimpleUploadedFile(
-            "concept.hwpx",
-            b"hwpx-content",
-            content_type="application/octet-stream",
+            "concept.pdf",
+            MINIMAL_PDF,
+            content_type="application/pdf",
         )
         response = client.post(
             reverse("counselor:presentation_board_comment_create", args=[post.pk]),
@@ -230,8 +223,9 @@ class PresentationBoardTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, post.title)
         self.assertContains(response, "사례개념화 연습 댓글달기")
-        self.assertContains(response, "이 파일에 설정할 암호")
+        self.assertContains(response, "이 PDF에 설정할 암호")
         self.assertContains(response, "presentationBoardFileDownloadModal")
+        self.assertContains(response, "presentation_board_pdf_download.js")
 
     def test_peer_can_comment_without_file(self):
         post = self._create_post()
@@ -317,7 +311,11 @@ class PresentationBoardTests(TestCase):
             {
                 "cohort": "1",
                 "content": "",
-                "file": SimpleUploadedFile("x.hwp", b"x", content_type="application/octet-stream"),
+                "file": SimpleUploadedFile(
+                    "x.pdf",
+                    MINIMAL_PDF,
+                    content_type="application/pdf",
+                ),
             },
         )
         self.assertEqual(response.status_code, 403)
@@ -333,100 +331,3 @@ class PresentationBoardTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertIn("attachment", response.get("Content-Disposition", ""))
-
-    def test_encrypt_pdf_bytes_unit(self):
-        from apps.counseling.presentation_file_download import encrypt_pdf_bytes
-        import pikepdf
-
-        raw = self._minimal_pdf_bytes()
-        encrypted = encrypt_pdf_bytes(raw, "pdf1234")
-        with pikepdf.open(io.BytesIO(encrypted), password="pdf1234") as pdf:
-            self.assertGreaterEqual(len(pdf.pages), 1)
-
-    def test_build_password_protected_download_falls_back_when_conversion_pdf_invalid(self):
-        from apps.counseling import presentation_file_download as download_mod
-
-        original = download_mod.convert_office_bytes_to_pdf
-        download_mod.convert_office_bytes_to_pdf = lambda *args, **kwargs: b"not-a-pdf"
-        try:
-            payload = download_mod.build_password_protected_download(
-                b"hwp-content",
-                inner_filename="report.hwp",
-                password=self.PEER_ZIP_PASSWORD,
-            )
-        finally:
-            download_mod.convert_office_bytes_to_pdf = original
-        self.assertEqual(payload.delivery, "zip")
-        extracted = self._extract_zip_with_password(payload.data, self.PEER_ZIP_PASSWORD)
-        self.assertTrue(extracted)
-
-    def test_storage_diagnostic_logs_on_missing_file(self):
-        from apps.counseling.presentation_file_download import (
-            _collect_presentation_file_storage_diagnostics,
-            read_uploaded_file_bytes,
-        )
-
-        post = self._create_post()
-        post.file.name = "presentation_board/missing/on/disk/report.hwp"
-        report = _collect_presentation_file_storage_diagnostics(post.file)
-        self.assertEqual(report["db_file_name"], post.file.name)
-        self.assertIn("media_root", report)
-
-        with self.assertRaises(FileNotFoundError):
-            read_uploaded_file_bytes(post.file, display_filename="report.hwp")
-
-    def test_attachment_content_disposition_ascii_fallback(self):
-        from apps.counseling.presentation_file_download import attachment_content_disposition
-        from django.http import HttpResponse
-
-        header = attachment_content_disposition("08. (한기상)보고서.zip")
-        self.assertIn('filename="08.', header)
-        self.assertIn("filename*=UTF-8", header)
-        response = HttpResponse(b"x")
-        response["Content-Disposition"] = header
-        response.serialize_headers()
-
-    def test_peer_download_korean_filename_returns_zip(self):
-        korean_file = SimpleUploadedFile(
-            "08. (한기상)전문상담사 사례발표보고서.hwp",
-            b"hwp-bytes",
-            content_type="application/octet-stream",
-        )
-        post = self._create_post(file=korean_file)
-        client = Client()
-        client.force_login(self.counselor_b)
-        response = client.post(
-            reverse("counselor:presentation_board_post_file", args=[post.pk]),
-            {"file_password": self.PEER_ZIP_PASSWORD},
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get("X-Presentation-Delivery"), "zip")
-        self.assertIn("attachment", response.get("Content-Disposition", ""))
-
-    def test_build_password_protected_zip_unit(self):
-        from apps.counseling.presentation_file_download import build_password_protected_zip
-
-        zip_bytes = build_password_protected_zip(
-            b"hello",
-            inner_filename="sample.hwp",
-            password="zip1234",
-        )
-        with pyzipper.ZipFile(io.BytesIO(zip_bytes), "r") as zf:
-            zf.setpassword(b"zip1234")
-            self.assertEqual(zf.read("sample.hwp"), b"hello")
-
-    def test_build_password_protected_zip_korean_filename(self):
-        from apps.counseling.presentation_file_download import (
-            build_password_protected_zip,
-            safe_download_basename,
-        )
-
-        inner = safe_download_basename("08. (한기상)보고서.hwp")
-        zip_bytes = build_password_protected_zip(
-            b"content",
-            inner_filename="08. (한기상)보고서.hwp",
-            password="1234",
-        )
-        with pyzipper.ZipFile(io.BytesIO(zip_bytes), "r") as zf:
-            zf.setpassword(b"1234")
-            self.assertEqual(zf.read(inner), b"content")
