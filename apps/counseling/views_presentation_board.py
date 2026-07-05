@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
@@ -13,24 +14,32 @@ from django.urls import reverse
 from django.utils.http import content_disposition_header
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from apps.accounts.decorators import counselor_required
+from apps.accounts.decorators import counselor_required, presentation_board_viewer_required
 from apps.accounts.models import CounselorProfile
 from apps.counseling.cohort_journal_service import get_counselor_cohort
 from apps.counseling.forms import PresentationBoardCommentForm, PresentationBoardPostForm
 from apps.counseling.models import CasePresentationComment, CasePresentationPost
 from apps.counseling.presentation_board import (
+    PRESENTATION_BULK_ZIP_PASSWORD_NOTICE,
     PRESENTATION_FILE_PASSWORD_MIN_LENGTH,
     PRESENTATION_FILE_PASSWORD_NOTICE,
     PRESENTATION_FORM_TEMPLATES,
     count_presentation_comment_peers,
     get_presentation_form_path,
+    presentation_board_cohort_options,
     require_presentation_board_access,
     resolve_viewer_cohort,
+    user_can_browse_all_presentation_cohorts,
     user_can_comment_on_presentation_post,
     user_can_create_presentation_post,
     user_can_delete_presentation_comment,
     user_can_delete_presentation_post,
     user_is_platform_staff,
+    user_is_supervisor_viewer,
+)
+from apps.counseling.presentation_bulk_download import (
+    bulk_zip_download_filename,
+    build_presentation_posts_zip,
 )
 from apps.counseling.presentation_pdf_encrypt import encrypt_pdf_bytes, read_uploaded_file_bytes
 
@@ -47,13 +56,30 @@ def _parse_cohort_param(raw) -> int | None:
     return value if value > 0 else None
 
 
+def _resolve_list_cohort_filter(request) -> int | None:
+    """목록 필터 기수. 수퍼바이저·관리자는 None이면 전 기수."""
+    requested = _parse_cohort_param(request.GET.get("cohort") or request.POST.get("cohort"))
+    user = request.user
+
+    if user_can_browse_all_presentation_cohorts(user):
+        if requested is not None:
+            require_presentation_board_access(user, requested)
+        return requested
+
+    cohort = resolve_viewer_cohort(user, requested_cohort=requested)
+    if cohort is None:
+        raise PermissionDenied("기수 정보가 없어 사례발표 게시판을 이용할 수 없습니다.")
+    require_presentation_board_access(user, cohort)
+    return cohort
+
+
 def _board_cohort_or_403(request) -> int:
     requested = _parse_cohort_param(request.GET.get("cohort") or request.POST.get("cohort"))
     cohort = resolve_viewer_cohort(request.user, requested_cohort=requested)
     if cohort is None:
-        if user_is_platform_staff(request.user) and requested:
+        if user_can_browse_all_presentation_cohorts(request.user) and requested:
             cohort = requested
-        elif user_is_platform_staff(request.user):
+        elif user_can_browse_all_presentation_cohorts(request.user):
             cohort = (
                 CounselorProfile.objects.exclude(cohort__isnull=True)
                 .order_by("-cohort")
@@ -66,13 +92,21 @@ def _board_cohort_or_403(request) -> int:
     return cohort
 
 
-def _presentation_posts_for_cohort(cohort: int):
-    return (
-        CasePresentationPost.objects.filter(cohort=cohort)
-        .select_related("author")
+def _presentation_posts_query(cohort: int | None):
+    qs = (
+        CasePresentationPost.objects.select_related("author")
         .annotate(comment_count=Count("comments"))
-        .order_by("-created_at")
     )
+    if cohort is not None:
+        qs = qs.filter(cohort=cohort)
+    return qs.order_by("-cohort", "-created_at")
+
+
+def _presentation_board_list_url(*, cohort: int | None) -> str:
+    base = reverse("counselor:presentation_board")
+    if cohort is not None:
+        return f"{base}?cohort={cohort}"
+    return base
 
 
 def _get_presentation_post_or_404(post_pk):
@@ -99,6 +133,16 @@ def _encrypted_pdf_download_response(*, pdf_bytes: bytes, filename: str) -> Http
         filename=download_name,
     )
     response["Content-Length"] = len(pdf_bytes)
+    return response
+
+
+def _zip_download_response(*, zip_bytes: bytes, filename: str) -> HttpResponse:
+    response = HttpResponse(zip_bytes, content_type="application/zip")
+    response["Content-Disposition"] = content_disposition_header(
+        as_attachment=True,
+        filename=filename,
+    )
+    response["Content-Length"] = len(zip_bytes)
     return response
 
 
@@ -143,28 +187,60 @@ def _serve_presentation_file(
         return _redirect_after_file_download_failure(request, fallback_url=fallback_url)
 
 
-@counselor_required
+def _parse_post_ids(raw_ids) -> list[uuid.UUID]:
+    parsed: list[uuid.UUID] = []
+    for raw in raw_ids:
+        try:
+            parsed.append(uuid.UUID(str(raw)))
+        except (TypeError, ValueError, AttributeError):
+            continue
+    return parsed
+
+
+@presentation_board_viewer_required
 @require_GET
 def presentation_board(request):
-    cohort = _board_cohort_or_403(request)
-    posts = list(_presentation_posts_for_cohort(cohort))
+    cohort_filter = _resolve_list_cohort_filter(request)
+    posts = list(_presentation_posts_query(cohort_filter))
     viewer_cohort = get_counselor_cohort(request.user)
+    can_filter = user_can_browse_all_presentation_cohorts(request.user)
+    if cohort_filter is not None:
+        page_subtitle = f"{cohort_filter}기 동기 수퍼비전 · 사례발표 자료 공유"
+        list_heading = f"{cohort_filter}기 게시글"
+    elif can_filter:
+        page_subtitle = "전 기수 사례발표 보고서 · 수퍼비전 자료 열람"
+        list_heading = "전체 게시글"
+    else:
+        page_subtitle = f"{cohort_filter}기 동기 수퍼비전 · 사례발표 자료 공유"
+        list_heading = f"{cohort_filter}기 게시글"
+
     return render(
         request,
         "counselor/presentation_board.html",
         {
-            "cohort": cohort,
+            "cohort": cohort_filter,
             "viewer_cohort": viewer_cohort,
             "posts": posts,
             "post_form": PresentationBoardPostForm(author_name=request.user.name),
             "form_templates": PRESENTATION_FORM_TEMPLATES,
-            "can_create_post": user_can_create_presentation_post(request.user, cohort),
+            "can_create_post": (
+                cohort_filter is not None
+                and user_can_create_presentation_post(request.user, cohort_filter)
+            ),
             "is_staff_viewer": user_is_platform_staff(request.user),
+            "is_supervisor_viewer": user_is_supervisor_viewer(request.user),
+            "can_filter_cohorts": can_filter,
+            "cohort_options": presentation_board_cohort_options() if can_filter else [],
+            "page_subtitle": page_subtitle,
+            "list_heading": list_heading,
+            "show_cohort_column": can_filter and cohort_filter is None,
+            "bulk_zip_password_notice": PRESENTATION_BULK_ZIP_PASSWORD_NOTICE,
+            "bulk_download_url": reverse("counselor:presentation_board_bulk_download"),
         },
     )
 
 
-@counselor_required
+@presentation_board_viewer_required
 @require_GET
 def presentation_board_detail(request, post_pk):
     post = _get_presentation_post_or_404(post_pk)
@@ -181,11 +257,13 @@ def presentation_board_detail(request, post_pk):
         round(100 * comment_count / comment_peer_total) if comment_peer_total else 0
     )
     can_comment = user_can_comment_on_presentation_post(request.user, post)
+    cohort_filter = _parse_cohort_param(request.GET.get("cohort"))
     return render(
         request,
         "counselor/presentation_board_detail.html",
         {
             "cohort": post.cohort,
+            "cohort_filter": cohort_filter,
             "post": post,
             "comments": comments,
             "comment_count": comment_count,
@@ -195,6 +273,7 @@ def presentation_board_detail(request, post_pk):
             "can_comment": can_comment,
             "can_delete_post": user_can_delete_presentation_post(request.user, post),
             "is_staff_viewer": user_is_platform_staff(request.user),
+            "is_supervisor_viewer": user_is_supervisor_viewer(request.user),
             "is_author": post.author_id == request.user.pk,
             "page_subtitle": f"{post.cohort}기 · {post.author.name}",
             "file_password_notice": PRESENTATION_FILE_PASSWORD_NOTICE,
@@ -202,6 +281,7 @@ def presentation_board_detail(request, post_pk):
                 "counselor:presentation_board_post_file",
                 kwargs={"post_pk": post.pk},
             ),
+            "board_list_url": _presentation_board_list_url(cohort=cohort_filter),
         },
     )
 
@@ -296,7 +376,7 @@ def presentation_board_comment_delete(request, comment_pk):
     return redirect("counselor:presentation_board_detail", post_pk=comment.post_id)
 
 
-@counselor_required
+@presentation_board_viewer_required
 @require_http_methods(["GET", "POST"])
 def presentation_board_post_file(request, post_pk):
     post = get_object_or_404(CasePresentationPost, pk=post_pk)
@@ -314,7 +394,7 @@ def presentation_board_post_file(request, post_pk):
     )
 
 
-@counselor_required
+@presentation_board_viewer_required
 @require_http_methods(["GET", "POST"])
 def presentation_board_comment_file(request, comment_pk):
     comment = get_object_or_404(
@@ -335,7 +415,55 @@ def presentation_board_comment_file(request, comment_pk):
     )
 
 
-@counselor_required
+@presentation_board_viewer_required
+@require_POST
+def presentation_board_bulk_download(request):
+    cohort_filter = _resolve_list_cohort_filter(request)
+    fallback_url = _presentation_board_list_url(cohort=cohort_filter)
+
+    password = (request.POST.get("file_password") or "").strip()
+    if len(password) < PRESENTATION_FILE_PASSWORD_MIN_LENGTH:
+        messages.error(
+            request,
+            f"ZIP 암호는 {PRESENTATION_FILE_PASSWORD_MIN_LENGTH}자 이상 입력해 주세요.",
+        )
+        return _redirect_after_file_download_failure(request, fallback_url=fallback_url)
+
+    post_ids = _parse_post_ids(request.POST.getlist("post_ids"))
+    if not post_ids:
+        messages.error(request, "다운로드할 게시글을 하나 이상 선택해 주세요.")
+        return _redirect_after_file_download_failure(request, fallback_url=fallback_url)
+
+    posts = list(
+        CasePresentationPost.objects.filter(pk__in=post_ids)
+        .select_related("author")
+        .order_by("-cohort", "-created_at")
+    )
+    if len(posts) != len(set(post_ids)):
+        messages.error(request, "선택한 게시글 중 일부를 찾을 수 없습니다.")
+        return _redirect_after_file_download_failure(request, fallback_url=fallback_url)
+
+    for post in posts:
+        require_presentation_board_access(request.user, post.cohort)
+
+    try:
+        zip_bytes = build_presentation_posts_zip(posts, password)
+    except FileNotFoundError as exc:
+        messages.error(request, str(exc))
+        return _redirect_after_file_download_failure(request, fallback_url=fallback_url)
+    except Exception:
+        logger.exception("Presentation bulk ZIP download failed post_count=%s", len(posts))
+        messages.error(
+            request,
+            "ZIP 파일을 준비하는 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+        )
+        return _redirect_after_file_download_failure(request, fallback_url=fallback_url)
+
+    download_name = bulk_zip_download_filename(cohort=cohort_filter)
+    return _zip_download_response(zip_bytes=zip_bytes, filename=download_name)
+
+
+@presentation_board_viewer_required
 @require_GET
 def presentation_board_form_download(request, template_key: str):
     _board_cohort_or_403(request)

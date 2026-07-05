@@ -67,6 +67,11 @@ PRESENTATION_FILE_PASSWORD_NOTICE = (
     "입력한 암호가 적용된 PDF 파일로 저장됩니다. (4자 이상)"
 )
 
+PRESENTATION_BULK_ZIP_PASSWORD_NOTICE = (
+    "ZIP 파일에 설정할 암호를 입력해 주세요. "
+    "ZIP 안의 PDF 파일에는 별도 암호가 걸리지 않습니다. (4자 이상)"
+)
+
 
 def default_presentation_post_title(author_name: str) -> str:
     name = (author_name or "").strip() or "작성자"
@@ -129,9 +134,17 @@ def user_is_platform_staff(user: User) -> bool:
     return bool(user.is_authenticated and (user.is_superuser or user.role == UserRole.ADMIN))
 
 
+def user_is_supervisor_viewer(user: User) -> bool:
+    return bool(user.is_authenticated and user.role == UserRole.SUPERVISOR)
+
+
+def user_can_browse_all_presentation_cohorts(user: User) -> bool:
+    return user_is_platform_staff(user) or user_is_supervisor_viewer(user)
+
+
 def resolve_viewer_cohort(user: User, *, requested_cohort: int | None = None) -> int | None:
-    """열람 대상 기수. 상담사는 본인 기수만, 관리자는 요청 기수 또는 전체 목록용."""
-    if user_is_platform_staff(user):
+    """열람 대상 기수. 상담사는 본인 기수, 수퍼바이저·관리자는 요청 기수(없으면 전체)."""
+    if user_can_browse_all_presentation_cohorts(user):
         return requested_cohort
     if user.role != UserRole.COUNSELOR:
         return None
@@ -141,11 +154,20 @@ def resolve_viewer_cohort(user: User, *, requested_cohort: int | None = None) ->
 def user_can_view_presentation_board(user: User, cohort: int) -> bool:
     if not user.is_authenticated:
         return False
-    if user_is_platform_staff(user):
+    if user_can_browse_all_presentation_cohorts(user):
         return True
     if user.role != UserRole.COUNSELOR:
         return False
     return get_counselor_cohort(user) == cohort
+
+
+def presentation_board_cohort_options() -> list[int]:
+    return list(
+        CounselorProfile.objects.exclude(cohort__isnull=True)
+        .order_by("-cohort")
+        .values_list("cohort", flat=True)
+        .distinct()
+    )
 
 
 def require_presentation_board_access(user: User, cohort: int) -> None:
@@ -154,6 +176,8 @@ def require_presentation_board_access(user: User, cohort: int) -> None:
 
 
 def user_can_create_presentation_post(user: User, cohort: int) -> bool:
+    if user.role != UserRole.COUNSELOR:
+        return False
     return user_can_view_presentation_board(user, cohort)
 
 
@@ -165,6 +189,8 @@ def user_can_delete_presentation_post(user: User, post: CasePresentationPost) ->
 
 def user_can_comment_on_presentation_post(user: User, post: CasePresentationPost) -> bool:
     """발표자(게시글 작성자)는 본인 글에 개념화 댓글 불가."""
+    if user.role == UserRole.SUPERVISOR:
+        return False
     if not user_can_view_presentation_board(user, post.cohort):
         return False
     if user_is_platform_staff(user):

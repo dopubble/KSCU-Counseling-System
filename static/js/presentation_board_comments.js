@@ -36,10 +36,105 @@
         });
     }
 
+    function getPresentationRowChecks() {
+        return Array.prototype.slice.call(
+            document.querySelectorAll(".presentation-board-row-check")
+        );
+    }
+
+    function getCheckedPresentationRows() {
+        return getPresentationRowChecks().filter(function (input) {
+            return input.checked;
+        });
+    }
+
+    function syncPresentationSelectAllState() {
+        var selectAll = document.getElementById("presentationBoardSelectAll");
+        var checks = getPresentationRowChecks();
+        if (!selectAll || !checks.length) {
+            return;
+        }
+        var checkedCount = getCheckedPresentationRows().length;
+        selectAll.checked = checkedCount === checks.length;
+        selectAll.indeterminate = checkedCount > 0 && checkedCount < checks.length;
+    }
+
+    function bindPresentationBoardBulkDownload() {
+        var selectAll = document.getElementById("presentationBoardSelectAll");
+        var bulkBtn = document.getElementById("presentationBoardBulkDownloadBtn");
+        var bulkModal = document.getElementById("presentationBoardBulkZipModal");
+        var bulkForm = document.getElementById("presentationBoardBulkZipForm");
+        var bulkIds = document.getElementById("presentationBoardBulkZipPostIds");
+        var bulkCount = document.getElementById("presentationBoardBulkZipCount");
+        var bulkPassword = document.getElementById("presentationBoardBulkZipPassword");
+        var bulkNext = document.getElementById("presentationBoardBulkZipNext");
+
+        getPresentationRowChecks().forEach(function (input) {
+            input.addEventListener("change", syncPresentationSelectAllState);
+        });
+
+        if (selectAll) {
+            selectAll.addEventListener("change", function () {
+                getPresentationRowChecks().forEach(function (input) {
+                    input.checked = selectAll.checked;
+                });
+                selectAll.indeterminate = false;
+            });
+        }
+
+        if (bulkBtn && bulkModal && window.bootstrap) {
+            bulkBtn.addEventListener("click", function () {
+                var selected = getCheckedPresentationRows();
+                if (!selected.length) {
+                    window.alert("다운로드할 게시글을 하나 이상 선택해 주세요.");
+                    return;
+                }
+                window.bootstrap.Modal.getOrCreateInstance(bulkModal).show();
+            });
+        }
+
+        if (bulkModal) {
+            bulkModal.addEventListener("show.bs.modal", function () {
+                var selected = getCheckedPresentationRows();
+                if (bulkIds) {
+                    bulkIds.innerHTML = "";
+                    selected.forEach(function (input) {
+                        var hidden = document.createElement("input");
+                        hidden.type = "hidden";
+                        hidden.name = "post_ids";
+                        hidden.value = input.value;
+                        bulkIds.appendChild(hidden);
+                    });
+                }
+                if (bulkCount) {
+                    bulkCount.textContent = String(selected.length);
+                }
+                if (bulkPassword) {
+                    bulkPassword.value = "";
+                }
+                if (bulkNext) {
+                    bulkNext.value = window.location.pathname + window.location.search;
+                }
+            });
+        }
+
+        if (bulkForm) {
+            bulkForm.addEventListener("submit", function () {
+                window.setTimeout(function () {
+                    if (bulkModal && window.bootstrap) {
+                        window.bootstrap.Modal.getInstance(bulkModal)?.hide();
+                    }
+                }, 300);
+            });
+        }
+    }
+
     document.addEventListener("DOMContentLoaded", function () {
         document
             .querySelectorAll(".presentation-board-comment-accordion")
             .forEach(bindPresentationCommentAccordion);
+
+        bindPresentationBoardBulkDownload();
 
         var fileModal = document.getElementById("presentationBoardFileDownloadModal");
         var downloadForm = document.getElementById("presentationBoardFileDownloadForm");

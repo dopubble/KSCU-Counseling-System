@@ -50,6 +50,11 @@ urlpatterns = [
         name="presentation_board_comment_file",
     ),
     path(
+        "presentation-board/bulk-download/",
+        views_presentation_board.presentation_board_bulk_download,
+        name="presentation_board_bulk_download",
+    ),
+    path(
         "presentation-board/forms/<str:template_key>/",
         views_presentation_board.presentation_board_form_download,
         name="presentation_board_form_download",

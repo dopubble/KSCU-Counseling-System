@@ -1,0 +1,50 @@
+<div class="modal fade"
+     id="presentationBoardBulkZipModal"
+     tabindex="-1"
+     aria-labelledby="presentationBoardBulkZipModalLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="post"
+                  id="presentationBoardBulkZipForm"
+                  action="{{ bulk_download_url }}"
+                  target="presentationBoardDownloadFrame">
+                {% csrf_token %}
+                {% if cohort %}
+                <input type="hidden" name="cohort" value="{{ cohort }}">
+                {% endif %}
+                <input type="hidden" name="next" id="presentationBoardBulkZipNext" value="">
+                <div id="presentationBoardBulkZipPostIds"></div>
+                <div class="modal-header">
+                    <h5 class="modal-title" id="presentationBoardBulkZipModalLabel">ZIP 일괄 다운로드</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">{{ bulk_zip_password_notice }}</p>
+                    <p class="small mb-3">
+                        <span class="text-muted">선택:</span>
+                        <span class="fw-semibold" id="presentationBoardBulkZipCount">0</span>건
+                    </p>
+                    <label for="presentationBoardBulkZipPassword" class="form-label fw-semibold">ZIP 파일 암호</label>
+                    <input type="password"
+                           class="form-control"
+                           id="presentationBoardBulkZipPassword"
+                           name="file_password"
+                           required
+                           minlength="4"
+                           autocomplete="new-password"
+                           placeholder="4자 이상 입력 (ZIP 열 때 사용)">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-counselor text-white">다운로드</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<iframe name="presentationBoardDownloadFrame"
+        id="presentationBoardDownloadFrame"
+        class="d-none"
+        title="파일 다운로드"
+        aria-hidden="true"></iframe>

@@ -87,6 +87,9 @@ def user_can_access_url_path(user, path: str) -> bool:
     if path.startswith("/counseling/supervisor/"):
         return role in (UserRole.SUPERVISOR, UserRole.ADMIN)
 
+    if path.startswith("/counseling/counselor/presentation-board/"):
+        return role in (UserRole.COUNSELOR, UserRole.ADMIN, UserRole.SUPERVISOR)
+
     if path.startswith("/counseling/counselor/"):
         return role in (UserRole.COUNSELOR, UserRole.ADMIN)
 

@@ -391,3 +391,94 @@ class PresentationBoardTests(TestCase):
         encrypted = encrypt_pdf_bytes(MINIMAL_PDF, "pdf1234")
         with pikepdf.open(io.BytesIO(encrypted), password="pdf1234") as pdf:
             self.assertGreaterEqual(len(pdf.pages), 1)
+
+    def test_supervisor_can_view_all_cohort_posts(self):
+        post_c1 = self._create_post(cohort=1)
+        post_c2 = self._create_post(
+            cohort=2,
+            author=self.other_cohort,
+            title=default_presentation_post_title("타기수"),
+        )
+        supervisor = User.objects.create_user(
+            email="supervisor@example.com",
+            password="pass",
+            name="수퍼바이저",
+            role=UserRole.SUPERVISOR,
+            status=UserStatus.ACTIVE,
+        )
+        client = Client()
+        client.force_login(supervisor)
+        response = client.get(reverse("counselor:presentation_board"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, post_c1.title)
+        self.assertContains(response, post_c2.title)
+        self.assertContains(response, "presentationBoardSelectAll")
+        self.assertContains(response, "선택 항목 일괄 다운로드 (ZIP)")
+
+    def test_supervisor_cannot_comment_on_post(self):
+        post = self._create_post()
+        supervisor = User.objects.create_user(
+            email="supervisor2@example.com",
+            password="pass",
+            name="수퍼바이저2",
+            role=UserRole.SUPERVISOR,
+            status=UserStatus.ACTIVE,
+        )
+        client = Client()
+        client.force_login(supervisor)
+        response = client.get(
+            reverse("counselor:presentation_board_detail", args=[post.pk])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "[사례개념화 연습] 댓글달기")
+
+    def test_bulk_zip_download_returns_password_protected_archive(self):
+        import io
+        import zipfile
+
+        import pyzipper
+
+        post_a = self._create_post()
+        post_b = self._create_post(
+            author=self.counselor_b,
+            title=default_presentation_post_title("동기상담사"),
+        )
+        client = Client()
+        client.force_login(self.counselor_b)
+        response = client.post(
+            reverse("counselor:presentation_board_bulk_download"),
+            {
+                "post_ids": [str(post_a.pk), str(post_b.pk)],
+                "file_password": "zip1234",
+                "cohort": "1",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/zip")
+        self.assertIn("attachment", response.get("Content-Disposition", ""))
+
+        with pyzipper.AESZipFile(io.BytesIO(response.content)) as archive:
+            archive.setpassword(b"zip1234")
+            names = archive.namelist()
+            self.assertEqual(len(names), 2)
+            for name in names:
+                data = archive.read(name)
+                self.assertTrue(data.startswith(b"%PDF"))
+
+        with zipfile.ZipFile(io.BytesIO(response.content)) as plain_archive:
+            with self.assertRaises(RuntimeError):
+                plain_archive.read(plain_archive.namelist()[0])
+
+    def test_bulk_download_rejects_foreign_cohort_post(self):
+        post = self._create_post(cohort=2, author=self.other_cohort)
+        client = Client()
+        client.force_login(self.counselor_a)
+        response = client.post(
+            reverse("counselor:presentation_board_bulk_download"),
+            {
+                "post_ids": [str(post.pk)],
+                "file_password": "zip1234",
+                "cohort": "1",
+            },
+        )
+        self.assertEqual(response.status_code, 403)

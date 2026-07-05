@@ -7,23 +7,50 @@
 <link href="{% static 'css/counselor.css' %}" rel="stylesheet">
 {% endblock %}
 
+{% block extra_js %}
+<script src="{% static 'js/presentation_board_comments.js' %}"></script>
+{% endblock %}
+
 {% block layout %}
 <div class="site-page counselor-page py-4 py-lg-5">
     <div class="container site-container">
 {% block content %}
-    {% page_header title="사례발표 게시판" subtitle="{{ cohort }}기 동기 수퍼비전 · 사례발표 자료 공유" heading_tag="h1" title_class="h3 fw-semibold site-page-title mb-0" header_class="site-page-header mb-4" c1_label="대시보드" c1_url_name="counselor:dashboard" c1_icon="bi-briefcase" c2_label="사례발표 게시판" %}
+    {% if is_supervisor_viewer %}
+    {% page_header title="사례발표 게시판" subtitle=page_subtitle heading_tag="h1" title_class="h3 fw-semibold site-page-title mb-0" header_class="site-page-header mb-4" c1_label="수퍼비전" c1_url_name="supervisor:dashboard" c1_icon="bi-eye" c2_label="사례발표 게시판" %}
+    {% else %}
+    {% page_header title="사례발표 게시판" subtitle=page_subtitle heading_tag="h1" title_class="h3 fw-semibold site-page-title mb-0" header_class="site-page-header mb-4" c1_label="대시보드" c1_url_name="counselor:dashboard" c1_icon="bi-briefcase" c2_label="사례발표 게시판" %}
+    {% endif %}
 
     <div class="card border-0 shadow-sm mb-3 presentation-board-toolbar">
         <div class="card-body py-3">
-            <div class="d-flex flex-wrap align-items-center justify-content-end gap-2">
-                <a href="{% url 'counselor:presentation_board_form_download' 'supervision_report' %}"
-                   class="btn btn-sm btn-outline-primary">
-                    <i class="bi bi-download me-1"></i>수퍼비전 양식
-                </a>
-                <a href="{% url 'counselor:presentation_board_form_download' 'conceptualization' %}"
-                   class="btn btn-sm btn-outline-primary">
-                    <i class="bi bi-download me-1"></i>개념화 양식
-                </a>
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                {% if can_filter_cohorts %}
+                <form method="get" class="d-flex flex-wrap align-items-center gap-2 mb-0">
+                    <label for="presentationBoardCohortFilter" class="form-label small text-muted mb-0">기수</label>
+                    <select id="presentationBoardCohortFilter"
+                            name="cohort"
+                            class="form-select form-select-sm"
+                            style="width: auto; min-width: 8rem;"
+                            onchange="this.form.submit()">
+                        <option value="" {% if cohort is None %}selected{% endif %}>전체</option>
+                        {% for option in cohort_options %}
+                        <option value="{{ option }}" {% if cohort == option %}selected{% endif %}>{{ option }}기</option>
+                        {% endfor %}
+                    </select>
+                </form>
+                {% else %}
+                <div></div>
+                {% endif %}
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <a href="{% url 'counselor:presentation_board_form_download' 'supervision_report' %}{% if cohort %}?cohort={{ cohort }}{% endif %}"
+                       class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-download me-1"></i>수퍼비전 양식
+                    </a>
+                    <a href="{% url 'counselor:presentation_board_form_download' 'conceptualization' %}{% if cohort %}?cohort={{ cohort }}{% endif %}"
+                       class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-download me-1"></i>개념화 양식
+                    </a>
+                </div>
             </div>
         </div>
     </div>
@@ -31,17 +58,26 @@
     <div class="card border-0 shadow-sm counselor-table-card">
         <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2 py-3">
             <h2 class="h6 fw-semibold mb-0">
-                <i class="bi bi-collection me-2 text-counselor"></i>{{ cohort }}기 게시글
+                <i class="bi bi-collection me-2 text-counselor"></i>{{ list_heading }}
                 <span class="badge text-bg-light ms-1">{{ posts|length }}건</span>
             </h2>
-            {% if can_create_post %}
-            <button type="button"
-                    class="btn btn-sm btn-primary"
-                    data-bs-toggle="modal"
-                    data-bs-target="#presentationBoardPostModal">
-                <i class="bi bi-plus-lg me-1"></i>보고서 등록하기
-            </button>
-            {% endif %}
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                {% if posts %}
+                <button type="button"
+                        class="btn btn-sm btn-outline-primary"
+                        id="presentationBoardBulkDownloadBtn">
+                    <i class="bi bi-file-earmark-zip me-1"></i>선택 항목 일괄 다운로드 (ZIP)
+                </button>
+                {% endif %}
+                {% if can_create_post %}
+                <button type="button"
+                        class="btn btn-sm btn-primary"
+                        data-bs-toggle="modal"
+                        data-bs-target="#presentationBoardPostModal">
+                    <i class="bi bi-plus-lg me-1"></i>보고서 등록하기
+                </button>
+                {% endif %}
+            </div>
         </div>
         <div class="card-body p-0">
             {% if posts %}
@@ -49,7 +85,16 @@
                 <table class="table table-hover align-middle mb-0 counselor-table presentation-board-table">
                     <thead>
                         <tr>
+                            <th class="text-center" style="width: 2.5rem;">
+                                <input type="checkbox"
+                                       class="form-check-input"
+                                       id="presentationBoardSelectAll"
+                                       aria-label="전체 선택">
+                            </th>
                             <th class="text-muted small" style="width: 3rem;">No</th>
+                            {% if show_cohort_column %}
+                            <th style="width: 4rem;">기수</th>
+                            {% endif %}
                             <th>제목</th>
                             <th style="width: 7rem;">작성자</th>
                             <th style="width: 7rem;">등록일</th>
@@ -60,8 +105,17 @@
                     <tbody>
                         {% for post in posts %}
                         <tr class="presentation-board-row"
-                            onclick="window.location='{% url 'counselor:presentation_board_detail' post.pk %}'">
+                            onclick="window.location='{% url 'counselor:presentation_board_detail' post.pk %}{% if cohort %}?cohort={{ cohort }}{% endif %}'">
+                            <td class="text-center" onclick="event.stopPropagation();">
+                                <input type="checkbox"
+                                       class="form-check-input presentation-board-row-check"
+                                       value="{{ post.pk }}"
+                                       aria-label="{{ post.title }} 선택">
+                            </td>
                             <td class="text-muted small">{{ forloop.counter }}</td>
+                            {% if show_cohort_column %}
+                            <td class="small">{{ post.cohort }}기</td>
+                            {% endif %}
                             <td class="fw-semibold text-counselor presentation-board-title">{{ post.title }}</td>
                             <td class="small">{{ post.author.name }}</td>
                             <td class="small text-muted">{{ post.created_at|date:"Y-m-d" }}</td>
@@ -69,7 +123,7 @@
                                 <span class="badge text-bg-light">{{ post.comment_count }}</span>
                             </td>
                             <td class="text-end">
-                                <a href="{% url 'counselor:presentation_board_detail' post.pk %}"
+                                <a href="{% url 'counselor:presentation_board_detail' post.pk %}{% if cohort %}?cohort={{ cohort }}{% endif %}"
                                    class="btn btn-sm btn-outline-primary"
                                    onclick="event.stopPropagation();">
                                     보기
@@ -97,6 +151,10 @@
             {% endif %}
         </div>
     </div>
+
+    {% if posts %}
+    {% include "counselor/partials/presentation_board_bulk_zip_modal.html" %}
+    {% endif %}
 
     {% if can_create_post %}
     {% include "counselor/partials/presentation_board_post_modal.html" %}

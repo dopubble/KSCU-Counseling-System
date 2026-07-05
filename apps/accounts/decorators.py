@@ -47,6 +47,39 @@ def user_can_access_supervisor_area(user):
     return user.role in (UserRole.SUPERVISOR, UserRole.ADMIN)
 
 
+def user_can_access_presentation_board_area(user):
+    if not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    return user.role in (UserRole.COUNSELOR, UserRole.SUPERVISOR, UserRole.ADMIN)
+
+
+def presentation_board_viewer_required(view_func):
+    """사례발표 게시판 열람 — 상담사·수퍼바이저·관리자."""
+
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return redirect_to_login(
+                request.get_full_path(),
+                login_url=reverse("accounts:login"),
+            )
+
+        if request.user.is_superuser:
+            return view_func(request, *args, **kwargs)
+
+        if request.user.status != UserStatus.ACTIVE:
+            return redirect("accounts:pending")
+
+        if user_can_access_presentation_board_area(request.user):
+            return view_func(request, *args, **kwargs)
+
+        raise PermissionDenied("사례발표 게시판 접근 권한이 없습니다.")
+
+    return wrapper
+
+
 def counselor_required(view_func):
     """
     상담사 전용 뷰 접근 제어.
