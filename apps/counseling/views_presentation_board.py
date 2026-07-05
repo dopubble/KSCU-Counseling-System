@@ -148,6 +148,18 @@ def _serve_presentation_file(
             inner_filename=filename,
             password=password,
         )
+    except FileNotFoundError:
+        import logging
+
+        logging.getLogger(__name__).exception(
+            "Presentation file missing on storage filename=%s",
+            filename,
+        )
+        messages.error(
+            request,
+            "첨부 파일을 찾을 수 없습니다. 파일이 삭제되었거나 서버 저장소에 없을 수 있습니다.",
+        )
+        return _redirect_after_file_download_failure(request, fallback_url=fallback_url)
     except Exception:
         import logging
 

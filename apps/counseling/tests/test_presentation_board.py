@@ -62,8 +62,8 @@ class PresentationBoardTests(TestCase):
         return CasePresentationPost.objects.create(**kwargs)
 
     def _extract_zip_with_password(self, zip_bytes: bytes, password: str) -> dict[str, bytes]:
-        with pyzipper.AESZipFile(io.BytesIO(zip_bytes)) as zf:
-            zf.pwd = password.encode("utf-8")
+        with pyzipper.ZipFile(io.BytesIO(zip_bytes), "r") as zf:
+            zf.setpassword(password.encode("utf-8"))
             return {name: zf.read(name) for name in zf.namelist()}
 
     def test_cohort_peer_can_view_board(self):
@@ -396,8 +396,8 @@ class PresentationBoardTests(TestCase):
             inner_filename="sample.hwp",
             password="zip1234",
         )
-        with pyzipper.AESZipFile(io.BytesIO(zip_bytes)) as zf:
-            zf.pwd = b"zip1234"
+        with pyzipper.ZipFile(io.BytesIO(zip_bytes), "r") as zf:
+            zf.setpassword(b"zip1234")
             self.assertEqual(zf.read("sample.hwp"), b"hello")
 
     def test_build_password_protected_zip_korean_filename(self):
@@ -412,6 +412,6 @@ class PresentationBoardTests(TestCase):
             inner_filename="08. (한기상)보고서.hwp",
             password="1234",
         )
-        with pyzipper.AESZipFile(io.BytesIO(zip_bytes)) as zf:
-            zf.pwd = b"1234"
+        with pyzipper.ZipFile(io.BytesIO(zip_bytes), "r") as zf:
+            zf.setpassword(b"1234")
             self.assertEqual(zf.read(inner), b"content")
