@@ -65,7 +65,8 @@ PRESENTATION_BOARD_COMMENT_CONTENT_TEMPLATE = """사례개념화 연습
 PRESENTATION_FILE_PASSWORD_MIN_LENGTH = 4
 PRESENTATION_FILE_PASSWORD_NOTICE = (
     "다운로드할 파일에 설정할 암호를 입력해 주세요. "
-    "입력한 암호로 ZIP 파일이 만들어지며, 압축을 풀 때 같은 암호가 필요합니다. (4자 이상)"
+    "PDF는 암호가 걸린 PDF로, 한글·워드 파일은 가능하면 PDF로 변환해 제공합니다. "
+    "변환할 수 없을 때만 ZIP으로 제공됩니다. (4자 이상)"
 )
 
 

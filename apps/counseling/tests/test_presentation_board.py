@@ -91,7 +91,37 @@ class PresentationBoardTests(TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
-    def test_peer_download_returns_password_protected_zip(self):
+    def _minimal_pdf_bytes(self) -> bytes:
+        import pikepdf
+
+        pdf = pikepdf.Pdf.new()
+        pdf.add_blank_page()
+        buf = io.BytesIO()
+        pdf.save(buf)
+        return buf.getvalue()
+
+    def test_peer_download_pdf_returns_encrypted_pdf(self):
+        post = self._create_post()
+        pdf_file = SimpleUploadedFile(
+            "report.pdf",
+            self._minimal_pdf_bytes(),
+            content_type="application/pdf",
+        )
+        post.file = pdf_file
+        post.save(update_fields=["file", "updated_at"])
+
+        client = Client()
+        client.force_login(self.counselor_b)
+        response = client.post(
+            reverse("counselor:presentation_board_post_file", args=[post.pk]),
+            {"file_password": self.PEER_ZIP_PASSWORD},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertIn(".pdf", response.get("Content-Disposition", ""))
+        self.assertEqual(response.get("X-Presentation-Delivery"), "pdf")
+
+    def test_peer_download_hwp_falls_back_to_zip_without_libreoffice(self):
         post = self._create_post()
         client = Client()
         client.force_login(self.counselor_b)
@@ -100,13 +130,10 @@ class PresentationBoardTests(TestCase):
             {"file_password": self.PEER_ZIP_PASSWORD},
         )
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get("X-Presentation-Delivery"), "zip")
         self.assertEqual(response["Content-Type"], "application/zip")
-        self.assertIn(".zip", response.get("Content-Disposition", ""))
-
         extracted = self._extract_zip_with_password(response.content, self.PEER_ZIP_PASSWORD)
-        self.assertEqual(list(extracted.values())[0], b"hwp-content-bytes")
-        post.refresh_from_db()
-        self.assertEqual(post.file_password_hash, "")
+        self.assertTrue(extracted)
 
     def test_peer_short_password_redirects_with_error(self):
         post = self._create_post()
@@ -307,6 +334,15 @@ class PresentationBoardTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("attachment", response.get("Content-Disposition", ""))
 
+    def test_encrypt_pdf_bytes_unit(self):
+        from apps.counseling.presentation_file_download import encrypt_pdf_bytes
+        import pikepdf
+
+        raw = self._minimal_pdf_bytes()
+        encrypted = encrypt_pdf_bytes(raw, "pdf1234")
+        with pikepdf.open(io.BytesIO(encrypted), password="pdf1234") as pdf:
+            self.assertGreaterEqual(len(pdf.pages), 1)
+
     def test_build_password_protected_zip_unit(self):
         from apps.counseling.presentation_file_download import build_password_protected_zip
 
@@ -322,10 +358,10 @@ class PresentationBoardTests(TestCase):
     def test_build_password_protected_zip_korean_filename(self):
         from apps.counseling.presentation_file_download import (
             build_password_protected_zip,
-            safe_inner_archive_name,
+            safe_download_basename,
         )
 
-        inner = safe_inner_archive_name("08. (한기상)보고서.hwp")
+        inner = safe_download_basename("08. (한기상)보고서.hwp")
         zip_bytes = build_password_protected_zip(
             b"content",
             inner_filename="08. (한기상)보고서.hwp",

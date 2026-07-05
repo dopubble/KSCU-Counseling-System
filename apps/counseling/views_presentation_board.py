@@ -18,8 +18,7 @@ from apps.counseling.cohort_journal_service import get_counselor_cohort
 from apps.counseling.forms import PresentationBoardCommentForm, PresentationBoardPostForm
 from apps.counseling.models import CasePresentationComment, CasePresentationPost
 from apps.counseling.presentation_file_download import (
-    build_password_protected_zip,
-    encrypted_zip_filename,
+    build_password_protected_download,
     read_uploaded_file_bytes,
 )
 from apps.counseling.presentation_board import (
@@ -101,25 +100,24 @@ def _redirect_after_file_download_failure(request, *, fallback_url: str):
     return redirect(fallback_url)
 
 
-def _encrypted_zip_file_response(
+def _encrypted_download_file_response(
     file_field,
     *,
     inner_filename: str,
     password: str,
 ) -> HttpResponse:
-    zip_bytes = build_password_protected_zip(
+    payload = build_password_protected_download(
         read_uploaded_file_bytes(file_field),
         inner_filename=inner_filename,
         password=password,
     )
-    ascii_name = encrypted_zip_filename(inner_filename)
-    utf8_name = ascii_name
-    response = HttpResponse(zip_bytes, content_type="application/zip")
+    response = HttpResponse(payload.data, content_type=payload.content_type)
     response["Content-Disposition"] = (
-        f'attachment; filename="{ascii_name}"; '
-        f"filename*=UTF-8''{quote(utf8_name)}"
+        f'attachment; filename="{payload.filename}"; '
+        f"filename*=UTF-8''{quote(payload.filename)}"
     )
-    response["Content-Length"] = len(zip_bytes)
+    response["Content-Length"] = len(payload.data)
+    response["X-Presentation-Delivery"] = payload.delivery
     return response
 
 
@@ -148,7 +146,7 @@ def _serve_presentation_file(
         )
         return _redirect_after_file_download_failure(request, fallback_url=fallback_url)
 
-    return _encrypted_zip_file_response(
+    return _encrypted_download_file_response(
         file_field,
         inner_filename=filename,
         password=password,
