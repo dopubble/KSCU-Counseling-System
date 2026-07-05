@@ -352,6 +352,8 @@ def force_appointment_zoom_host(
     session_number: int = 1,
     case_number: str | None = None,
     dry_run: bool = True,
+    force_locked: bool = False,
+    notify_link_change: bool = False,
 ) -> OpsFixupLine:
     """지정 예약 Zoom 호스트를 강제 지정 (자동 배정 알고리즘과 무관)."""
     task = f"zoom_host_{client_name}_s{session_number}_{scheduled_label or 'any'}"
@@ -375,7 +377,8 @@ def force_appointment_zoom_host(
 
     zoom = getattr(appointment, "zoom_meeting", None)
     stored = (zoom.zoom_host_email or "").strip().lower() if zoom else ""
-    if appointment_zoom_link_is_locked(appointment):
+    locked = appointment_zoom_link_is_locked(appointment)
+    if locked and not force_locked:
         sync_case_zoom_meeting_url(appointment)
         label = host_id or target_email
         if stored == target_email.lower():
@@ -383,7 +386,8 @@ def force_appointment_zoom_host(
         return OpsFixupLine(
             task,
             "skip",
-            f"확정 join_url 잠금 — API 재생성 생략 (stored={stored or 'empty'}, target={target_email})",
+            f"확정 join_url 잠금 — API 재생성 생략 (stored={stored or 'empty'}, target={target_email}). "
+            f"재생성하려면 force_locked=True",
         )
     if stored == target_email.lower():
         label = host_id or target_email
@@ -391,10 +395,13 @@ def force_appointment_zoom_host(
 
     if dry_run:
         label = host_id or target_email
+        lock_note = " [locked, force]" if locked and force_locked else ""
+        old_url = (zoom.join_url or "").strip() if zoom else ""
         return OpsFixupLine(
             task,
             "dry_run",
-            f"{stored or '(없음)'} → {label} ({target_email})",
+            f"{stored or '(없음)'} → {label} ({target_email}){lock_note}"
+            + (" — join_url 재생성 예정" if old_url else ""),
         )
 
     old_meeting_id = (zoom.zoom_meeting_id or "").strip() if zoom else ""
@@ -404,6 +411,7 @@ def force_appointment_zoom_host(
         _create_zoom_meeting_for_appointment(
             appointment,
             host_user_email=target_email,
+            notify_link_change=notify_link_change,
         )
         if old_meeting_id:
             refreshed = ZoomMeeting.objects.filter(appointment_id=appointment.pk).first()

@@ -24,6 +24,22 @@ class Command(BaseCommand):
         parser.add_argument("--client-name", default="", help="내담자 이름 (선택)")
         parser.add_argument("--client-email", default="", help="내담자 이메일 (선택)")
         parser.add_argument("--counselor-name", default="", help="상담사 이름 (선택)")
+        parser.add_argument(
+            "--from",
+            dest="from_dt",
+            default="",
+            help='예약 일시 YYYY-MM-DD HH:MM (KST, 선택)',
+        )
+        parser.add_argument(
+            "--force-locked",
+            action="store_true",
+            help="join_url·meeting_id 잠금 예약도 Zoom API로 재생성",
+        )
+        parser.add_argument(
+            "--notify",
+            action="store_true",
+            help="join_url 변경 시 내담자·상담사 알림",
+        )
         parser.add_argument("--apply", action="store_true", help="실제 반영")
 
     def handle(self, *args, **options):
@@ -55,12 +71,14 @@ class Command(BaseCommand):
             client_name=client_name,
             client_email=client_email,
             counselor_name=counselor_name,
-            scheduled_label="",
+            scheduled_label=(options.get("from_dt") or "").strip(),
             host_id=host,
             host_email=host_email or None,
             session_number=options["session"],
             case_number=options["case"],
             dry_run=not options["apply"],
+            force_locked=bool(options.get("force_locked")),
+            notify_link_change=bool(options.get("notify")),
         )
         self.stdout.write(f"{result.task}: {result.status} — {result.detail}")
         if result.status == "error":
