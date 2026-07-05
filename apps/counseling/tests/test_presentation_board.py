@@ -193,7 +193,27 @@ class PresentationBoardTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(CasePresentationPost.objects.count(), 0)
 
-    def test_comment_create_rejects_non_pdf_attachment(self):
+    def test_comment_create_rejects_unsupported_attachment(self):
+        post = self._create_post()
+        client = Client()
+        client.force_login(self.counselor_b)
+        doc_file = SimpleUploadedFile(
+            "concept.doc",
+            b"doc-content",
+            content_type="application/msword",
+        )
+        response = client.post(
+            reverse("counselor:presentation_board_comment_create", args=[post.pk]),
+            {
+                "cohort": "1",
+                "content": "개념화 제출",
+                "file": doc_file,
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(CasePresentationComment.objects.count(), 0)
+
+    def test_comment_create_accepts_hwp_attachment(self):
         post = self._create_post()
         client = Client()
         client.force_login(self.counselor_b)
@@ -206,12 +226,34 @@ class PresentationBoardTests(TestCase):
             reverse("counselor:presentation_board_comment_create", args=[post.pk]),
             {
                 "cohort": "1",
-                "content": "개념화 제출",
+                "content": "한글 제출",
                 "file": hwp_file,
             },
         )
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(CasePresentationComment.objects.count(), 0)
+        comment = CasePresentationComment.objects.get(post=post)
+        self.assertTrue(comment.file.name.endswith("concept.hwp"))
+
+    def test_comment_create_accepts_jpg_attachment(self):
+        post = self._create_post()
+        client = Client()
+        client.force_login(self.counselor_b)
+        jpg_file = SimpleUploadedFile(
+            "concept.jpg",
+            b"\xff\xd8\xff\xd9",
+            content_type="image/jpeg",
+        )
+        response = client.post(
+            reverse("counselor:presentation_board_comment_create", args=[post.pk]),
+            {
+                "cohort": "1",
+                "content": "이미지 제출",
+                "file": jpg_file,
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        comment = CasePresentationComment.objects.get(post=post)
+        self.assertTrue(comment.file.name.endswith("concept.jpg"))
 
     def test_new_post_has_no_stored_password_on_create(self):
         client = Client()
@@ -294,7 +336,7 @@ class PresentationBoardTests(TestCase):
         self.assertContains(response, post.title)
         self.assertContains(response, "[사례개념화 연습] 댓글달기")
         self.assertContains(response, "간단한 코멘트")
-        self.assertContains(response, "PDF 첨부")
+        self.assertContains(response, "파일 첨부")
         self.assertContains(response, "placeholder=\"간단한 코멘트를 입력해 주세요. (선택)\"")
         self.assertNotContains(response, "1. 호소문제")
         self.assertContains(response, "presentationBoardFileDownloadModal")

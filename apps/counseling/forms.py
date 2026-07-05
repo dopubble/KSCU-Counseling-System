@@ -10,6 +10,10 @@ from apps.counseling.constants import (
 )
 from apps.counseling.models import CounselingMethod
 from apps.counseling.presentation_board import (
+    PRESENTATION_COMMENT_ACCEPT_ATTR,
+    PRESENTATION_COMMENT_ALLOWED_EXTENSIONS,
+    PRESENTATION_COMMENT_ATTACHMENT_LABEL,
+    PRESENTATION_COMMENT_INVALID_TYPE_MESSAGE,
     default_presentation_post_title,
 )
 
@@ -644,12 +648,12 @@ class PresentationBoardPostForm(forms.Form):
 
 
 class PresentationBoardCommentForm(forms.Form):
-    """사례발표 게시판 — 사례개념화보고서 댓글 (간단 코멘트 + PDF)."""
+    """사례발표 게시판 — 사례개념화보고서 댓글 (간단 코멘트 + 파일)."""
 
-    ALLOWED_EXTENSIONS = PresentationBoardPostForm.ALLOWED_EXTENSIONS
+    ALLOWED_EXTENSIONS = PRESENTATION_COMMENT_ALLOWED_EXTENSIONS
     MAX_FILE_SIZE = PresentationBoardPostForm.MAX_FILE_SIZE
-    ACCEPT_ATTR = PresentationBoardPostForm.ACCEPT_ATTR
-    INVALID_TYPE_MESSAGE = PresentationBoardPostForm.INVALID_TYPE_MESSAGE
+    ACCEPT_ATTR = PRESENTATION_COMMENT_ACCEPT_ATTR
+    INVALID_TYPE_MESSAGE = PRESENTATION_COMMENT_INVALID_TYPE_MESSAGE
     MAX_SIZE_MESSAGE = PresentationBoardPostForm.MAX_SIZE_MESSAGE
 
     content = forms.CharField(
@@ -664,7 +668,7 @@ class PresentationBoardCommentForm(forms.Form):
         ),
     )
     file = forms.FileField(
-        label="PDF 첨부",
+        label=PRESENTATION_COMMENT_ATTACHMENT_LABEL,
         required=False,
         widget=forms.ClearableFileInput(
             attrs={"class": "form-control", "accept": ACCEPT_ATTR}
@@ -688,7 +692,7 @@ class PresentationBoardCommentForm(forms.Form):
         file_obj = cleaned.get("file")
         if not content and not file_obj:
             raise forms.ValidationError(
-                "코멘트 또는 PDF 첨부 파일 중 하나는 입력해 주세요."
+                "코멘트 또는 첨부 파일 중 하나는 입력해 주세요."
             )
         cleaned["content"] = content
         return cleaned
@@ -715,14 +719,14 @@ class PresentationBoardCommentEditForm(forms.Form):
         ),
     )
     file = forms.FileField(
-        label="PDF 첨부",
+        label=PRESENTATION_COMMENT_ATTACHMENT_LABEL,
         required=False,
         widget=forms.ClearableFileInput(
             attrs={"class": "form-control", "accept": ACCEPT_ATTR}
         ),
     )
     remove_file = forms.BooleanField(
-        label="기존 PDF 삭제",
+        label="기존 첨부 파일 삭제",
         required=False,
     )
 
@@ -751,7 +755,7 @@ class PresentationBoardCommentEditForm(forms.Form):
         keeps_existing_file = self.has_existing_file and not remove_file
         if not content and not file_obj and not keeps_existing_file:
             raise forms.ValidationError(
-                "코멘트 또는 PDF 첨부 파일 중 하나는 입력해 주세요."
+                "코멘트 또는 첨부 파일 중 하나는 입력해 주세요."
             )
         cleaned["content"] = content
         return cleaned

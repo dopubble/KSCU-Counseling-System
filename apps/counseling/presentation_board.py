@@ -40,6 +40,13 @@ PRESENTATION_BULK_ZIP_PASSWORD_NOTICE = (
     "Windows 탐색기에서도 압축 해제할 수 있습니다. (4자 이상)"
 )
 
+PRESENTATION_COMMENT_ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".hwp", ".hwpx"}
+PRESENTATION_COMMENT_ACCEPT_ATTR = ".pdf,.jpg,.jpeg,.hwp,.hwpx"
+PRESENTATION_COMMENT_INVALID_TYPE_MESSAGE = (
+    "PDF, JPG, HWP(한글) 파일만 업로드할 수 있습니다."
+)
+PRESENTATION_COMMENT_ATTACHMENT_LABEL = "파일 첨부"
+
 
 def default_presentation_post_title(author_name: str) -> str:
     name = (author_name or "").strip() or "작성자"
@@ -57,8 +64,21 @@ def requires_presentation_file_password(user: User, author_id) -> bool:
 
 
 def requires_presentation_comment_file_password(user: User, author_id) -> bool:
-    """댓글(사례개념화) PDF — 암호 없이 바로 다운로드."""
+    """댓글 첨부 파일 — 암호 없이 바로 다운로드."""
     return False
+
+
+def presentation_comment_file_content_type(filename: str) -> str:
+    ext = Path(filename).suffix.lower()
+    if ext == ".pdf":
+        return "application/pdf"
+    if ext in {".jpg", ".jpeg"}:
+        return "image/jpeg"
+    if ext == ".hwp":
+        return "application/x-hwp"
+    if ext == ".hwpx":
+        return "application/hwp+zip"
+    return "application/octet-stream"
 
 
 _PRESENTATION_COMMENT_SECTION_RE = re.compile(

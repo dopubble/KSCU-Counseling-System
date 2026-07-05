@@ -116,17 +116,17 @@
                                    id="edit-remove-file-{{ comment.pk }}"
                                    class="form-check-input"
                                    value="1">
-                            <label class="form-check-label small" for="edit-remove-file-{{ comment.pk }}">기존 PDF 삭제</label>
+                            <label class="form-check-label small" for="edit-remove-file-{{ comment.pk }}">기존 첨부 파일 삭제</label>
                         </div>
                         {% endif %}
                         <div class="mb-0">
-                            <label class="form-label fw-semibold small" for="edit-file-{{ comment.pk }}">PDF 첨부 <span class="text-muted fw-normal">(선택)</span></label>
+                            <label class="form-label fw-semibold small" for="edit-file-{{ comment.pk }}">파일 첨부 <span class="text-muted fw-normal">(선택)</span></label>
                             <input type="file"
                                    name="file"
                                    id="edit-file-{{ comment.pk }}"
                                    class="form-control"
-                                   accept=".pdf,application/pdf">
-                            <p class="form-text small mb-0">PDF만 업로드 · 최대 10MB</p>
+                                   accept=".pdf,.jpg,.jpeg,.hwp,.hwpx">
+                            <p class="form-text small mb-0">PDF, JPG, HWP(한글) · 최대 10MB</p>
                         </div>
                         <div class="d-flex flex-wrap justify-content-end gap-2 mt-3">
                             <button type="button"

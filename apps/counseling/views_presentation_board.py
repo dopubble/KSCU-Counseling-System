@@ -31,6 +31,7 @@ from apps.counseling.presentation_board import (
     count_presentation_comment_peers,
     get_presentation_form_path,
     presentation_board_cohort_options,
+    presentation_comment_file_content_type,
     require_presentation_board_access,
     resolve_viewer_cohort,
     user_can_browse_all_presentation_cohorts,
@@ -207,17 +208,17 @@ def _serve_presentation_comment_file(
     storage_name: str,
     filename: str,
 ):
-    """댓글 PDF — 암호 없이 원본 그대로 다운로드."""
+    """댓글 첨부 파일 — 암호 없이 원본 그대로 다운로드."""
     if not file_field or not storage_name:
         raise Http404("File not found")
     try:
-        download_name = filename or "conceptualization.pdf"
+        download_name = filename or "attachment"
         response = FileResponse(
             file_field.open("rb"),
             as_attachment=True,
             filename=download_name,
         )
-        response["Content-Type"] = "application/pdf"
+        response["Content-Type"] = presentation_comment_file_content_type(download_name)
         return response
     except FileNotFoundError:
         raise Http404("File not found") from None
