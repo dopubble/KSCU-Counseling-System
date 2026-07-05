@@ -26,7 +26,6 @@ from apps.counseling.presentation_board import (
     user_can_create_presentation_post,
     user_can_delete_presentation_comment,
     user_can_delete_presentation_post,
-    user_can_download_presentation_file_without_password,
     user_is_platform_staff,
 )
 
@@ -155,10 +154,6 @@ def presentation_board_detail(request, post_pk):
             "post_file_download_url": reverse(
                 "counselor:presentation_board_post_file",
                 kwargs={"post_pk": post.pk},
-            ),
-            "post_file_requires_password": not user_can_download_presentation_file_without_password(
-                request.user,
-                post.author_id,
             ),
         },
     )

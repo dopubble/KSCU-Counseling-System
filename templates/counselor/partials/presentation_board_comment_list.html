@@ -57,20 +57,21 @@
                 {% if comment.file or comment.author_id == user.pk or is_staff_viewer %}
                 <div class="d-flex flex-wrap gap-2 mt-3 pt-3 border-top presentation-comment-actions">
                     {% if comment.file %}
-                    {% if comment.author_id == user.pk or is_staff_viewer %}
-                    <a href="{% url 'counselor:presentation_board_comment_file' comment.pk %}"
-                       class="btn btn-sm btn-outline-secondary">
-                        <i class="bi bi-download me-1"></i>{{ comment.filename }}
-                    </a>
-                    {% else %}
+                    {% presentation_file_password_required comment.author_id as comment_download_requires_password %}
+                    {% if comment_download_requires_password %}
                     <button type="button"
-                            class="btn btn-sm btn-outline-secondary"
+                            class="btn btn-sm btn-outline-secondary presentation-password-download"
                             data-bs-toggle="modal"
                             data-bs-target="#presentationBoardFileDownloadModal"
                             data-file-fetch-url="{% url 'counselor:presentation_board_comment_file' comment.pk %}"
                             data-file-label="{{ comment.filename }}">
                         <i class="bi bi-download me-1"></i>암호 다운로드
                     </button>
+                    {% else %}
+                    <a href="{% url 'counselor:presentation_board_comment_file' comment.pk %}"
+                       class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-download me-1"></i>{{ comment.filename }}
+                    </a>
                     {% endif %}
                     {% endif %}
                     {% if comment.author_id == user.pk or is_staff_viewer %}

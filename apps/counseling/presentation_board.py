@@ -75,13 +75,12 @@ def default_presentation_post_title(author_name: str) -> str:
 
 
 def user_can_download_presentation_file_without_password(user: User, author_id) -> bool:
-    if user_is_platform_staff(user):
-        return True
-    return user.pk == author_id
+    """모든 사용자가 암호 입력 모달을 거친 뒤 다운로드."""
+    return False
 
 
 def requires_presentation_file_password(user: User, author_id) -> bool:
-    return not user_can_download_presentation_file_without_password(user, author_id)
+    return True
 
 
 _PRESENTATION_COMMENT_SECTION_RE = re.compile(

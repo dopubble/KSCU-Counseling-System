@@ -104,7 +104,23 @@ class PresentationBoardTests(TestCase):
         )
         self.assertEqual(response.status_code, 405)
 
-    def test_author_can_download_own_post_without_password(self):
+    def test_author_sees_password_download_modal_on_detail(self):
+        post = self._create_post()
+        client = Client()
+        client.force_login(self.counselor_a)
+        response = client.get(
+            reverse("counselor:presentation_board_detail", args=[post.pk])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "presentationBoardFileDownloadModal")
+        self.assertContains(response, "data-bs-toggle=\"modal\"")
+        self.assertContains(response, "암호 다운로드")
+        self.assertNotContains(
+            response,
+            f'href="{reverse("counselor:presentation_board_post_file", args=[post.pk])}"',
+        )
+
+    def test_author_can_fetch_post_pdf_via_file_url(self):
         post = self._create_post()
         client = Client()
         client.force_login(self.counselor_a)
@@ -112,8 +128,30 @@ class PresentationBoardTests(TestCase):
             reverse("counselor:presentation_board_post_file", args=[post.pk])
         )
         self.assertEqual(response.status_code, 200)
-        self.assertIn("attachment", response.get("Content-Disposition", ""))
-        self.assertIn(".pdf", response.get("Content-Disposition", ""))
+        self.assertEqual(response["Content-Type"], "application/pdf")
+
+    def test_admin_sees_password_download_modal_on_detail(self):
+        post = self._create_post()
+        admin = User.objects.create_user(
+            email="admin@example.com",
+            password="pass",
+            name="관리자",
+            role=UserRole.ADMIN,
+            status=UserStatus.ACTIVE,
+        )
+        client = Client()
+        client.force_login(admin)
+        response = client.get(
+            reverse("counselor:presentation_board_detail", args=[post.pk])
+            + f"?cohort={post.cohort}"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "presentationBoardFileDownloadModal")
+        self.assertContains(response, "암호 다운로드")
+        self.assertNotContains(
+            response,
+            f'href="{reverse("counselor:presentation_board_post_file", args=[post.pk])}"',
+        )
 
     def test_post_create_rejects_non_pdf(self):
         client = Client()
