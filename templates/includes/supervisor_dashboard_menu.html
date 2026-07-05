@@ -1,0 +1,52 @@
+<div class="card border-0 shadow-sm section-spacing">
+    <div class="card-body">
+        <p class="text-muted small mb-1">담당 기수</p>
+        <p class="h5 fw-semibold mb-4">{{ cohort_label }}</p>
+        <div class="row g-3">
+            <div class="col-md-6 col-lg-4">
+                <a href="{% url 'supervisor:cohort_journals' %}"
+                   class="text-decoration-none {% if not can_browse_journals %}pe-none{% endif %}">
+                    <div class="card border h-100 {% if not can_browse_journals %}opacity-50{% endif %}">
+                        <div class="card-body p-4">
+                            <div class="service-icon mb-3 text-primary">
+                                <i class="bi bi-journal-text"></i>
+                            </div>
+                            <h3 class="h6 fw-bold text-dark mb-2">기수별 상담일지</h3>
+                            <p class="small text-muted mb-0">완료된 상담일지 열람</p>
+                        </div>
+                    </div>
+                </a>
+            </div>
+            <div class="col-md-6 col-lg-4">
+                <a href="{% url 'supervisor:cohort_initial_records' %}"
+                   class="text-decoration-none {% if not can_browse_initial_records %}pe-none{% endif %}">
+                    <div class="card border h-100 {% if not can_browse_initial_records %}opacity-50{% endif %}">
+                        <div class="card-body p-4">
+                            <div class="service-icon mb-3 text-primary">
+                                <i class="bi bi-file-earmark-medical"></i>
+                            </div>
+                            <h3 class="h6 fw-bold text-dark mb-2">기수별 초기상담 기록지</h3>
+                            <p class="small text-muted mb-0">초기상담 기록지 확인</p>
+                        </div>
+                    </div>
+                </a>
+            </div>
+            <div class="col-md-6 col-lg-4">
+                <a href="{% url 'counselor:presentation_board' %}" class="text-decoration-none">
+                    <div class="card border h-100">
+                        <div class="card-body p-4">
+                            <div class="service-icon mb-3 text-primary">
+                                <i class="bi bi-megaphone"></i>
+                            </div>
+                            <h3 class="h6 fw-bold text-dark mb-2">사례발표 보고서 게시판</h3>
+                            <p class="small text-muted mb-0">사례발표 자료 열람</p>
+                        </div>
+                    </div>
+                </a>
+            </div>
+        </div>
+        {% if not can_browse_journals and not can_browse_initial_records %}
+        <p class="text-muted small mt-3 mb-0">담당 기수가 할당되지 않았습니다. 관리자에게 문의하세요.</p>
+        {% endif %}
+    </div>
+</div>

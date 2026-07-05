@@ -1,0 +1,18 @@
+{% with ns=request.resolver_match.namespace|default:"" url_name=request.resolver_match.url_name|default:"" %}
+<li class="nav-item">
+    <a class="nav-link {% if ns == 'supervisor' and url_name == 'dashboard' %}active{% endif %}"
+       href="{% url 'supervisor:dashboard' %}">대시보드</a>
+</li>
+<li class="nav-item">
+    <a class="nav-link {% if ns == 'supervisor' and url_name == 'cohort_journals' %}active{% endif %}"
+       href="{% url 'supervisor:cohort_journals' %}">기수별 상담일지</a>
+</li>
+<li class="nav-item">
+    <a class="nav-link {% if ns == 'supervisor' and url_name == 'cohort_initial_records' or ns == 'supervisor' and url_name == 'initial_record_detail' %}active{% endif %}"
+       href="{% url 'supervisor:cohort_initial_records' %}">초기상담 기록지</a>
+</li>
+<li class="nav-item">
+    <a class="nav-link {% if ns == 'counselor' and url_name == 'presentation_board' or ns == 'counselor' and url_name == 'presentation_board_detail' %}active{% endif %}"
+       href="{% url 'counselor:presentation_board' %}">사례발표 게시판</a>
+</li>
+{% endwith %}

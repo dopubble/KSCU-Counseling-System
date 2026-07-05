@@ -18,6 +18,7 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
 
+from apps.counseling.journal_permissions import build_supervisor_dashboard_context
 from .auth_utils import (
     default_dashboard_url_for_user,
     get_safe_next_url,
@@ -55,6 +56,8 @@ def home(request):
     context = {}
     if request.user.is_authenticated and request.user.role == UserRole.CLIENT:
         context["client_dashboard"] = get_client_home_dashboard(request.user)
+    if request.user.is_authenticated and request.user.role == UserRole.SUPERVISOR:
+        context["supervisor_home"] = build_supervisor_dashboard_context(request.user)
     if _show_admin_home_widget(request.user):
         stats, cancel_pending_count = build_admin_dashboard_stats()
         context["admin_home"] = {

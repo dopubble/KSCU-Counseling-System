@@ -15,6 +15,7 @@ from apps.counseling.cohort_journal_service import (
     get_cohort_journals_for_supervision,
 )
 from apps.counseling.journal_permissions import (
+    build_supervisor_dashboard_context,
     supervision_cohorts_for_user,
     user_can_browse_cohort_initial_records,
     user_can_browse_cohort_journals,
@@ -40,23 +41,10 @@ from apps.sessions_app.pdf import (
 
 @supervisor_required
 def supervisor_dashboard(request):
-    cohorts = supervision_cohorts_for_user(request.user)
-    if cohorts is None:
-        cohort_label = "전체 기수"
-    elif cohorts:
-        cohort_label = ", ".join(f"{c}기" for c in cohorts)
-    else:
-        cohort_label = "담당 기수 없음"
     return render(
         request,
         "supervisor/dashboard.html",
-        {
-            "cohort_label": cohort_label,
-            "can_browse_journals": user_can_browse_cohort_journals(request.user),
-            "can_browse_initial_records": user_can_browse_cohort_initial_records(
-                request.user
-            ),
-        },
+        build_supervisor_dashboard_context(request.user),
     )
 
 

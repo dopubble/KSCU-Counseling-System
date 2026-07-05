@@ -108,3 +108,18 @@ def supervision_cohorts_for_user(user: "User") -> list[int] | None:
         return None
     assigned = get_supervisor_assigned_cohorts(user)
     return assigned or []
+
+
+def build_supervisor_dashboard_context(user: "User") -> dict:
+    cohorts = supervision_cohorts_for_user(user)
+    if cohorts is None:
+        cohort_label = "전체 기수"
+    elif cohorts:
+        cohort_label = ", ".join(f"{c}기" for c in cohorts)
+    else:
+        cohort_label = "담당 기수 없음"
+    return {
+        "cohort_label": cohort_label,
+        "can_browse_journals": user_can_browse_cohort_journals(user),
+        "can_browse_initial_records": user_can_browse_cohort_initial_records(user),
+    }

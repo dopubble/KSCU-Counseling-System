@@ -41,6 +41,8 @@
                         </li>
                         {% if user.is_authenticated and user.role == "CLIENT" %}
                             {% include "includes/client_nav_items.html" %}
+                        {% elif user.is_authenticated and user.role == "SUPERVISOR" %}
+                            {% include "includes/supervisor_nav_items.html" %}
                         {% elif user.is_authenticated and user.is_counselor %}
                             <li class="nav-item">
                                 <a class="nav-link {% if request.resolver_match.url_name == 'apply' %}active{% endif %}"
@@ -81,6 +83,12 @@
                                 <li>
                                     <a class="dropdown-item" href="{% url 'counselor:dashboard' %}">
                                         <i class="bi bi-briefcase me-2"></i>상담사 홈
+                                    </a>
+                                </li>
+                                {% elif user.role == "SUPERVISOR" %}
+                                <li>
+                                    <a class="dropdown-item" href="{% url 'supervisor:dashboard' %}">
+                                        <i class="bi bi-eye me-2"></i>수퍼바이저 홈
                                     </a>
                                 </li>
                                 {% elif user.role == "ADMIN" %}

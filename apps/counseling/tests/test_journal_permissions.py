@@ -262,3 +262,13 @@ class InitialRecordSupervisorTests(TestCase):
         response = http.get(reverse("supervisor:dashboard"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "기수별 초기상담 기록지")
+
+    def test_supervisor_home_shows_dashboard_menus(self):
+        http = HttpClient()
+        http.force_login(self.supervisor)
+        response = http.get(reverse("home"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "기수별 상담일지")
+        self.assertContains(response, "기수별 초기상담 기록지")
+        self.assertContains(response, "사례발표 보고서 게시판")
+        self.assertContains(response, "대시보드")

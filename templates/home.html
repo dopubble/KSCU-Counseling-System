@@ -28,6 +28,10 @@
                     <a href="{% url 'client:dashboard' %}" class="btn btn-outline-light btn-lg px-4">
                         내 상담실
                     </a>
+                    {% elif user.role == "SUPERVISOR" %}
+                    <a href="{% url 'supervisor:dashboard' %}" class="btn btn-outline-light btn-lg px-4">
+                        수퍼비전 대시보드
+                    </a>
                     {% endif %}
                 </div>
             </div>
@@ -169,6 +173,14 @@
             </div>
         </div>
         {% endif %}
+    </div>
+</section>
+{% endif %}
+
+{% if supervisor_home %}
+<section class="client-home-dashboard py-4 py-lg-5">
+    <div class="container">
+        {% include "includes/supervisor_home_dashboard.html" %}
     </div>
 </section>
 {% endif %}
