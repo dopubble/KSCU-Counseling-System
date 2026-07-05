@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import logging
+
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.db.models import Count
-from django.http import FileResponse, Http404
+from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
-from django.views.decorators.http import require_GET, require_POST
+from django.utils.http import content_disposition_header
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from apps.accounts.decorators import counselor_required
 from apps.accounts.models import CounselorProfile
@@ -16,6 +19,7 @@ from apps.counseling.cohort_journal_service import get_counselor_cohort
 from apps.counseling.forms import PresentationBoardCommentForm, PresentationBoardPostForm
 from apps.counseling.models import CasePresentationComment, CasePresentationPost
 from apps.counseling.presentation_board import (
+    PRESENTATION_FILE_PASSWORD_MIN_LENGTH,
     PRESENTATION_FILE_PASSWORD_NOTICE,
     PRESENTATION_FORM_TEMPLATES,
     count_presentation_comment_peers,
@@ -28,6 +32,9 @@ from apps.counseling.presentation_board import (
     user_can_delete_presentation_post,
     user_is_platform_staff,
 )
+from apps.counseling.presentation_pdf_encrypt import encrypt_pdf_bytes, read_uploaded_file_bytes
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_cohort_param(raw) -> int | None:
@@ -77,23 +84,63 @@ def _get_presentation_post_or_404(post_pk):
     )
 
 
-def _presentation_file_response(file_field, *, filename: str) -> FileResponse:
-    return FileResponse(
-        file_field.open("rb"),
+def _redirect_after_file_download_failure(request, *, fallback_url: str):
+    next_url = (request.POST.get("next") or "").strip()
+    if next_url.startswith("/"):
+        return redirect(next_url)
+    return redirect(fallback_url)
+
+
+def _encrypted_pdf_download_response(*, pdf_bytes: bytes, filename: str) -> HttpResponse:
+    download_name = filename if filename.lower().endswith(".pdf") else f"{filename}.pdf"
+    response = HttpResponse(pdf_bytes, content_type="application/pdf")
+    response["Content-Disposition"] = content_disposition_header(
         as_attachment=True,
-        filename=filename,
+        filename=download_name,
     )
+    response["Content-Length"] = len(pdf_bytes)
+    return response
 
 
 def _serve_presentation_file(
+    request,
     *,
     file_field,
     storage_name: str,
     filename: str,
+    fallback_url: str,
 ):
     if not file_field or not storage_name:
         raise Http404("File not found")
-    return _presentation_file_response(file_field, filename=filename)
+
+    if request.method == "GET":
+        raise PermissionDenied("암호 설정 후 다운로드할 수 있습니다.")
+
+    password = (request.POST.get("file_password") or "").strip()
+    if len(password) < PRESENTATION_FILE_PASSWORD_MIN_LENGTH:
+        messages.error(
+            request,
+            f"파일 암호는 {PRESENTATION_FILE_PASSWORD_MIN_LENGTH}자 이상 입력해 주세요.",
+        )
+        return _redirect_after_file_download_failure(request, fallback_url=fallback_url)
+
+    try:
+        raw_bytes = read_uploaded_file_bytes(file_field)
+        encrypted = encrypt_pdf_bytes(raw_bytes, password)
+        return _encrypted_pdf_download_response(pdf_bytes=encrypted, filename=filename)
+    except FileNotFoundError:
+        messages.error(
+            request,
+            "첨부 파일을 찾을 수 없습니다. 파일이 삭제되었거나 서버 저장소에 없을 수 있습니다.",
+        )
+        return _redirect_after_file_download_failure(request, fallback_url=fallback_url)
+    except Exception:
+        logger.exception("Presentation encrypted PDF download failed filename=%s", filename)
+        messages.error(
+            request,
+            "파일을 준비하는 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+        )
+        return _redirect_after_file_download_failure(request, fallback_url=fallback_url)
 
 
 @counselor_required
@@ -250,29 +297,41 @@ def presentation_board_comment_delete(request, comment_pk):
 
 
 @counselor_required
-@require_GET
+@require_http_methods(["GET", "POST"])
 def presentation_board_post_file(request, post_pk):
     post = get_object_or_404(CasePresentationPost, pk=post_pk)
     require_presentation_board_access(request.user, post.cohort)
+    fallback_url = reverse(
+        "counselor:presentation_board_detail",
+        kwargs={"post_pk": post.pk},
+    )
     return _serve_presentation_file(
+        request,
         file_field=post.file,
         storage_name=post.file.name if post.file else "",
         filename=post.filename,
+        fallback_url=fallback_url,
     )
 
 
 @counselor_required
-@require_GET
+@require_http_methods(["GET", "POST"])
 def presentation_board_comment_file(request, comment_pk):
     comment = get_object_or_404(
         CasePresentationComment.objects.select_related("post"),
         pk=comment_pk,
     )
     require_presentation_board_access(request.user, comment.post.cohort)
+    fallback_url = reverse(
+        "counselor:presentation_board_detail",
+        kwargs={"post_pk": comment.post_id},
+    )
     return _serve_presentation_file(
+        request,
         file_field=comment.file,
         storage_name=comment.file.name if comment.file else "",
         filename=comment.filename,
+        fallback_url=fallback_url,
     )
 
 

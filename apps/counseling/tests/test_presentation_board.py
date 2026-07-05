@@ -82,19 +82,16 @@ class PresentationBoardTests(TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
-    def test_peer_can_fetch_post_pdf_for_client_encryption(self):
+    def test_peer_get_post_file_requires_password(self):
         post = self._create_post()
         client = Client()
         client.force_login(self.counselor_b)
         response = client.get(
             reverse("counselor:presentation_board_post_file", args=[post.pk])
         )
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response["Content-Type"], "application/pdf")
-        body = b"".join(response.streaming_content)
-        self.assertIn(b"%PDF", body)
+        self.assertEqual(response.status_code, 403)
 
-    def test_post_file_endpoint_rejects_post_method(self):
+    def test_peer_post_returns_encrypted_pdf(self):
         post = self._create_post()
         client = Client()
         client.force_login(self.counselor_b)
@@ -102,9 +99,11 @@ class PresentationBoardTests(TestCase):
             reverse("counselor:presentation_board_post_file", args=[post.pk]),
             {"file_password": "peer1234"},
         )
-        self.assertEqual(response.status_code, 405)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertIn("attachment", response.get("Content-Disposition", ""))
 
-    def test_author_sees_password_download_modal_on_detail(self):
+    def test_author_sees_filename_download_button_on_detail(self):
         post = self._create_post()
         client = Client()
         client.force_login(self.counselor_a)
@@ -114,23 +113,22 @@ class PresentationBoardTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "presentationBoardFileDownloadModal")
         self.assertContains(response, "data-bs-toggle=\"modal\"")
-        self.assertContains(response, "암호 다운로드")
+        self.assertContains(response, ".pdf")
         self.assertNotContains(
             response,
             f'href="{reverse("counselor:presentation_board_post_file", args=[post.pk])}"',
         )
 
-    def test_author_can_fetch_post_pdf_via_file_url(self):
+    def test_author_get_post_file_requires_password(self):
         post = self._create_post()
         client = Client()
         client.force_login(self.counselor_a)
         response = client.get(
             reverse("counselor:presentation_board_post_file", args=[post.pk])
         )
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertEqual(response.status_code, 403)
 
-    def test_admin_sees_password_download_modal_on_detail(self):
+    def test_admin_sees_filename_download_button_on_detail(self):
         post = self._create_post()
         admin = User.objects.create_user(
             email="admin@example.com",
@@ -147,7 +145,7 @@ class PresentationBoardTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "presentationBoardFileDownloadModal")
-        self.assertContains(response, "암호 다운로드")
+        self.assertContains(response, ".pdf")
         self.assertNotContains(
             response,
             f'href="{reverse("counselor:presentation_board_post_file", args=[post.pk])}"',
@@ -275,7 +273,7 @@ class PresentationBoardTests(TestCase):
         self.assertContains(response, "사례개념화 연습 댓글달기")
         self.assertContains(response, "이 PDF에 설정할 암호")
         self.assertContains(response, "presentationBoardFileDownloadModal")
-        self.assertContains(response, "presentation_board_pdf_download.js")
+        self.assertContains(response, "file_password")
 
     def test_peer_can_comment_without_file(self):
         post = self._create_post()
@@ -381,3 +379,14 @@ class PresentationBoardTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertIn("attachment", response.get("Content-Disposition", ""))
+
+    def test_encrypt_pdf_bytes_unit(self):
+        import io
+
+        import pikepdf
+
+        from apps.counseling.presentation_pdf_encrypt import encrypt_pdf_bytes
+
+        encrypted = encrypt_pdf_bytes(MINIMAL_PDF, "pdf1234")
+        with pikepdf.open(io.BytesIO(encrypted), password="pdf1234") as pdf:
+            self.assertGreaterEqual(len(pdf.pages), 1)

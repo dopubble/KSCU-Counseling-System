@@ -9,7 +9,6 @@
 
 {% block extra_js %}
 <script src="{% static 'js/presentation_board_comments.js' %}"></script>
-<script type="module" src="{% static 'js/presentation_board_pdf_download.js' %}"></script>
 {% endblock %}
 
 {% block layout %}
@@ -36,7 +35,7 @@
             {% endif %}
             {% if post.file %}
             {% presentation_file_password_required post.author_id as post_download_requires_password %}
-            {% include "counselor/partials/presentation_board_file_download_button.html" with download_url=post_file_download_url filename=post.filename button_class="btn btn-outline-primary" show_icon=True requires_password=post_download_requires_password button_label=post_download_requires_password|yesno:"암호 다운로드," %}
+            {% include "counselor/partials/presentation_board_file_download_button.html" with download_url=post_file_download_url filename=post.filename button_class="btn btn-outline-primary" show_icon=True requires_password=post_download_requires_password %}
             {% if post_download_requires_password %}
             <p class="small text-muted mb-0 mt-2">{{ file_password_notice }}</p>
             {% endif %}

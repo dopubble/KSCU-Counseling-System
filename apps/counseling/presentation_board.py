@@ -65,7 +65,7 @@ PRESENTATION_BOARD_COMMENT_CONTENT_TEMPLATE = """사례개념화 연습
 PRESENTATION_FILE_PASSWORD_MIN_LENGTH = 4
 PRESENTATION_FILE_PASSWORD_NOTICE = (
     "다운로드할 PDF에 설정할 암호를 입력해 주세요. "
-    "브라우저에서 암호가 적용된 PDF로 저장됩니다. (4자 이상)"
+    "입력한 암호가 적용된 PDF 파일로 저장됩니다. (4자 이상)"
 )
 
 

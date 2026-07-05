@@ -14,4 +14,5 @@ requests>=2.31,<3.0
 PyJWT>=2.8,<3.0
 gunicorn>=22.0,<24.0
 whitenoise>=6.6,<7.0
+pikepdf>=9.0,<10.0
 django-storages[s3]>=1.14,<2.0

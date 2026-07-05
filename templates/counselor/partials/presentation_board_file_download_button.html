@@ -3,7 +3,7 @@
         class="{{ button_class }} presentation-password-download"
         data-bs-toggle="modal"
         data-bs-target="#presentationBoardFileDownloadModal"
-        data-file-fetch-url="{{ download_url }}"
+        data-file-download-url="{{ download_url }}"
         data-file-label="{{ filename }}">
     {% if show_icon %}<i class="bi bi-download me-1"></i>{% endif %}{{ button_label|default:filename }}
 </button>

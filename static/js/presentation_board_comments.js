@@ -42,18 +42,22 @@
             .forEach(bindPresentationCommentAccordion);
 
         var fileModal = document.getElementById("presentationBoardFileDownloadModal");
+        var downloadForm = document.getElementById("presentationBoardFileDownloadForm");
         if (fileModal) {
             fileModal.addEventListener("show.bs.modal", function (event) {
                 var trigger = event.relatedTarget;
                 if (!trigger) {
                     return;
                 }
-                var form = document.getElementById("presentationBoardFileDownloadForm");
+                var nextInput = document.getElementById("presentationBoardFileDownloadNext");
                 var nameEl = document.getElementById("presentationBoardFileDownloadName");
                 var passwordInput = document.getElementById("presentationBoardFilePassword");
-                if (form) {
-                    form.dataset.fetchUrl =
-                        trigger.getAttribute("data-file-fetch-url") || "";
+                if (downloadForm) {
+                    downloadForm.action =
+                        trigger.getAttribute("data-file-download-url") || "";
+                }
+                if (nextInput) {
+                    nextInput.value = window.location.pathname + window.location.search;
                 }
                 if (nameEl) {
                     nameEl.textContent = trigger.getAttribute("data-file-label") || "";
@@ -61,6 +65,16 @@
                 if (passwordInput) {
                     passwordInput.value = "";
                 }
+            });
+        }
+
+        if (downloadForm) {
+            downloadForm.addEventListener("submit", function () {
+                window.setTimeout(function () {
+                    if (fileModal && window.bootstrap) {
+                        window.bootstrap.Modal.getInstance(fileModal)?.hide();
+                    }
+                }, 300);
             });
         }
     });
