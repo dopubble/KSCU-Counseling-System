@@ -12,7 +12,7 @@
                 </div>
                 <div class="modal-body">
                     <p class="small text-muted mb-3">
-                        양식으로 작성한 파일을 첨부해 주세요. 비밀번호는 수퍼비전 날짜(예: <strong>260706</strong>) 설정을 권장합니다.
+                        양식으로 작성한 파일을 첨부해 주세요. 업로드 시 별도 암호는 필요 없습니다.
                     </p>
                     <div class="mb-3">
                         <label for="presentationPostTitle" class="form-label fw-semibold">제목</label>
@@ -22,17 +22,10 @@
                         <label for="presentationPostContent" class="form-label fw-semibold">내용 <span class="text-muted fw-normal">(선택)</span></label>
                         {{ post_form.content }}
                     </div>
-                    <div class="mb-3">
+                    <div class="mb-0">
                         <label for="presentationPostFile" class="form-label fw-semibold">첨부 파일</label>
                         {{ post_form.file }}
                         <p class="form-text small text-muted mb-0 mt-2">PDF, HWP, HWPX, Word · 최대 10MB</p>
-                    </div>
-                    <div class="mb-0">
-                        <label for="id_download_password" class="form-label fw-semibold">파일 다운로드 암호</label>
-                        {{ post_form.download_password }}
-                        <p class="form-text small text-muted mb-0 mt-2">
-                            동기가 웹에서 파일을 받을 때 입력하는 암호입니다. 한글 파일 열람 암호와 동일하게 설정해 주세요.
-                        </p>
                     </div>
                 </div>
                 <div class="modal-footer">

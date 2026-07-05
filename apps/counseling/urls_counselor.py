@@ -30,11 +30,6 @@ urlpatterns = [
         name="presentation_board_post_delete",
     ),
     path(
-        "presentation-board/post/<uuid:post_pk>/set-download-password/",
-        views_presentation_board.presentation_board_post_set_download_password,
-        name="presentation_board_post_set_download_password",
-    ),
-    path(
         "presentation-board/post/<uuid:post_pk>/file/",
         views_presentation_board.presentation_board_post_file,
         name="presentation_board_post_file",

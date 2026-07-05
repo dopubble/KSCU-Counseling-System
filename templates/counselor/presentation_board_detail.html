@@ -37,33 +37,6 @@
             {% if post_file_requires_password %}
             <p class="small text-muted mb-0 mt-2">{{ file_password_notice }}</p>
             {% endif %}
-            {% if post_needs_download_password_setup %}
-            <div class="alert alert-warning border-0 mt-3 mb-0 py-3">
-                <p class="small mb-2 mb-md-0">
-                    이 보고서는 등록 시 웹 다운로드 암호가 저장되지 않았습니다.
-                    동기가 받을 암호를 한글 파일 열람 암호와 <strong>동일하게</strong> 등록해 주세요.
-                </p>
-                <form method="post"
-                      action="{% url 'counselor:presentation_board_post_set_download_password' post.pk %}"
-                      class="row g-2 align-items-end mt-2">
-                    {% csrf_token %}
-                    <div class="col-sm-8 col-md-6">
-                        <label class="form-label small fw-semibold mb-1" for="postDownloadPasswordSetup">다운로드 암호 등록</label>
-                        <input type="password"
-                               class="form-control form-control-sm"
-                               id="postDownloadPasswordSetup"
-                               name="download_password"
-                               required
-                               minlength="4"
-                               autocomplete="new-password"
-                               placeholder="예: 260706">
-                    </div>
-                    <div class="col-auto">
-                        <button type="submit" class="btn btn-sm btn-counselor text-white">등록</button>
-                    </div>
-                </form>
-            </div>
-            {% endif %}
             {% if is_author %}
             <p class="small text-muted mt-3 mb-0">
                 발표자 본인 게시글입니다. 사례개념화보고서는 동기 상담사가 아래 댓글로 올립니다.
@@ -137,14 +110,10 @@
                 <div class="mb-3">
                     {{ comment_form.content }}
                 </div>
-                <div class="mb-3">
+                <div class="mb-0">
                     <label class="form-label fw-semibold" for="id_file">첨부 파일 <span class="text-muted fw-normal">(선택)</span></label>
                     {{ comment_form.file }}
                     <p class="form-text small mb-0">PDF, HWP, HWPX, Word · 최대 10MB</p>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label fw-semibold" for="id_download_password">첨부 파일 다운로드 암호 <span class="text-muted fw-normal">(첨부 시 필수)</span></label>
-                    {{ comment_form.download_password }}
                 </div>
                 <button type="submit" class="btn btn-counselor text-white">댓글 등록</button>
             </form>

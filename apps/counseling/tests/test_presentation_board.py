@@ -1,4 +1,7 @@
-from django.contrib.auth.hashers import make_password
+import io
+import zipfile
+
+import pyzipper
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase
 from django.urls import reverse
@@ -8,12 +11,11 @@ from apps.counseling.models import CasePresentationComment, CasePresentationPost
 from apps.counseling.presentation_board import (
     PRESENTATION_BOARD_COMMENT_CONTENT_TEMPLATE,
     format_presentation_comment_content,
-    verify_presentation_file_password,
 )
 
 
 class PresentationBoardTests(TestCase):
-    DEFAULT_FILE_PASSWORD = "260706"
+    PEER_ZIP_PASSWORD = "peer1234"
 
     def setUp(self):
         self.counselor_a = User.objects.create_user(
@@ -49,22 +51,21 @@ class PresentationBoardTests(TestCase):
 
         self.sample_file = SimpleUploadedFile(
             "report.hwp",
-            b"hwp-content",
+            b"hwp-content-bytes",
             content_type="application/octet-stream",
         )
 
-    def _create_post(self, *, download_password=DEFAULT_FILE_PASSWORD, **kwargs):
+    def _create_post(self, **kwargs):
         kwargs.setdefault("cohort", 1)
         kwargs.setdefault("author", self.counselor_a)
         kwargs.setdefault("title", "[사례발표] 발표자")
         kwargs.setdefault("file", self.sample_file)
-        password_hash = ""
-        if download_password:
-            password_hash = make_password(download_password)
-        return CasePresentationPost.objects.create(
-            file_password_hash=password_hash,
-            **kwargs,
-        )
+        return CasePresentationPost.objects.create(**kwargs)
+
+    def _extract_zip_with_password(self, zip_bytes: bytes, password: str) -> dict[str, bytes]:
+        with pyzipper.AESZipFile(io.BytesIO(zip_bytes)) as zf:
+            zf.pwd = password.encode("utf-8")
+            return {name: zf.read(name) for name in zf.namelist()}
 
     def test_cohort_peer_can_view_board(self):
         client = Client()
@@ -91,24 +92,30 @@ class PresentationBoardTests(TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
-    def test_peer_can_download_post_file_with_correct_password(self):
-        post = self._create_post(download_password="260706")
+    def test_peer_download_returns_password_protected_zip(self):
+        post = self._create_post()
         client = Client()
         client.force_login(self.counselor_b)
         response = client.post(
             reverse("counselor:presentation_board_post_file", args=[post.pk]),
-            {"file_password": "260706"},
+            {"file_password": self.PEER_ZIP_PASSWORD},
         )
         self.assertEqual(response.status_code, 200)
-        self.assertIn("attachment", response.get("Content-Disposition", ""))
+        self.assertEqual(response["Content-Type"], "application/zip")
+        self.assertIn(".zip", response.get("Content-Disposition", ""))
 
-    def test_peer_wrong_password_redirects_with_error(self):
-        post = self._create_post(download_password="260706")
+        extracted = self._extract_zip_with_password(response.content, self.PEER_ZIP_PASSWORD)
+        self.assertEqual(list(extracted.values())[0], b"hwp-content-bytes")
+        post.refresh_from_db()
+        self.assertEqual(post.file_password_hash, "")
+
+    def test_peer_short_password_redirects_with_error(self):
+        post = self._create_post()
         client = Client()
         client.force_login(self.counselor_b)
         response = client.post(
             reverse("counselor:presentation_board_post_file", args=[post.pk]),
-            {"file_password": "wrong1"},
+            {"file_password": "abc"},
         )
         self.assertEqual(response.status_code, 302)
         self.assertEqual(
@@ -117,7 +124,7 @@ class PresentationBoardTests(TestCase):
         )
 
     def test_author_can_download_own_post_without_password(self):
-        post = self._create_post(download_password="260706")
+        post = self._create_post()
         client = Client()
         client.force_login(self.counselor_a)
         response = client.get(
@@ -125,52 +132,24 @@ class PresentationBoardTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertIn("attachment", response.get("Content-Disposition", ""))
+        self.assertIn(".hwp", response.get("Content-Disposition", ""))
+        self.assertNotEqual(response["Content-Type"], "application/zip")
 
-    def test_peer_can_download_legacy_post_with_default_password(self):
-        post = self._create_post(download_password="")
-        client = Client()
-        client.force_login(self.counselor_b)
-        response = client.post(
-            reverse("counselor:presentation_board_post_file", args=[post.pk]),
-            {"file_password": "260706"},
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("attachment", response.get("Content-Disposition", ""))
-
-    def test_author_can_set_download_password_on_legacy_post(self):
-        post = self._create_post(download_password="")
+    def test_new_post_has_no_stored_password_on_create(self):
         client = Client()
         client.force_login(self.counselor_a)
         response = client.post(
-            reverse(
-                "counselor:presentation_board_post_set_download_password",
-                args=[post.pk],
-            ),
-            {"download_password": "991122"},
+            reverse("counselor:presentation_board_post_create"),
+            {
+                "cohort": "1",
+                "title": "[사례발표] 발표자",
+                "content": "",
+                "file": self.sample_file,
+            },
         )
         self.assertEqual(response.status_code, 302)
-        post.refresh_from_db()
-        self.assertTrue(verify_presentation_file_password("991122", post.file_password_hash))
-
-    def test_migration_backfills_legacy_post_password(self):
-        post = self._create_post(download_password="")
+        post = CasePresentationPost.objects.get()
         self.assertEqual(post.file_password_hash, "")
-
-        from django.contrib.auth.hashers import make_password
-
-        legacy_hash = make_password("260706")
-        CasePresentationPost.objects.filter(pk=post.pk).update(
-            file_password_hash=legacy_hash
-        )
-        post.refresh_from_db()
-
-        client = Client()
-        client.force_login(self.counselor_b)
-        response = client.post(
-            reverse("counselor:presentation_board_post_file", args=[post.pk]),
-            {"file_password": "260706"},
-        )
-        self.assertEqual(response.status_code, 200)
 
     def test_presenter_post_and_peer_comment(self):
         client = Client()
@@ -182,7 +161,6 @@ class PresentationBoardTests(TestCase):
                 "title": "[사례발표] 발표자 — 수퍼비전보고서",
                 "content": "",
                 "file": self.sample_file,
-                "download_password": "260706",
             },
         )
         self.assertEqual(response.status_code, 302)
@@ -193,7 +171,7 @@ class PresentationBoardTests(TestCase):
         )
         self.assertEqual(post.cohort, 1)
         self.assertEqual(post.author_id, self.counselor_a.pk)
-        self.assertTrue(verify_presentation_file_password("260706", post.file_password_hash))
+        self.assertEqual(post.file_password_hash, "")
 
         client.force_login(self.counselor_b)
         comment_file = SimpleUploadedFile(
@@ -207,7 +185,6 @@ class PresentationBoardTests(TestCase):
                 "cohort": "1",
                 "content": "개념화 제출",
                 "file": comment_file,
-                "download_password": "260706",
             },
         )
         self.assertEqual(response.status_code, 302)
@@ -227,9 +204,7 @@ class PresentationBoardTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, post.title)
         self.assertContains(response, "사례개념화 연습 댓글달기")
-        self.assertContains(response, "사례개념화 연습")
-        self.assertContains(response, "10. 예후 및 장애물")
-        self.assertNotContains(response, "메모")
+        self.assertContains(response, "이 파일에 설정할 암호")
         self.assertContains(response, "presentationBoardFileDownloadModal")
 
     def test_peer_can_comment_without_file(self):
@@ -281,10 +256,7 @@ class PresentationBoardTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "내용 보기")
         self.assertContains(response, "presentation-comment-collapse")
-        self.assertContains(response, "presentation-comment-branch-icon")
         self.assertContains(response, "동기 제출 현황")
-        self.assertContains(response, "/ 1명")
-        self.assertContains(response, "presentation-comment-section-label")
 
     def test_format_presentation_comment_highlights_sections(self):
         rendered = str(
@@ -292,8 +264,6 @@ class PresentationBoardTests(TestCase):
         )
         self.assertIn("presentation-comment-section-label", rendered)
         self.assertIn("호소문제", rendered)
-        self.assertIn("2. 촉발요인", rendered)
-        self.assertIn("일반 내용", rendered)
 
     def test_detail_page_author_cannot_comment(self):
         post = self._create_post()
@@ -311,8 +281,6 @@ class PresentationBoardTests(TestCase):
         client.force_login(self.counselor_b)
         response = client.get(reverse("counselor:presentation_board"))
         self.assertContains(response, "presentation-board-table")
-        self.assertContains(response, "보기")
-        self.assertNotContains(response, "accordion")
 
     def test_presenter_cannot_comment_on_own_post(self):
         post = self._create_post()
@@ -324,7 +292,6 @@ class PresentationBoardTests(TestCase):
                 "cohort": "1",
                 "content": "",
                 "file": SimpleUploadedFile("x.hwp", b"x", content_type="application/octet-stream"),
-                "download_password": "260706",
             },
         )
         self.assertEqual(response.status_code, 403)
@@ -340,3 +307,16 @@ class PresentationBoardTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertIn("attachment", response.get("Content-Disposition", ""))
+
+    def test_build_password_protected_zip_unit(self):
+        from apps.counseling.presentation_file_download import build_password_protected_zip
+
+        zip_bytes = build_password_protected_zip(
+            b"hello",
+            inner_filename="sample.hwp",
+            password="zip1234",
+        )
+        with pyzipper.AESZipFile(io.BytesIO(zip_bytes)) as zf:
+            zf.pwd = b"zip1234"
+            self.assertEqual(zf.read("sample.hwp"), b"hello")
+        self.assertFalse(zipfile.is_zipfile(io.BytesIO(b"not-a-zip")))

@@ -7,7 +7,6 @@ import re
 from pathlib import Path
 
 from django.conf import settings
-from django.contrib.auth.hashers import check_password, make_password
 from django.core.exceptions import PermissionDenied
 from django.utils.safestring import mark_safe
 
@@ -64,24 +63,10 @@ PRESENTATION_BOARD_COMMENT_CONTENT_TEMPLATE = """사례개념화 연습
 
 
 PRESENTATION_FILE_PASSWORD_MIN_LENGTH = 4
-PRESENTATION_BOARD_LEGACY_FILE_DOWNLOAD_PASSWORD = "260706"
 PRESENTATION_FILE_PASSWORD_NOTICE = (
-    "동기가 올린 파일은 웹에서 암호 확인 후에만 다운로드할 수 있습니다. "
-    "한글 파일 열람 암호(예: 260706)를 입력해 주세요."
+    "다운로드할 파일에 설정할 암호를 입력해 주세요. "
+    "입력한 암호로 ZIP 파일이 만들어지며, 압축을 풀 때 같은 암호가 필요합니다. (4자 이상)"
 )
-
-
-def hash_presentation_file_password(raw_password: str) -> str:
-    return make_password((raw_password or "").strip())
-
-
-def verify_presentation_file_password(raw_password: str, stored_hash: str) -> bool:
-    cleaned = (raw_password or "").strip()
-    if len(cleaned) < PRESENTATION_FILE_PASSWORD_MIN_LENGTH:
-        return False
-    if stored_hash:
-        return check_password(cleaned, stored_hash)
-    return cleaned == PRESENTATION_BOARD_LEGACY_FILE_DOWNLOAD_PASSWORD
 
 
 def user_can_download_presentation_file_without_password(user: User, author_id) -> bool:

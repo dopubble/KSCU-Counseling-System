@@ -5,7 +5,7 @@ from __future__ import annotations
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.db.models import Count
-from django.http import FileResponse, Http404
+from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
@@ -15,13 +15,17 @@ from apps.accounts.models import CounselorProfile
 from apps.counseling.cohort_journal_service import get_counselor_cohort
 from apps.counseling.forms import PresentationBoardCommentForm, PresentationBoardPostForm
 from apps.counseling.models import CasePresentationComment, CasePresentationPost
+from apps.counseling.presentation_file_download import (
+    build_password_protected_zip,
+    encrypted_zip_filename,
+    read_uploaded_file_bytes,
+)
 from apps.counseling.presentation_board import (
     PRESENTATION_FILE_PASSWORD_MIN_LENGTH,
     PRESENTATION_FILE_PASSWORD_NOTICE,
     PRESENTATION_FORM_TEMPLATES,
     count_presentation_comment_peers,
     get_presentation_form_path,
-    hash_presentation_file_password,
     require_presentation_board_access,
     resolve_viewer_cohort,
     user_can_comment_on_presentation_post,
@@ -30,7 +34,6 @@ from apps.counseling.presentation_board import (
     user_can_delete_presentation_post,
     user_can_download_presentation_file_without_password,
     user_is_platform_staff,
-    verify_presentation_file_password,
 )
 
 
@@ -96,12 +99,30 @@ def _redirect_after_file_download_failure(request, *, fallback_url: str):
     return redirect(fallback_url)
 
 
+def _encrypted_zip_file_response(
+    file_field,
+    *,
+    inner_filename: str,
+    password: str,
+) -> HttpResponse:
+    zip_bytes = build_password_protected_zip(
+        read_uploaded_file_bytes(file_field),
+        inner_filename=inner_filename,
+        password=password,
+    )
+    response = HttpResponse(zip_bytes, content_type="application/zip")
+    response["Content-Disposition"] = (
+        f'attachment; filename="{encrypted_zip_filename(inner_filename)}"'
+    )
+    response["Content-Length"] = len(zip_bytes)
+    return response
+
+
 def _serve_presentation_file(
     request,
     *,
     file_field,
     filename: str,
-    file_password_hash: str,
     author_id,
     fallback_url: str,
 ):
@@ -112,21 +133,21 @@ def _serve_presentation_file(
         return _presentation_file_response(file_field, filename=filename)
 
     if request.method == "GET":
-        raise PermissionDenied("암호 확인 후 다운로드할 수 있습니다.")
+        raise PermissionDenied("암호 설정 후 다운로드할 수 있습니다.")
 
     password = (request.POST.get("file_password") or "").strip()
     if len(password) < PRESENTATION_FILE_PASSWORD_MIN_LENGTH:
         messages.error(
             request,
-            f"다운로드 암호는 {PRESENTATION_FILE_PASSWORD_MIN_LENGTH}자 이상 입력해 주세요.",
+            f"파일 암호는 {PRESENTATION_FILE_PASSWORD_MIN_LENGTH}자 이상 입력해 주세요.",
         )
         return _redirect_after_file_download_failure(request, fallback_url=fallback_url)
 
-    if not verify_presentation_file_password(password, file_password_hash):
-        messages.error(request, "암호가 일치하지 않습니다.")
-        return _redirect_after_file_download_failure(request, fallback_url=fallback_url)
-
-    return _presentation_file_response(file_field, filename=filename)
+    return _encrypted_zip_file_response(
+        file_field,
+        inner_filename=filename,
+        password=password,
+    )
 
 
 @counselor_required
@@ -192,9 +213,6 @@ def presentation_board_detail(request, post_pk):
                 request.user,
                 post.author_id,
             ),
-            "post_needs_download_password_setup": (
-                post.author_id == request.user.pk and not post.file_password_hash
-            ),
         },
     )
 
@@ -220,9 +238,6 @@ def presentation_board_post_create(request):
         title=form.cleaned_data["title"].strip(),
         content=(form.cleaned_data.get("content") or "").strip(),
         file=form.cleaned_data["file"],
-        file_password_hash=hash_presentation_file_password(
-            form.cleaned_data["download_password"]
-        ),
     )
     messages.success(request, "사례발표 보고서가 등록되었습니다.")
     return redirect("counselor:presentation_board_detail", post_pk=post.pk)
@@ -247,28 +262,6 @@ def presentation_board_post_delete(request, post_pk):
 
 @counselor_required
 @require_POST
-def presentation_board_post_set_download_password(request, post_pk):
-    post = get_object_or_404(CasePresentationPost, pk=post_pk)
-    require_presentation_board_access(request.user, post.cohort)
-    if post.author_id != request.user.pk and not user_is_platform_staff(request.user):
-        raise PermissionDenied("다운로드 암호를 설정할 권한이 없습니다.")
-
-    password = (request.POST.get("download_password") or "").strip()
-    if len(password) < PRESENTATION_FILE_PASSWORD_MIN_LENGTH:
-        messages.error(
-            request,
-            f"다운로드 암호는 {PRESENTATION_FILE_PASSWORD_MIN_LENGTH}자 이상 입력해 주세요.",
-        )
-        return redirect("counselor:presentation_board_detail", post_pk=post.pk)
-
-    post.file_password_hash = hash_presentation_file_password(password)
-    post.save(update_fields=["file_password_hash", "updated_at"])
-    messages.success(request, "동기 다운로드용 암호가 등록되었습니다.")
-    return redirect("counselor:presentation_board_detail", post_pk=post.pk)
-
-
-@counselor_required
-@require_POST
 def presentation_board_comment_create(request, post_pk):
     post = get_object_or_404(CasePresentationPost, pk=post_pk)
     require_presentation_board_access(request.user, post.cohort)
@@ -283,18 +276,11 @@ def presentation_board_comment_create(request, post_pk):
                 break
         return redirect("counselor:presentation_board_detail", post_pk=post.pk)
 
-    password_hash = ""
-    if form.cleaned_data.get("file"):
-        password_hash = hash_presentation_file_password(
-            form.cleaned_data.get("download_password") or ""
-        )
-
     CasePresentationComment.objects.create(
         post=post,
         author=request.user,
         content=(form.cleaned_data.get("content") or "").strip(),
         file=form.cleaned_data.get("file"),
-        file_password_hash=password_hash,
     )
     messages.success(request, "사례개념화보고서 댓글이 등록되었습니다.")
     return redirect("counselor:presentation_board_detail", post_pk=post.pk)
@@ -330,7 +316,6 @@ def presentation_board_post_file(request, post_pk):
         request,
         file_field=post.file,
         filename=post.filename,
-        file_password_hash=post.file_password_hash,
         author_id=post.author_id,
         fallback_url=fallback_url,
     )
@@ -352,7 +337,6 @@ def presentation_board_comment_file(request, comment_pk):
         request,
         file_field=comment.file,
         filename=comment.filename,
-        file_password_hash=comment.file_password_hash,
         author_id=comment.author_id,
         fallback_url=fallback_url,
     )
