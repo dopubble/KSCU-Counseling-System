@@ -11,6 +11,7 @@ from apps.counseling.constants import (
 from apps.counseling.models import CounselingMethod
 from apps.counseling.presentation_board import (
     PRESENTATION_BOARD_COMMENT_CONTENT_TEMPLATE,
+    default_presentation_post_title,
 )
 
 
@@ -593,8 +594,9 @@ class PresentationBoardPostForm(forms.Form):
         max_length=200,
         widget=forms.TextInput(
             attrs={
-                "class": "form-control",
-                "placeholder": "예: [사례발표] 홍길동 — 수퍼비전보고서",
+                "class": "form-control bg-light",
+                "id": "presentationPostTitle",
+                "readonly": "readonly",
             }
         ),
     )
@@ -615,6 +617,20 @@ class PresentationBoardPostForm(forms.Form):
             attrs={"class": "form-control", "accept": ACCEPT_ATTR}
         ),
     )
+
+    def __init__(self, *args, author_name: str = "", **kwargs):
+        self.author_name = author_name
+        super().__init__(*args, **kwargs)
+        if author_name:
+            self.fields["title"].initial = default_presentation_post_title(author_name)
+
+    def clean_title(self):
+        if self.author_name:
+            return default_presentation_post_title(self.author_name)
+        title = (self.cleaned_data.get("title") or "").strip()
+        if not title:
+            raise forms.ValidationError("제목을 입력해 주세요.")
+        return title
 
     def clean_file(self):
         file_obj = self.cleaned_data.get("file")

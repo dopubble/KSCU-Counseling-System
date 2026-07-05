@@ -6,6 +6,7 @@ from apps.accounts.models import CounselorProfile, User, UserRole, UserStatus
 from apps.counseling.models import CasePresentationComment, CasePresentationPost
 from apps.counseling.presentation_board import (
     PRESENTATION_BOARD_COMMENT_CONTENT_TEMPLATE,
+    default_presentation_post_title,
     format_presentation_comment_content,
 )
 
@@ -61,7 +62,7 @@ class PresentationBoardTests(TestCase):
     def _create_post(self, **kwargs):
         kwargs.setdefault("cohort", 1)
         kwargs.setdefault("author", self.counselor_a)
-        kwargs.setdefault("title", "[사례발표] 발표자")
+        kwargs.setdefault("title", default_presentation_post_title("발표자"))
         kwargs.setdefault("file", self.sample_file)
         return CasePresentationPost.objects.create(**kwargs)
 
@@ -126,7 +127,7 @@ class PresentationBoardTests(TestCase):
             reverse("counselor:presentation_board_post_create"),
             {
                 "cohort": "1",
-                "title": "[사례발표] 발표자",
+                "title": default_presentation_post_title("발표자"),
                 "content": "",
                 "file": hwp_file,
             },
@@ -161,7 +162,7 @@ class PresentationBoardTests(TestCase):
             reverse("counselor:presentation_board_post_create"),
             {
                 "cohort": "1",
-                "title": "[사례발표] 발표자",
+                "title": default_presentation_post_title("발표자"),
                 "content": "",
                 "file": self.sample_file,
             },
@@ -177,7 +178,7 @@ class PresentationBoardTests(TestCase):
             reverse("counselor:presentation_board_post_create"),
             {
                 "cohort": "1",
-                "title": "[사례발표] 발표자 — 수퍼비전보고서",
+                "title": "임의로 바꾼 제목",
                 "content": "",
                 "file": self.sample_file,
             },
@@ -190,6 +191,7 @@ class PresentationBoardTests(TestCase):
         )
         self.assertEqual(post.cohort, 1)
         self.assertEqual(post.author_id, self.counselor_a.pk)
+        self.assertEqual(post.title, default_presentation_post_title("발표자"))
         self.assertEqual(post.file_password_hash, "")
 
         client.force_login(self.counselor_b)
@@ -212,6 +214,16 @@ class PresentationBoardTests(TestCase):
             reverse("counselor:presentation_board_detail", args=[post.pk]),
         )
         self.assertEqual(CasePresentationComment.objects.filter(post=post).count(), 1)
+
+    def test_post_modal_shows_auto_title_readonly(self):
+        client = Client()
+        client.force_login(self.counselor_a)
+        response = client.get(reverse("counselor:presentation_board"))
+        self.assertEqual(response.status_code, 200)
+        expected_title = default_presentation_post_title("발표자")
+        self.assertContains(response, expected_title)
+        self.assertContains(response, 'id="presentationPostTitle"')
+        self.assertContains(response, "readonly")
 
     def test_detail_page_peer_sees_comment_form(self):
         post = self._create_post()

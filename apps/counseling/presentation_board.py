@@ -69,6 +69,11 @@ PRESENTATION_FILE_PASSWORD_NOTICE = (
 )
 
 
+def default_presentation_post_title(author_name: str) -> str:
+    name = (author_name or "").strip() or "작성자"
+    return f"[사례발표] {name}-수퍼비전보고서"
+
+
 def user_can_download_presentation_file_without_password(user: User, author_id) -> bool:
     if user_is_platform_staff(user):
         return True

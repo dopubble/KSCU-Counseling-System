@@ -110,7 +110,7 @@ def presentation_board(request):
             "cohort": cohort,
             "viewer_cohort": viewer_cohort,
             "posts": posts,
-            "post_form": PresentationBoardPostForm(),
+            "post_form": PresentationBoardPostForm(author_name=request.user.name),
             "form_templates": PRESENTATION_FORM_TEMPLATES,
             "can_create_post": user_can_create_presentation_post(request.user, cohort),
             "is_staff_viewer": user_is_platform_staff(request.user),
@@ -171,7 +171,11 @@ def presentation_board_post_create(request):
     if not user_can_create_presentation_post(request.user, cohort):
         raise PermissionDenied("게시글 작성 권한이 없습니다.")
 
-    form = PresentationBoardPostForm(request.POST, request.FILES)
+    form = PresentationBoardPostForm(
+        request.POST,
+        request.FILES,
+        author_name=request.user.name,
+    )
     if not form.is_valid():
         for errors in form.errors.values():
             if errors:
