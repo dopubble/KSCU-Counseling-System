@@ -28,24 +28,23 @@ PRESENTATION_FORM_TEMPLATES = {
 }
 
 
-PRESENTATION_BOARD_COMMENT_CONTENT_TEMPLATE = """사례개념화 연습
-     
-     
-호소문제
+PRESENTATION_BOARD_COMMENT_CONTENT_TEMPLATE = """     
+   
+1. 호소문제
      
 2. 촉발요인
      
 3. 부정적 패턴
      
-감정
+  1) 감정
      
-사고 자동적 사고
-     중간신념 
-     핵심신념
+    - 사고 자동적 사고
+       (1) 중간신념 
+       (2) 핵심신념
      
-행동
+   2) 행동
      
-관계
+   3) 관계
      
 4. 유발요인
      
@@ -85,16 +84,10 @@ def requires_presentation_file_password(user: User, author_id) -> bool:
 
 _PRESENTATION_COMMENT_SECTION_RE = re.compile(
     r"^(\s*)("
-    r"사례개념화 연습|"
-    r"호소문제|"
-    r"감정|"
-    r"행동|"
-    r"관계|"
-    r"사고(?:\s+자동적 사고)?|"
-    r"자동적 사고|"
-    r"중간신념|"
-    r"핵심신념|"
-    r"\d+\.\s*.+"
+    r"\d+\.\s*.+|"
+    r"\d+\)\s*.+|"
+    r"\(\d+\)\s*.+|"
+    r"-\s*.+"
     r")(\s*)$"
 )
 

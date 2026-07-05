@@ -290,7 +290,7 @@ class PresentationBoardTests(TestCase):
         self.assertEqual(response.status_code, 302)
         comment = CasePresentationComment.objects.get(post=post)
         self.assertFalse(comment.file)
-        self.assertIn("사례개념화 연습", comment.content)
+        self.assertIn("1. 호소문제", comment.content)
 
     def test_detail_shows_full_comment_content(self):
         post = self._create_post()
@@ -329,10 +329,10 @@ class PresentationBoardTests(TestCase):
 
     def test_format_presentation_comment_highlights_sections(self):
         rendered = str(
-            format_presentation_comment_content("호소문제\n\n2. 촉발요인\n일반 내용")
+            format_presentation_comment_content("1. 호소문제\n\n2. 촉발요인\n일반 내용")
         )
         self.assertIn("presentation-comment-section-label", rendered)
-        self.assertIn("호소문제", rendered)
+        self.assertIn("1. 호소문제", rendered)
 
     def test_detail_page_author_cannot_comment(self):
         post = self._create_post()
