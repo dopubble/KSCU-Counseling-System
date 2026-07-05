@@ -15,38 +15,19 @@
 
     <div class="card border-0 shadow-sm mb-3 presentation-board-toolbar">
         <div class="card-body py-3">
-            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
-                <button class="btn btn-sm btn-outline-secondary"
-                        type="button"
-                        data-bs-toggle="collapse"
-                        data-bs-target="#presentationBoardGuide"
-                        aria-expanded="false"
-                        aria-controls="presentationBoardGuide">
-                    <i class="bi bi-info-circle me-1"></i>이용 안내
-                </button>
-                <div class="d-flex flex-wrap gap-2">
-                    <a href="{% url 'counselor:presentation_board_form_download' 'supervision_report' %}"
-                       class="btn btn-sm btn-outline-primary">
-                        <i class="bi bi-download me-1"></i>수퍼비전 양식
-                    </a>
-                    <a href="{% url 'counselor:presentation_board_form_download' 'conceptualization' %}"
-                       class="btn btn-sm btn-outline-primary">
-                        <i class="bi bi-download me-1"></i>개념화 양식
-                    </a>
-                </div>
+            <div class="d-flex flex-wrap align-items-center justify-content-end gap-2">
+                <a href="{% url 'counselor:presentation_board_form_download' 'supervision_report' %}"
+                   class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-download me-1"></i>수퍼비전 양식
+                </a>
+                <a href="{% url 'counselor:presentation_board_form_download' 'conceptualization' %}"
+                   class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-download me-1"></i>개념화 양식
+                </a>
             </div>
             <p class="small text-muted mb-0 mt-2">
                 7/6 사례발표 · 발표자는 보고서 등록 · 동기는 열람 후 개념화 댓글 제출 (전날까지)
             </p>
-            <div class="collapse mt-3" id="presentationBoardGuide">
-                <div class="alert alert-info border-0 mb-0 py-3" role="note">
-                    <ul class="small mb-0 ps-3">
-                        <li><strong>7월 6일</strong> 사례발표 — 발표하시는 분은 <strong>수퍼비전(사례발표)보고서</strong>를 등록해 주세요.</li>
-                        <li>비밀보장을 위해 동기가 파일을 받을 때 <strong>본인이 정한 암호</strong>로 ZIP을 만들어 다운로드합니다. (발표자는 암호 없이 원본을 올립니다)</li>
-                        <li>발표자를 제외한 동기는 보고서를 <strong>다운로드·열람</strong>한 뒤, <strong>사례개념화보고서</strong>를 해당 글 상세에서 <strong>댓글</strong>로 올려 주세요. (수퍼비전 전날까지)</li>
-                    </ul>
-                </div>
-            </div>
         </div>
     </div>
 
