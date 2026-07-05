@@ -11,7 +11,9 @@ from apps.accounts.models import (
     UserStatus,
 )
 from apps.counseling.journal_permissions import (
+    user_can_download_initial_counseling_record_pdf,
     user_can_download_journal_pdf,
+    user_can_view_initial_counseling_record,
     user_can_view_journal,
 )
 from apps.counseling.models import (
@@ -21,7 +23,7 @@ from apps.counseling.models import (
     CounselingApplication,
     CounselingMethod,
 )
-from apps.sessions_app.models import CounselingJournal
+from apps.sessions_app.models import CounselingJournal, InitialCounselingRecord
 
 
 def _create_client(name: str = "내담자") -> User:
@@ -79,6 +81,16 @@ def _create_journal(case: Case, counselor: User, session_number: int = 1) -> Cou
         objective="O",
         assessment="A",
         plan="P",
+    )
+
+
+def _create_initial_record(case: Case, counselor: User) -> InitialCounselingRecord:
+    return InitialCounselingRecord.objects.create(
+        case=case,
+        counselor=counselor,
+        is_draft=False,
+        presented_problems_summary="호소 내용",
+        clinical_strategy="전략",
     )
 
 
@@ -173,3 +185,80 @@ class JournalPermissionTests(TestCase):
         url = reverse("supervisor:journal_pdf", kwargs={"journal_pk": journal_other.pk})
         response = http.post(url, {"pdf_password": "test1234"})
         self.assertEqual(response.status_code, 403)
+
+
+class InitialRecordSupervisorTests(TestCase):
+    def setUp(self):
+        self.peer_a = _create_counselor("상담사A", cohort=1)
+        self.peer_b = _create_counselor("상담사B", cohort=1)
+        self.other_cohort = _create_counselor("상담사C", cohort=2)
+        self.case_a = _create_case(self.peer_a, _create_client("내담자A"), "CASE-IR-1")
+        self.case_b = _create_case(self.peer_b, _create_client("내담자B"), "CASE-IR-2")
+        self.record_a = _create_initial_record(self.case_a, self.peer_a)
+        self.record_b = _create_initial_record(self.case_b, self.peer_b)
+        self.supervisor = User.objects.create_user(
+            email="supervisor-ir@example.com",
+            password="pass12345",
+            name="수퍼바이저",
+            role=UserRole.SUPERVISOR,
+            status=UserStatus.ACTIVE,
+        )
+        SupervisorProfile.objects.update_or_create(
+            user=self.supervisor,
+            defaults={"assigned_cohorts": [1]},
+        )
+
+    def test_counselor_cannot_view_peer_initial_record(self):
+        self.assertFalse(
+            user_can_view_initial_counseling_record(self.peer_a, self.record_b)
+        )
+
+    def test_supervisor_assigned_cohort_can_view_initial_record(self):
+        self.assertTrue(
+            user_can_view_initial_counseling_record(self.supervisor, self.record_b)
+        )
+        self.assertTrue(
+            user_can_download_initial_counseling_record_pdf(
+                self.supervisor, self.record_b
+            )
+        )
+
+    def test_supervisor_other_cohort_initial_record_denied(self):
+        other_case = _create_case(
+            self.other_cohort,
+            _create_client("내담자C"),
+            "CASE-IR-3",
+        )
+        other_record = _create_initial_record(other_case, self.other_cohort)
+        self.assertFalse(
+            user_can_view_initial_counseling_record(self.supervisor, other_record)
+        )
+
+    def test_supervisor_can_access_initial_records_page(self):
+        http = HttpClient()
+        http.force_login(self.supervisor)
+        response = http.get(reverse("supervisor:cohort_initial_records"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "CASE-IR-1")
+        self.assertContains(response, "CASE-IR-2")
+        self.assertNotContains(response, "CASE-IR-3")
+
+    def test_supervisor_can_view_initial_record_detail(self):
+        http = HttpClient()
+        http.force_login(self.supervisor)
+        response = http.get(
+            reverse(
+                "supervisor:initial_record_detail",
+                kwargs={"record_pk": self.record_b.pk},
+            )
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "호소 내용")
+        self.assertContains(response, "전략")
+
+    def test_supervisor_dashboard_shows_initial_records_link(self):
+        http = HttpClient()
+        http.force_login(self.supervisor)
+        response = http.get(reverse("supervisor:dashboard"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "기수별 초기상담 기록지")

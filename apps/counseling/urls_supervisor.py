@@ -12,4 +12,19 @@ urlpatterns = [
         views_supervisor.supervisor_journal_pdf,
         name="journal_pdf",
     ),
+    path(
+        "initial-records/",
+        views_supervisor.supervisor_cohort_initial_records,
+        name="cohort_initial_records",
+    ),
+    path(
+        "initial-records/<uuid:record_pk>/",
+        views_supervisor.supervisor_initial_record_detail,
+        name="initial_record_detail",
+    ),
+    path(
+        "initial-records/<uuid:record_pk>/pdf/",
+        views_supervisor.supervisor_initial_record_pdf,
+        name="initial_record_pdf",
+    ),
 ]
