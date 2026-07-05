@@ -10,16 +10,19 @@ import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote
 
 import pikepdf
+import pyzipper
 from django.utils.text import get_valid_filename
 from rustyzipper import compress_bytes
 
 logger = logging.getLogger(__name__)
 
 PDF_EXTENSIONS = {".pdf"}
-CONVERT_TO_PDF_EXTENSIONS = {".hwp", ".hwpx", ".doc", ".docx"}
-ZIP_FALLBACK_EXTENSIONS = PDF_EXTENSIONS | CONVERT_TO_PDF_EXTENSIONS
+HWP_EXTENSIONS = {".hwp", ".hwpx"}
+DOC_CONVERT_EXTENSIONS = {".doc", ".docx"}
+CONVERT_TO_PDF_EXTENSIONS = HWP_EXTENSIONS | DOC_CONVERT_EXTENSIONS
 
 
 @dataclass(frozen=True)
@@ -39,6 +42,35 @@ def safe_download_basename(original_filename: str) -> str:
     return get_valid_filename(Path(original_filename).name) or "download"
 
 
+def ascii_attachment_filename(filename: str) -> str:
+    """Content-Disposition filename= 파라미터용 ASCII 파일명."""
+    safe_name = safe_download_basename(filename)
+    ascii_name = safe_name.encode("ascii", "ignore").decode("ascii").strip("._")
+    if not ascii_name:
+        return "download" + (Path(safe_name).suffix or "")
+    if not Path(ascii_name).suffix and Path(safe_name).suffix:
+        return f"{ascii_name}{Path(safe_name).suffix}"
+    return ascii_name
+
+
+def attachment_content_disposition(filename: str) -> str:
+    safe_name = safe_download_basename(filename)
+    ascii_name = ascii_attachment_filename(filename)
+    return (
+        f'attachment; filename="{ascii_name}"; '
+        f"filename*=UTF-8''{quote(safe_name)}"
+    )
+
+
+def _should_attempt_office_pdf_conversion(ext: str) -> bool:
+    """Linux 서버에서는 HWP 변환이 거의 불가능하므로 doc/docx만 시도."""
+    if ext in DOC_CONVERT_EXTENSIONS:
+        return True
+    if ext in HWP_EXTENSIONS:
+        return os.name == "nt"
+    return False
+
+
 def _libreoffice_binary() -> str | None:
     for candidate in ("soffice", "libreoffice"):
         path = shutil.which(candidate)
@@ -49,8 +81,7 @@ def _libreoffice_binary() -> str | None:
 
 def convert_office_bytes_to_pdf(file_bytes: bytes, *, source_ext: str) -> bytes | None:
     """
-    HWP/HWPX/DOC/DOCX → PDF (LibreOffice 필요).
-    Railway/Nixpacks에 libreoffice 패키지가 있어야 HWP 변환이 동작합니다.
+    DOC/DOCX → PDF (LibreOffice). Windows에서만 HWP/HWPX 시도.
     """
     ext = (source_ext or "").lower().lstrip(".")
     if not ext:
@@ -60,55 +91,62 @@ def convert_office_bytes_to_pdf(file_bytes: bytes, *, source_ext: str) -> bytes 
         logger.info("LibreOffice not found; skipping office→PDF conversion.")
         return None
 
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp_path = Path(tmp)
-        lo_profile = tmp_path / "lo-profile"
-        lo_profile.mkdir()
-        source_path = tmp_path / f"source.{ext}"
-        source_path.write_bytes(file_bytes)
-        env = {
-            **os.environ,
-            "HOME": str(tmp_path),
-            "SAL_USE_VCLPLUGIN": "svp",
-        }
-        try:
-            result = subprocess.run(
-                [
-                    binary,
-                    f"-env:UserInstallation=file://{lo_profile.as_posix()}",
-                    "--headless",
-                    "--norestore",
-                    "--nologo",
-                    "--convert-to",
-                    "pdf",
-                    "--outdir",
-                    str(tmp_path),
-                    str(source_path),
-                ],
-                check=False,
-                timeout=120,
-                capture_output=True,
-                env=env,
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            logger.warning("LibreOffice conversion error ext=%s err=%s", ext, exc)
-            return None
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            lo_profile = tmp_path / "lo-profile"
+            lo_profile.mkdir()
+            source_path = tmp_path / f"source.{ext}"
+            source_path.write_bytes(file_bytes)
+            env = {
+                **os.environ,
+                "HOME": str(tmp_path),
+                "SAL_USE_VCLPLUGIN": "svp",
+            }
+            try:
+                result = subprocess.run(
+                    [
+                        binary,
+                        f"-env:UserInstallation=file://{lo_profile.as_posix()}",
+                        "--headless",
+                        "--norestore",
+                        "--nologo",
+                        "--convert-to",
+                        "pdf",
+                        "--outdir",
+                        str(tmp_path),
+                        str(source_path),
+                    ],
+                    check=False,
+                    timeout=120,
+                    capture_output=True,
+                    env=env,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                logger.warning("LibreOffice conversion error ext=%s err=%s", ext, exc)
+                return None
 
-        if result.returncode != 0:
-            logger.warning(
-                "LibreOffice conversion failed ext=%s code=%s stderr=%s",
-                ext,
-                result.returncode,
-                result.stderr.decode(errors="replace")[:500],
-            )
-            return None
+            if result.returncode != 0:
+                logger.warning(
+                    "LibreOffice conversion failed ext=%s code=%s stderr=%s",
+                    ext,
+                    result.returncode,
+                    result.stderr.decode(errors="replace")[:500],
+                )
+                return None
 
-        pdf_path = tmp_path / "source.pdf"
-        if pdf_path.is_file():
-            pdf_bytes = pdf_path.read_bytes()
-            if _is_valid_pdf_bytes(pdf_bytes):
-                return pdf_bytes
-            logger.warning("LibreOffice produced invalid PDF ext=%s size=%s", ext, len(pdf_bytes))
+            pdf_path = tmp_path / "source.pdf"
+            if pdf_path.is_file():
+                pdf_bytes = pdf_path.read_bytes()
+                if _is_valid_pdf_bytes(pdf_bytes):
+                    return pdf_bytes
+                logger.warning(
+                    "LibreOffice produced invalid PDF ext=%s size=%s",
+                    ext,
+                    len(pdf_bytes),
+                )
+    except Exception:
+        logger.exception("LibreOffice conversion crashed ext=%s", ext)
     return None
 
 
@@ -118,7 +156,7 @@ def _is_valid_pdf_bytes(pdf_bytes: bytes) -> bool:
     try:
         with pikepdf.open(io.BytesIO(pdf_bytes)) as pdf:
             return len(pdf.pages) >= 1
-    except pikepdf.PdfError:
+    except Exception:
         return False
 
 
@@ -148,7 +186,7 @@ def _try_build_encrypted_pdf_payload(
         return None
     try:
         encrypted = encrypt_pdf_bytes(pdf_bytes, password)
-    except pikepdf.PdfError:
+    except Exception:
         logger.warning("PDF encryption failed filename=%s", filename, exc_info=True)
         return None
     return ProtectedDownloadPayload(
@@ -159,6 +197,19 @@ def _try_build_encrypted_pdf_payload(
     )
 
 
+def _compress_with_pyzipper(archive_name: str, file_bytes: bytes, password: str) -> bytes:
+    buffer = io.BytesIO()
+    with pyzipper.AESZipFile(
+        buffer,
+        "w",
+        compression=pyzipper.ZIP_DEFLATED,
+        encryption=pyzipper.WZ_AES,
+    ) as zf:
+        zf.setpassword(password.encode("utf-8"))
+        zf.writestr(archive_name, file_bytes)
+    return buffer.getvalue()
+
+
 def build_password_protected_zip(
     file_bytes: bytes,
     *,
@@ -166,7 +217,16 @@ def build_password_protected_zip(
     password: str,
 ) -> bytes:
     archive_name = safe_download_basename(inner_filename)
-    return compress_bytes([(archive_name, file_bytes)], password=password)
+    try:
+        return compress_bytes([(archive_name, file_bytes)], password=password)
+    except Exception:
+        logger.warning(
+            "rustyzipper failed inner=%s size=%s; trying pyzipper",
+            archive_name,
+            len(file_bytes),
+            exc_info=True,
+        )
+        return _compress_with_pyzipper(archive_name, file_bytes, password)
 
 
 def build_password_protected_download(
@@ -179,8 +239,8 @@ def build_password_protected_download(
     다운로드 페이로드 생성.
 
     1) PDF → 암호화 PDF (.pdf)
-    2) HWP/HWPX/DOC/DOCX → (LibreOffice) PDF 변환 → 암호화 PDF (.pdf)
-    3) 변환 불가 → AES ZIP (최후 fallback, 한글 원본 확장자는 서버에서 직접 암호 불가)
+    2) DOC/DOCX → (LibreOffice) PDF 변환 → 암호화 PDF (.pdf)
+    3) HWP/HWPX 및 변환 불가 → AES ZIP
     """
     basename = safe_download_basename(inner_filename)
     ext = Path(basename).suffix.lower()
@@ -194,7 +254,7 @@ def build_password_protected_download(
         if payload:
             return payload
 
-    if ext in CONVERT_TO_PDF_EXTENSIONS:
+    if _should_attempt_office_pdf_conversion(ext):
         pdf_bytes = convert_office_bytes_to_pdf(file_bytes, source_ext=ext)
         if pdf_bytes:
             stem = Path(basename).stem or "download"
@@ -207,15 +267,11 @@ def build_password_protected_download(
                 return payload
 
     zip_name = f"{Path(basename).stem or 'download'}.zip"
-    try:
-        zip_data = build_password_protected_zip(
-            file_bytes,
-            inner_filename=inner_filename,
-            password=password,
-        )
-    except Exception:
-        logger.exception("ZIP fallback failed filename=%s", inner_filename)
-        raise
+    zip_data = build_password_protected_zip(
+        file_bytes,
+        inner_filename=inner_filename,
+        password=password,
+    )
     return ProtectedDownloadPayload(
         data=zip_data,
         filename=zip_name,

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from urllib.parse import quote
-
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.db.models import Count
@@ -18,6 +16,7 @@ from apps.counseling.cohort_journal_service import get_counselor_cohort
 from apps.counseling.forms import PresentationBoardCommentForm, PresentationBoardPostForm
 from apps.counseling.models import CasePresentationComment, CasePresentationPost
 from apps.counseling.presentation_file_download import (
+    attachment_content_disposition,
     build_password_protected_download,
     read_uploaded_file_bytes,
 )
@@ -112,10 +111,7 @@ def _encrypted_download_file_response(
         password=password,
     )
     response = HttpResponse(payload.data, content_type=payload.content_type)
-    response["Content-Disposition"] = (
-        f'attachment; filename="{payload.filename}"; '
-        f"filename*=UTF-8''{quote(payload.filename)}"
-    )
+    response["Content-Disposition"] = attachment_content_disposition(payload.filename)
     response["Content-Length"] = len(payload.data)
     response["X-Presentation-Delivery"] = payload.delivery
     return response

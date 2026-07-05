@@ -360,6 +360,34 @@ class PresentationBoardTests(TestCase):
         extracted = self._extract_zip_with_password(payload.data, self.PEER_ZIP_PASSWORD)
         self.assertTrue(extracted)
 
+    def test_attachment_content_disposition_ascii_fallback(self):
+        from apps.counseling.presentation_file_download import attachment_content_disposition
+        from django.http import HttpResponse
+
+        header = attachment_content_disposition("08. (한기상)보고서.zip")
+        self.assertIn('filename="08.', header)
+        self.assertIn("filename*=UTF-8", header)
+        response = HttpResponse(b"x")
+        response["Content-Disposition"] = header
+        response.serialize_headers()
+
+    def test_peer_download_korean_filename_returns_zip(self):
+        korean_file = SimpleUploadedFile(
+            "08. (한기상)전문상담사 사례발표보고서.hwp",
+            b"hwp-bytes",
+            content_type="application/octet-stream",
+        )
+        post = self._create_post(file=korean_file)
+        client = Client()
+        client.force_login(self.counselor_b)
+        response = client.post(
+            reverse("counselor:presentation_board_post_file", args=[post.pk]),
+            {"file_password": self.PEER_ZIP_PASSWORD},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get("X-Presentation-Delivery"), "zip")
+        self.assertIn("attachment", response.get("Content-Disposition", ""))
+
     def test_build_password_protected_zip_unit(self):
         from apps.counseling.presentation_file_download import build_password_protected_zip
 
