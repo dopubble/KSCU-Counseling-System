@@ -36,9 +36,6 @@
             {% if post.file %}
             {% presentation_file_password_required post.author_id as post_download_requires_password %}
             {% include "counselor/partials/presentation_board_file_download_button.html" with download_url=post_file_download_url filename=post.filename button_class="btn btn-outline-primary" show_icon=True requires_password=post_download_requires_password %}
-            {% if post_download_requires_password %}
-            <p class="small text-muted mb-0 mt-2">{{ file_password_notice }}</p>
-            {% endif %}
             {% endif %}
             {% if is_author %}
             <p class="small text-muted mt-3 mb-0">
