@@ -18,9 +18,15 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
 
-from .auth_utils import get_safe_next_url
+from .auth_utils import (
+    default_dashboard_url_for_user,
+    get_safe_next_url,
+    resolve_post_login_redirect,
+    url_path,
+    user_can_access_url_path,
+)
 from .emailing import send_find_id_email
-from apps.accounts.decorators import role_required, user_can_access_counselor_area
+from apps.accounts.decorators import role_required
 
 from .forms import (
     CounselorProfileUpdateForm,
@@ -65,22 +71,11 @@ class UserLoginView(LoginView):
     redirect_authenticated_user = True
 
     def get_success_url(self):
-        redirect_to = self.get_redirect_url()
-        if redirect_to:
-            return redirect_to
-
-        user = self.request.user
-        if user.role == UserRole.ADMIN:
-            return reverse_lazy("admin_panel:dashboard")
-        if user.role == UserRole.COUNSELOR:
-            return reverse_lazy("counselor:dashboard")
-        if user.role == UserRole.SUPERVISOR:
-            return reverse_lazy("supervisor:dashboard")
-        if user.role == UserRole.CLIENT:
-            return reverse_lazy("client:dashboard")
-        if user_can_access_counselor_area(user):
-            return reverse_lazy("counselor:dashboard")
-        return reverse_lazy("home")
+        return resolve_post_login_redirect(
+            self.request,
+            self.request.user,
+            candidate_url=self.get_redirect_url() or None,
+        )
 
 
 @never_cache
@@ -106,9 +101,10 @@ def signup(request):
     next_url = get_safe_next_url(request)
 
     if request.user.is_authenticated:
-        if next_url:
-            return redirect(next_url)
-        return redirect("home")
+        safe_next = get_safe_next_url(request)
+        if safe_next and user_can_access_url_path(request.user, url_path(safe_next)):
+            return redirect(safe_next)
+        return redirect(default_dashboard_url_for_user(request.user))
 
     if request.method == "POST":
         form = SignUpForm(request.POST)
@@ -144,6 +140,9 @@ def pending(request):
 
 
 def permission_denied_view(request, exception=None):
+    from apps.accounts.access_diagnostics import log_permission_denied
+
+    log_permission_denied(request, exception=exception)
     return render(request, "403.html", status=403)
 
 
