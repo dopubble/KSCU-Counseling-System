@@ -69,7 +69,8 @@ PRESENTATION_FILE_PASSWORD_NOTICE = (
 
 PRESENTATION_BULK_ZIP_PASSWORD_NOTICE = (
     "ZIP 파일에 설정할 암호를 입력해 주세요. "
-    "ZIP 안의 PDF 파일에는 별도 암호가 걸리지 않습니다. (4자 이상)"
+    "ZIP 안의 PDF 파일에는 별도 암호가 걸리지 않습니다. "
+    "Windows 탐색기에서도 압축 해제할 수 있습니다. (4자 이상)"
 )
 
 

@@ -4,15 +4,97 @@ from __future__ import annotations
 
 import io
 import logging
+import os
 from datetime import date
 
 import pyzipper
 from django.utils.text import get_valid_filename
+from pyzipper.zipfile import _MASK_USE_DATA_DESCRIPTOR
+from pyzipper.zipfile_aes import BaseZipEncrypter
 
 from apps.counseling.models import CasePresentationPost
 from apps.counseling.presentation_pdf_encrypt import read_uploaded_file_bytes
 
 logger = logging.getLogger(__name__)
+
+
+class CRCZipEncrypter(BaseZipEncrypter):
+    """PKWARE ZipCrypto — Windows 탐색기 기본 압축 해제와 호환."""
+
+    encryption_header_length = 12
+    _crctable: list[int] | None = None
+
+    def __init__(self, pwd: bytes):
+        if not pwd:
+            raise RuntimeError("ZipCrypto encryption requires a password.")
+        self.pwd = pwd
+        self._zinfo = None
+        self._init_keys()
+
+    @classmethod
+    def _get_crctable(cls) -> list[int]:
+        if cls._crctable is None:
+
+            def _gen_crc(crc: int) -> int:
+                for _ in range(8):
+                    if crc & 1:
+                        crc = (crc >> 1) ^ 0xEDB88320
+                    else:
+                        crc >>= 1
+                return crc
+
+            cls._crctable = [_gen_crc(i) for i in range(256)]
+        return cls._crctable
+
+    def _crc32(self, ch: int, crc: int) -> int:
+        return (crc >> 8) ^ self._get_crctable()[(crc ^ ch) & 0xFF]
+
+    def _update_keys(self, ch: int) -> None:
+        self.key0 = self._crc32(ch, self.key0)
+        self.key1 = (self.key1 + (self.key0 & 0xFF)) & 0xFFFFFFFF
+        self.key1 = (self.key1 * 134775813 + 1) & 0xFFFFFFFF
+        self.key2 = self._crc32(self.key1 >> 24, self.key2)
+
+    def _init_keys(self) -> None:
+        self.key0 = 305419896
+        self.key1 = 591751049
+        self.key2 = 878082192
+        for byte in self.pwd:
+            self._update_keys(byte)
+
+    def update_zipinfo(self, zinfo) -> None:
+        self._zinfo = zinfo
+        zinfo.flag_bits |= _MASK_USE_DATA_DESCRIPTOR
+        zinfo._raw_time = zinfo.get_dostime()
+
+    def encryption_header(self) -> bytes:
+        if self._zinfo is None:
+            raise RuntimeError("ZipCrypto encrypter missing zip entry metadata.")
+        self._init_keys()
+        check_byte = (self._zinfo._raw_time >> 8) & 0xFF
+        return self.encrypt(os.urandom(11) + bytes([check_byte]))
+
+    def encrypt(self, data: bytes) -> bytes:
+        encrypted = bytearray()
+        for plain in data:
+            keystream = self.key2 | 2
+            cipher = plain ^ (((keystream * (keystream ^ 1)) >> 8) & 0xFF)
+            self._update_keys(plain)
+            encrypted.append(cipher)
+        return bytes(encrypted)
+
+    def finalize_zipinfo(self, zinfo) -> None:
+        return None
+
+    def flush(self) -> bytes:
+        return b""
+
+
+class ZipCryptoZipFile(pyzipper.ZipFile):
+    """ZipCrypto 쓰기 지원 pyzipper.ZipFile."""
+
+    def get_encrypter(self):
+        return CRCZipEncrypter(self.pwd)
 
 
 def zip_entry_name_for_post(post: CasePresentationPost, *, used_names: set[str]) -> str:
@@ -36,11 +118,10 @@ def build_password_protected_zip(
     password: str,
 ) -> bytes:
     buffer = io.BytesIO()
-    with pyzipper.AESZipFile(
+    with ZipCryptoZipFile(
         buffer,
         "w",
         compression=pyzipper.ZIP_DEFLATED,
-        encryption=pyzipper.WZ_AES,
     ) as archive:
         archive.setpassword(password.encode("utf-8"))
         for name, data in entries:

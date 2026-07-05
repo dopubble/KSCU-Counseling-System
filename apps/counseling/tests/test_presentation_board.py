@@ -457,7 +457,7 @@ class PresentationBoardTests(TestCase):
         self.assertEqual(response["Content-Type"], "application/zip")
         self.assertIn("attachment", response.get("Content-Disposition", ""))
 
-        with pyzipper.AESZipFile(io.BytesIO(response.content)) as archive:
+        with pyzipper.ZipFile(io.BytesIO(response.content)) as archive:
             archive.setpassword(b"zip1234")
             names = archive.namelist()
             self.assertEqual(len(names), 2)
@@ -466,7 +466,7 @@ class PresentationBoardTests(TestCase):
                 self.assertTrue(data.startswith(b"%PDF"))
 
         with zipfile.ZipFile(io.BytesIO(response.content)) as plain_archive:
-            with self.assertRaises((RuntimeError, zipfile.BadZipFile)):
+            with self.assertRaises(RuntimeError):
                 plain_archive.read(plain_archive.namelist()[0])
 
     def test_bulk_download_xhr_error_returns_plain_text(self):
