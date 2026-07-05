@@ -120,6 +120,25 @@ def _intervals_overlap(a_start: datetime, a_end: datetime, b_start: datetime, b_
     return a_start < b_end and b_start < a_end
 
 
+def intervals_conflict_with_buffer(
+    a_start: datetime,
+    a_end: datetime,
+    b_start: datetime,
+    b_end: datetime,
+    *,
+    buffer_minutes: int | None = None,
+) -> bool:
+    """호스트 배정·용량 검사 공통 — 30분 버퍼 포함 겹침."""
+    buffer = timedelta(
+        minutes=(
+            buffer_minutes
+            if buffer_minutes is not None
+            else get_zoom_host_buffer_minutes()
+        )
+    )
+    return _intervals_overlap(a_start, a_end + buffer, b_start, b_end + buffer)
+
+
 def _calendar_service_tz() -> ZoneInfo:
     return ZoneInfo(get_calendar_timezone_name())
 
@@ -216,8 +235,11 @@ def get_zoom_host_buffer_minutes() -> int:
     return DEFAULT_ZOOM_HOST_BUFFER_MINUTES
 
 
-def assign_zoom_hosts(intervals: list[CalendarInterval]) -> dict[str, str]:
-    """겹치는 비대면 확정 예약에 호스트 풀을 순차 배정 (표시·배정 공통)."""
+def assign_zoom_hosts(intervals: list[CalendarInterval]) -> dict[str, str | None]:
+    """겹치는 비대면 확정 예약에 호스트 풀을 순차 배정 (표시·배정 공통).
+
+    가용 호스트가 없으면 해당 appointment_id 값은 None (pool[0] 강제 배정 없음).
+    """
     pool = get_zoom_host_pool()
     buffer = timedelta(minutes=get_zoom_host_buffer_minutes())
     remote_intervals = sorted(
@@ -225,11 +247,11 @@ def assign_zoom_hosts(intervals: list[CalendarInterval]) -> dict[str, str]:
         key=lambda item: (item.start, item.appointment_id),
     )
     host_schedules: dict[str, list[tuple[datetime, datetime]]] = {host: [] for host in pool}
-    assignments: dict[str, str] = {}
+    assignments: dict[str, str | None] = {}
 
     for item in remote_intervals:
         occupied_end = item.end + buffer
-        assigned = pool[0]
+        assigned: str | None = None
         for host in pool:
             busy = host_schedules[host]
             if all(
@@ -238,7 +260,8 @@ def assign_zoom_hosts(intervals: list[CalendarInterval]) -> dict[str, str]:
             ):
                 assigned = host
                 break
-        host_schedules[assigned].append((item.start, occupied_end))
+        if assigned is not None:
+            host_schedules[assigned].append((item.start, occupied_end))
         assignments[item.appointment_id] = assigned
 
     return assignments

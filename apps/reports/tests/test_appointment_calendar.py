@@ -86,6 +86,23 @@ class AppointmentCalendarTests(TestCase):
         self.assertEqual(assignments["a"], "host_01")
         self.assertEqual(assignments["b"], "host_01")
 
+    def test_assign_zoom_hosts_returns_none_when_pool_exhausted(self):
+        start = timezone.now().replace(hour=10, minute=0, second=0, microsecond=0)
+        slot_end = start + timedelta(minutes=50)
+        intervals = [
+            CalendarInterval("a", start, slot_end, True),
+            CalendarInterval("b", start, slot_end, True),
+            CalendarInterval("c", start, slot_end, True),
+        ]
+        with override_settings(
+            ZOOM_HOST_POOL="host_01,host_02",
+            ZOOM_HOST_BUFFER_MINUTES=30,
+        ):
+            assignments = assign_zoom_hosts(intervals)
+        self.assertEqual(assignments["a"], "host_01")
+        self.assertEqual(assignments["b"], "host_02")
+        self.assertIsNone(assignments["c"])
+
     def test_mock_events_structure(self):
         events = get_mock_calendar_events()
         self.assertGreaterEqual(len(events), 2)

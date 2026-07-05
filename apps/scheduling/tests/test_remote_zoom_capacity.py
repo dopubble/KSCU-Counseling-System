@@ -117,9 +117,10 @@ class RemoteZoomCapacityTests(TestCase):
         client1 = _create_client("내담자1")
         client2 = _create_client("내담자2")
         client3 = _create_client("내담자3")
+        counselor_c = _create_counselor("상담사C")
         case1 = _create_remote_case(client1, self.counselor_a, "A")
         case2 = _create_remote_case(client2, self.counselor_b, "B")
-        case3 = _create_remote_case(client3, self.counselor_a, "C")
+        case3 = _create_remote_case(client3, counselor_c, "C")
         _create_confirmed_remote_appointment(case1, scheduled_at=self.start)
         _create_confirmed_remote_appointment(
             case2,
@@ -131,6 +132,34 @@ class RemoteZoomCapacityTests(TestCase):
             counselor=case3.counselor,
             client=case3.client,
             scheduled_at=self.start + timedelta(minutes=15),
+            duration_minutes=DEFAULT_APPOINTMENT_DURATION_MINUTES,
+            status=AppointmentStatus.PENDING,
+        )
+
+        with patch(
+            "apps.scheduling.services._create_zoom_meeting_for_appointment"
+        ) as mock_zoom:
+            with self.assertRaises(AppointmentServiceError) as ctx:
+                confirm_appointment_with_zoom(pending, notify=False)
+            self.assertEqual(str(ctx.exception), REMOTE_ZOOM_CAPACITY_FULL_MESSAGE)
+            mock_zoom.assert_not_called()
+
+    def test_confirm_rejects_same_start_when_both_hosts_busy(self):
+        client1 = _create_client("내담자1")
+        client2 = _create_client("내담자2")
+        client3 = _create_client("내담자3")
+        counselor_c = _create_counselor("상담사C")
+        case1 = _create_remote_case(client1, self.counselor_a, "A")
+        case2 = _create_remote_case(client2, self.counselor_b, "B")
+        case3 = _create_remote_case(client3, counselor_c, "C")
+        _create_confirmed_remote_appointment(case1, scheduled_at=self.start)
+        _create_confirmed_remote_appointment(case2, scheduled_at=self.start)
+
+        pending = Appointment.objects.create(
+            case=case3,
+            counselor=case3.counselor,
+            client=case3.client,
+            scheduled_at=self.start,
             duration_minutes=DEFAULT_APPOINTMENT_DURATION_MINUTES,
             status=AppointmentStatus.PENDING,
         )

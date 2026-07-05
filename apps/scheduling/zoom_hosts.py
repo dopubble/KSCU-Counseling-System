@@ -100,10 +100,14 @@ def assign_host_emails_for_appointments(
 
     intervals = [_appointment_interval(apt) for apt in appointments]
     host_ids = assign_zoom_hosts(intervals)
-    return {
-        appointment_id: email_for_host_id(host_id) or emails[0]
-        for appointment_id, host_id in host_ids.items()
-    }
+    result: dict[str, str] = {}
+    for appointment_id, host_id in host_ids.items():
+        if not host_id:
+            continue
+        email = email_for_host_id(host_id)
+        if email:
+            result[appointment_id] = email
+    return result
 
 
 def resolve_zoom_host_email_for_appointment(appointment: Appointment) -> str:
@@ -119,4 +123,4 @@ def resolve_zoom_host_email_for_appointment(appointment: Appointment) -> str:
         peers = [apt if apt.pk != appointment.pk else appointment for apt in peers]
 
     assignments = assign_host_emails_for_appointments(peers)
-    return assignments.get(str(appointment.pk), emails[0])
+    return assignments.get(str(appointment.pk), "")

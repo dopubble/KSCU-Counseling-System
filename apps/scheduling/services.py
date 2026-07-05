@@ -26,6 +26,7 @@ from .utils import (
 )
 from .remote_zoom_capacity import ensure_remote_zoom_capacity
 from .in_person_room_capacity import ensure_in_person_room_capacity
+from .zoom_host_lock import acquire_scheduling_locks
 from .zoom_hosts import (
     assign_host_emails_for_appointments,
     get_zoom_licensed_user_emails,
@@ -46,15 +47,21 @@ class AppointmentServiceError(Exception):
     """예약 처리 오류"""
 
 
-def _counselor_slot_taken(counselor_id, scheduled_at, exclude_appointment_id=None):
-    qs = Appointment.objects.filter(
-        counselor_id=counselor_id,
-        scheduled_at=scheduled_at,
-        status__in=[AppointmentStatus.SCHEDULED, AppointmentStatus.CONFIRMED],
+def _counselor_slot_taken(
+    counselor_id,
+    scheduled_at,
+    duration_minutes: int | None = None,
+    exclude_appointment_id=None,
+):
+    from .booking_slots import counselor_has_overlapping_appointment
+
+    duration = duration_minutes or DEFAULT_APPOINTMENT_DURATION_MINUTES
+    return counselor_has_overlapping_appointment(
+        counselor_id,
+        scheduled_at,
+        duration,
+        exclude_appointment_id=exclude_appointment_id,
     )
-    if exclude_appointment_id:
-        qs = qs.exclude(pk=exclude_appointment_id)
-    return qs.exists()
 
 
 @transaction.atomic
@@ -643,9 +650,15 @@ def confirm_appointment_with_zoom(
     if appointment.status != AppointmentStatus.PENDING:
         raise AppointmentServiceError("이미 처리된 예약입니다.")
 
+    acquire_scheduling_locks(
+        counselor_id=appointment.counselor_id,
+        scheduled_at=appointment.scheduled_at,
+    )
+
     if _counselor_slot_taken(
         appointment.counselor_id,
         appointment.scheduled_at,
+        duration_minutes=appointment.duration_minutes,
         exclude_appointment_id=appointment.pk,
     ):
         raise AppointmentServiceError(
@@ -655,8 +668,16 @@ def confirm_appointment_with_zoom(
     zoom_meeting: ZoomMeeting | None = None
     if _appointment_uses_zoom(appointment):
         ensure_remote_zoom_capacity(appointment)
+        host_email = resolve_zoom_host_email_for_appointment(appointment).strip()
+        if not host_email:
+            raise AppointmentServiceError(
+                "해당 시간대에 배정 가능한 Zoom 호스트가 없습니다. 다른 시간을 선택해 주세요."
+            )
         try:
-            zoom_meeting, _launch_url = _create_zoom_meeting_for_appointment(appointment)
+            zoom_meeting, _launch_url = _create_zoom_meeting_for_appointment(
+                appointment,
+                host_user_email=host_email,
+            )
         except (ZoomAPIError, ZoomNotConfiguredError):
             raise
     else:
@@ -694,6 +715,12 @@ def reschedule_confirmed_appointment(
         if duration_minutes is not None
         else appointment.duration_minutes or DEFAULT_APPOINTMENT_DURATION_MINUTES
     )
+
+    acquire_scheduling_locks(
+        counselor_id=appointment.counselor_id,
+        scheduled_at=new_scheduled_at,
+    )
+
     if not skip_availability:
         available, message = is_counselor_slot_available(
             appointment.counselor_id,
@@ -707,6 +734,7 @@ def reschedule_confirmed_appointment(
     if _counselor_slot_taken(
         appointment.counselor_id,
         new_scheduled_at,
+        duration_minutes=duration,
         exclude_appointment_id=appointment.pk,
     ):
         raise AppointmentServiceError(
