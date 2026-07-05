@@ -39,7 +39,7 @@
             {% endif %}
             {% if is_author %}
             <p class="small text-muted mt-3 mb-0">
-                발표자 본인 게시글입니다. 사례개념화보고서는 동기 상담사가 아래 댓글로 올립니다.
+                발표자 본인도 메모·첨부용 댓글을 남길 수 있습니다. 동기 제출 현황에는 포함되지 않습니다.
             </p>
             {% endif %}
             {% if can_delete_post %}
@@ -64,7 +64,7 @@
                     </h2>
                     <p class="small text-muted mb-0">
                         동기 제출 현황
-                        <span class="fw-semibold text-counselor">{{ comment_count }}</span>
+                        <span class="fw-semibold text-counselor">{{ peer_submission_count }}</span>
                         / {{ comment_peer_total }}명
                         {% if comment_peer_total %}
                         <span class="text-muted">({{ comment_participation_pct }}%)</span>

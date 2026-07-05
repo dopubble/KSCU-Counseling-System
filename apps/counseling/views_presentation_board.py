@@ -29,6 +29,8 @@ from apps.counseling.presentation_board import (
     PRESENTATION_FILE_PASSWORD_NOTICE,
     PRESENTATION_FORM_TEMPLATES,
     count_presentation_comment_peers,
+    count_presentation_peer_submissions,
+    get_presentation_comment_peer_user_ids,
     get_presentation_form_path,
     presentation_board_cohort_options,
     presentation_comment_file_content_type,
@@ -286,12 +288,19 @@ def presentation_board_detail(request, post_pk):
         post.comments.select_related("author").order_by("created_at")
     )
     comment_count = len(comments)
-    comment_peer_total = count_presentation_comment_peers(
+    peer_user_ids = get_presentation_comment_peer_user_ids(
         post.cohort,
         exclude_author_id=post.author_id,
     )
+    comment_peer_total = len(peer_user_ids)
+    peer_submission_count = count_presentation_peer_submissions(
+        comments,
+        peer_user_ids=peer_user_ids,
+    )
     comment_participation_pct = (
-        round(100 * comment_count / comment_peer_total) if comment_peer_total else 0
+        round(100 * peer_submission_count / comment_peer_total)
+        if comment_peer_total
+        else 0
     )
     can_comment = user_can_comment_on_presentation_post(request.user, post)
     cohort_filter = _parse_cohort_param(request.GET.get("cohort"))
@@ -304,6 +313,7 @@ def presentation_board_detail(request, post_pk):
             "post": post,
             "comments": comments,
             "comment_count": comment_count,
+            "peer_submission_count": peer_submission_count,
             "comment_peer_total": comment_peer_total,
             "comment_participation_pct": comment_participation_pct,
             "comment_form": PresentationBoardCommentForm(),
@@ -370,7 +380,7 @@ def presentation_board_post_delete(request, post_pk):
     return redirect("counselor:presentation_board")
 
 
-@counselor_required
+@presentation_board_viewer_required
 @require_POST
 def presentation_board_comment_create(request, post_pk):
     post = get_object_or_404(CasePresentationPost, pk=post_pk)
@@ -396,7 +406,7 @@ def presentation_board_comment_create(request, post_pk):
     return redirect("counselor:presentation_board_detail", post_pk=post.pk)
 
 
-@counselor_required
+@presentation_board_viewer_required
 @require_POST
 def presentation_board_comment_edit(request, comment_pk):
     comment = get_object_or_404(
@@ -434,7 +444,7 @@ def presentation_board_comment_edit(request, comment_pk):
     return redirect("counselor:presentation_board_detail", post_pk=comment.post_id)
 
 
-@counselor_required
+@presentation_board_viewer_required
 @require_POST
 def presentation_board_comment_delete(request, comment_pk):
     comment = get_object_or_404(

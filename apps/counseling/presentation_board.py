@@ -93,7 +93,12 @@ _PRESENTATION_COMMENT_SECTION_RE = re.compile(
 
 def count_presentation_comment_peers(cohort: int, *, exclude_author_id) -> int:
     """사례개념화 댓글 대상 동기 수(발표자 제외)."""
-    return (
+    return len(get_presentation_comment_peer_user_ids(cohort, exclude_author_id=exclude_author_id))
+
+
+def get_presentation_comment_peer_user_ids(cohort: int, *, exclude_author_id) -> frozenset:
+    """동기 제출 현황 집계 대상 상담사 ID(발표자 제외)."""
+    return frozenset(
         CounselorProfile.objects.filter(
             cohort=cohort,
             is_approved=True,
@@ -101,8 +106,15 @@ def count_presentation_comment_peers(cohort: int, *, exclude_author_id) -> int:
             user__status=UserStatus.ACTIVE,
         )
         .exclude(user_id=exclude_author_id)
-        .count()
+        .values_list("user_id", flat=True)
     )
+
+
+def count_presentation_peer_submissions(comments, *, peer_user_ids: frozenset) -> int:
+    """동기 제출 현황 — 댓글 단 동기 수(발표자·수퍼바이저 제외)."""
+    if not peer_user_ids:
+        return 0
+    return len({comment.author_id for comment in comments if comment.author_id in peer_user_ids})
 
 
 def format_presentation_comment_content(text: str):
@@ -182,16 +194,14 @@ def user_can_delete_presentation_post(user: User, post: CasePresentationPost) ->
 
 
 def user_can_comment_on_presentation_post(user: User, post: CasePresentationPost) -> bool:
-    """발표자(게시글 작성자)는 본인 글에 개념화 댓글 불가."""
-    if user.role == UserRole.SUPERVISOR:
-        return False
+    """게시판 열람 권한이 있는 사용자는 댓글 작성 가능(발표자 포함)."""
     if not user_can_view_presentation_board(user, post.cohort):
         return False
     if user_is_platform_staff(user):
         return True
-    if post.author_id == user.pk:
-        return False
-    return user.role == UserRole.COUNSELOR
+    if user.role in (UserRole.SUPERVISOR, UserRole.COUNSELOR):
+        return True
+    return False
 
 
 def user_can_delete_presentation_comment(user: User, comment: CasePresentationComment) -> bool:
@@ -202,8 +212,6 @@ def user_can_delete_presentation_comment(user: User, comment: CasePresentationCo
 
 def user_can_edit_presentation_comment(user: User, comment: CasePresentationComment) -> bool:
     """댓글 작성자만 본인 댓글을 수정할 수 있습니다."""
-    if user.role == UserRole.SUPERVISOR:
-        return False
     return comment.author_id == user.pk
 
 

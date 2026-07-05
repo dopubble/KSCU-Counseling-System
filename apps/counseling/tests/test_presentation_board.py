@@ -538,7 +538,7 @@ class PresentationBoardTests(TestCase):
         self.assertIn("presentation-comment-section-label", rendered)
         self.assertIn("1. 호소문제", rendered)
 
-    def test_detail_page_author_cannot_comment(self):
+    def test_detail_page_author_can_comment(self):
         post = self._create_post()
         client = Client()
         client.force_login(self.counselor_a)
@@ -546,16 +546,27 @@ class PresentationBoardTests(TestCase):
             reverse("counselor:presentation_board_detail", args=[post.pk])
         )
         self.assertEqual(response.status_code, 200)
-        self.assertNotContains(response, "[사례개념화 연습] 댓글달기")
+        self.assertContains(response, "[사례개념화 연습] 댓글달기")
 
-    def test_list_shows_table_not_accordion(self):
-        self._create_post()
+    def test_author_comment_not_counted_in_peer_submission(self):
+        post = self._create_post()
+        CasePresentationComment.objects.create(
+            post=post,
+            author=self.counselor_a,
+            content="발표자 메모",
+        )
         client = Client()
-        client.force_login(self.counselor_b)
-        response = client.get(reverse("counselor:presentation_board"))
-        self.assertContains(response, "presentation-board-table")
+        client.force_login(self.counselor_a)
+        response = client.get(
+            reverse("counselor:presentation_board_detail", args=[post.pk])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "1건")
+        self.assertContains(response, "동기 제출 현황")
+        self.assertContains(response, ">0<")
+        self.assertContains(response, "/ 1명")
 
-    def test_presenter_cannot_comment_on_own_post(self):
+    def test_presenter_can_comment_on_own_post(self):
         post = self._create_post()
         client = Client()
         client.force_login(self.counselor_a)
@@ -563,15 +574,20 @@ class PresentationBoardTests(TestCase):
             reverse("counselor:presentation_board_comment_create", args=[post.pk]),
             {
                 "cohort": "1",
-                "content": "",
-                "file": SimpleUploadedFile(
-                    "x.pdf",
-                    MINIMAL_PDF,
-                    content_type="application/pdf",
-                ),
+                "content": "발표자 자체 메모",
             },
         )
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 302)
+        comment = CasePresentationComment.objects.get(post=post)
+        self.assertEqual(comment.author_id, self.counselor_a.pk)
+        self.assertEqual(comment.content, "발표자 자체 메모")
+
+    def test_list_shows_table_not_accordion(self):
+        self._create_post()
+        client = Client()
+        client.force_login(self.counselor_b)
+        response = client.get(reverse("counselor:presentation_board"))
+        self.assertContains(response, "presentation-board-table")
 
     def test_form_template_download(self):
         client = Client()
@@ -619,7 +635,7 @@ class PresentationBoardTests(TestCase):
         self.assertContains(response, "presentationBoardSelectAll")
         self.assertContains(response, "선택 항목 일괄 다운로드 (ZIP)")
 
-    def test_supervisor_cannot_comment_on_post(self):
+    def test_supervisor_can_comment_on_post(self):
         post = self._create_post()
         supervisor = User.objects.create_user(
             email="supervisor2@example.com",
@@ -634,7 +650,16 @@ class PresentationBoardTests(TestCase):
             reverse("counselor:presentation_board_detail", args=[post.pk])
         )
         self.assertEqual(response.status_code, 200)
-        self.assertNotContains(response, "[사례개념화 연습] 댓글달기")
+        self.assertContains(response, "[사례개념화 연습] 댓글달기")
+
+        response = client.post(
+            reverse("counselor:presentation_board_comment_create", args=[post.pk]),
+            {"cohort": "1", "content": "수퍼바이저 피드백"},
+        )
+        self.assertEqual(response.status_code, 302)
+        comment = CasePresentationComment.objects.get(post=post)
+        self.assertEqual(comment.author_id, supervisor.pk)
+        self.assertEqual(comment.content, "수퍼바이저 피드백")
 
     def test_bulk_zip_download_returns_password_protected_archive(self):
         import io
