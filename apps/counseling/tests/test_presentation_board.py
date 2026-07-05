@@ -270,7 +270,8 @@ class PresentationBoardTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, post.title)
-        self.assertContains(response, "사례개념화 연습 댓글달기")
+        self.assertContains(response, "[사례개념화 연습] 댓글달기")
+        self.assertContains(response, "아래 양식을 참고하여 사례개념화 연습 댓글을 달아 주시기 바랍니다.")
         self.assertContains(response, "이 PDF에 설정할 암호")
         self.assertContains(response, "presentationBoardFileDownloadModal")
         self.assertContains(response, "file_password")
@@ -341,7 +342,7 @@ class PresentationBoardTests(TestCase):
             reverse("counselor:presentation_board_detail", args=[post.pk])
         )
         self.assertEqual(response.status_code, 200)
-        self.assertNotContains(response, "사례개념화 연습 댓글달기")
+        self.assertNotContains(response, "[사례개념화 연습] 댓글달기")
 
     def test_list_shows_table_not_accordion(self):
         self._create_post()
