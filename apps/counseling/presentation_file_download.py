@@ -14,7 +14,6 @@ from urllib.parse import quote
 
 import pyzipper
 from django.core.exceptions import SuspiciousFileOperation
-from django.core.files.storage import default_storage
 from django.utils.text import get_valid_filename
 from rustyzipper import EncryptionMethod, compress_bytes
 
@@ -66,42 +65,47 @@ def attachment_content_disposition(filename: str) -> str:
 
 
 def read_uploaded_file_bytes(file_field) -> bytes:
-    """스토리지/로컬 경로/FieldFile 순으로 파일 바이트를 읽는다."""
-    if not file_field or not file_field.name:
+    """
+    FieldFile에서 바이트를 읽는다.
+    작성자 직접 다운로드(_presentation_file_response)와 동일하게
+    file_field.open()을 우선 사용한다.
+    """
+    if not file_field or not getattr(file_field, "name", ""):
         raise FileNotFoundError("presentation file is not attached")
 
     name = file_field.name
-    storage = file_field.storage or default_storage
-
-    try:
-        if storage.exists(name):
-            with storage.open(name, "rb") as fp:
-                data = fp.read()
-            if data:
-                return data
-    except Exception:
-        logger.exception("Storage read failed for presentation file: %s", name)
-
-    if hasattr(storage, "path"):
-        try:
-            full_path = storage.path(name)
-            if os.path.isfile(full_path):
-                with open(full_path, "rb") as fp:
-                    data = fp.read()
-                if data:
-                    return data
-        except Exception:
-            logger.exception("Local path read failed for presentation file: %s", name)
+    last_error: Exception | None = None
 
     try:
         with file_field.open("rb") as fp:
-            data = fp.read()
-        if data:
-            return data
-    except Exception:
-        logger.exception("FieldFile read failed for presentation file: %s", name)
+            return fp.read()
+    except Exception as exc:
+        last_error = exc
+        logger.warning(
+            "FieldFile.open/read failed name=%s storage=%s",
+            name,
+            type(file_field.storage).__name__,
+            exc_info=True,
+        )
 
-    raise FileNotFoundError(f"presentation file unavailable: {name}")
+    storage = file_field.storage
+    if hasattr(storage, "path"):
+        try:
+            full_path = storage.path(name)
+            with open(full_path, "rb") as fp:
+                return fp.read()
+        except Exception as exc:
+            last_error = exc
+            logger.exception("Local path read failed name=%s path=%s", name, full_path)
+
+    try:
+        with storage.open(name, "rb") as fp:
+            return fp.read()
+    except Exception as exc:
+        last_error = exc
+        logger.exception("Storage.open failed name=%s", name)
+
+    raise FileNotFoundError(f"presentation file unavailable: {name}") from last_error
 
 
 def _should_attempt_office_pdf_conversion(ext: str) -> bool:

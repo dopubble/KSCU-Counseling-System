@@ -121,11 +121,12 @@ def _serve_presentation_file(
     request,
     *,
     file_field,
+    storage_name: str,
     filename: str,
     author_id,
     fallback_url: str,
 ):
-    if not file_field:
+    if not file_field or not storage_name:
         raise Http404("File not found")
 
     if user_can_download_presentation_file_without_password(request.user, author_id):
@@ -152,7 +153,8 @@ def _serve_presentation_file(
         import logging
 
         logging.getLogger(__name__).exception(
-            "Presentation file missing on storage filename=%s",
+            "Presentation file missing on storage storage_name=%s display_filename=%s",
+            storage_name,
             filename,
         )
         messages.error(
@@ -339,6 +341,7 @@ def presentation_board_post_file(request, post_pk):
     return _serve_presentation_file(
         request,
         file_field=post.file,
+        storage_name=post.file.name if post.file else "",
         filename=post.filename,
         author_id=post.author_id,
         fallback_url=fallback_url,
@@ -360,6 +363,7 @@ def presentation_board_comment_file(request, comment_pk):
     return _serve_presentation_file(
         request,
         file_field=comment.file,
+        storage_name=comment.file.name if comment.file else "",
         filename=comment.filename,
         author_id=comment.author_id,
         fallback_url=fallback_url,
