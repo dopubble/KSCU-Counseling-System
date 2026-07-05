@@ -59,6 +59,39 @@
         selectAll.indeterminate = checkedCount > 0 && checkedCount < checks.length;
     }
 
+    function parseContentDispositionFilename(disposition) {
+        if (!disposition) {
+            return "presentation_reports.zip";
+        }
+        var starMatch = /filename\*=(?:UTF-8''|utf-8'')([^;\n]+)/i.exec(disposition);
+        if (starMatch) {
+            try {
+                return decodeURIComponent(starMatch[1]);
+            } catch (error) {
+                return starMatch[1];
+            }
+        }
+        var quotedMatch = /filename="([^"]+)"/i.exec(disposition);
+        if (quotedMatch) {
+            return quotedMatch[1];
+        }
+        return "presentation_reports.zip";
+    }
+
+    function triggerBlobDownload(blob, filename) {
+        var url = window.URL.createObjectURL(blob);
+        var anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = filename;
+        anchor.style.display = "none";
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        window.setTimeout(function () {
+            window.URL.revokeObjectURL(url);
+        }, 0);
+    }
+
     function bindPresentationBoardBulkDownload() {
         var selectAll = document.getElementById("presentationBoardSelectAll");
         var bulkBtn = document.getElementById("presentationBoardBulkDownloadBtn");
@@ -119,12 +152,56 @@
         }
 
         if (bulkForm) {
-            bulkForm.addEventListener("submit", function () {
-                window.setTimeout(function () {
-                    if (bulkModal && window.bootstrap) {
-                        window.bootstrap.Modal.getInstance(bulkModal)?.hide();
-                    }
-                }, 300);
+            bulkForm.addEventListener("submit", function (event) {
+                event.preventDefault();
+                var submitBtn = bulkForm.querySelector('button[type="submit"]');
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                }
+
+                fetch(bulkForm.action, {
+                    method: "POST",
+                    body: new FormData(bulkForm),
+                    credentials: "same-origin",
+                    headers: {
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                })
+                    .then(function (response) {
+                        var contentType = response.headers.get("Content-Type") || "";
+                        if (response.ok && contentType.indexOf("application/zip") !== -1) {
+                            var filename = parseContentDispositionFilename(
+                                response.headers.get("Content-Disposition") || ""
+                            );
+                            return response.blob().then(function (blob) {
+                                return { blob: blob, filename: filename };
+                            });
+                        }
+                        return response.text().then(function (text) {
+                            var message =
+                                (text || "").trim() ||
+                                "ZIP 파일을 받지 못했습니다. 잠시 후 다시 시도해 주세요.";
+                            throw new Error(message);
+                        });
+                    })
+                    .then(function (payload) {
+                        triggerBlobDownload(payload.blob, payload.filename);
+                        if (bulkModal && window.bootstrap) {
+                            window.bootstrap.Modal.getInstance(bulkModal)?.hide();
+                        }
+                    })
+                    .catch(function (error) {
+                        window.alert(
+                            error && error.message
+                                ? error.message
+                                : "다운로드에 실패했습니다."
+                        );
+                    })
+                    .finally(function () {
+                        if (submitBtn) {
+                            submitBtn.disabled = false;
+                        }
+                    });
             });
         }
     }

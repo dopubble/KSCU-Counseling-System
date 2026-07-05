@@ -125,6 +125,14 @@ def _redirect_after_file_download_failure(request, *, fallback_url: str):
     return redirect(fallback_url)
 
 
+def _presentation_download_error_response(request, message: str, *, fallback_url: str):
+    """일괄 ZIP fetch 다운로드 — XHR이면 본문 오류, 아니면 리다이렉트."""
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return HttpResponse(message, status=400, content_type="text/plain; charset=utf-8")
+    messages.error(request, message)
+    return _redirect_after_file_download_failure(request, fallback_url=fallback_url)
+
+
 def _encrypted_pdf_download_response(*, pdf_bytes: bytes, filename: str) -> HttpResponse:
     download_name = filename if filename.lower().endswith(".pdf") else f"{filename}.pdf"
     response = HttpResponse(pdf_bytes, content_type="application/pdf")
@@ -423,16 +431,19 @@ def presentation_board_bulk_download(request):
 
     password = (request.POST.get("file_password") or "").strip()
     if len(password) < PRESENTATION_FILE_PASSWORD_MIN_LENGTH:
-        messages.error(
+        return _presentation_download_error_response(
             request,
             f"ZIP 암호는 {PRESENTATION_FILE_PASSWORD_MIN_LENGTH}자 이상 입력해 주세요.",
+            fallback_url=fallback_url,
         )
-        return _redirect_after_file_download_failure(request, fallback_url=fallback_url)
 
     post_ids = _parse_post_ids(request.POST.getlist("post_ids"))
     if not post_ids:
-        messages.error(request, "다운로드할 게시글을 하나 이상 선택해 주세요.")
-        return _redirect_after_file_download_failure(request, fallback_url=fallback_url)
+        return _presentation_download_error_response(
+            request,
+            "다운로드할 게시글을 하나 이상 선택해 주세요.",
+            fallback_url=fallback_url,
+        )
 
     posts = list(
         CasePresentationPost.objects.filter(pk__in=post_ids)
@@ -440,8 +451,11 @@ def presentation_board_bulk_download(request):
         .order_by("-cohort", "-created_at")
     )
     if len(posts) != len(set(post_ids)):
-        messages.error(request, "선택한 게시글 중 일부를 찾을 수 없습니다.")
-        return _redirect_after_file_download_failure(request, fallback_url=fallback_url)
+        return _presentation_download_error_response(
+            request,
+            "선택한 게시글 중 일부를 찾을 수 없습니다.",
+            fallback_url=fallback_url,
+        )
 
     for post in posts:
         require_presentation_board_access(request.user, post.cohort)
@@ -449,15 +463,18 @@ def presentation_board_bulk_download(request):
     try:
         zip_bytes = build_presentation_posts_zip(posts, password)
     except FileNotFoundError as exc:
-        messages.error(request, str(exc))
-        return _redirect_after_file_download_failure(request, fallback_url=fallback_url)
+        return _presentation_download_error_response(
+            request,
+            str(exc),
+            fallback_url=fallback_url,
+        )
     except Exception:
         logger.exception("Presentation bulk ZIP download failed post_count=%s", len(posts))
-        messages.error(
+        return _presentation_download_error_response(
             request,
             "ZIP 파일을 준비하는 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+            fallback_url=fallback_url,
         )
-        return _redirect_after_file_download_failure(request, fallback_url=fallback_url)
 
     download_name = bulk_zip_download_filename(cohort=cohort_filter)
     return _zip_download_response(zip_bytes=zip_bytes, filename=download_name)

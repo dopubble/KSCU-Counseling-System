@@ -7,8 +7,7 @@
         <div class="modal-content">
             <form method="post"
                   id="presentationBoardBulkZipForm"
-                  action="{{ bulk_download_url }}"
-                  target="presentationBoardDownloadFrame">
+                  action="{{ bulk_download_url }}">
                 {% csrf_token %}
                 {% if cohort %}
                 <input type="hidden" name="cohort" value="{{ cohort }}">
@@ -43,8 +42,3 @@
         </div>
     </div>
 </div>
-<iframe name="presentationBoardDownloadFrame"
-        id="presentationBoardDownloadFrame"
-        class="d-none"
-        title="파일 다운로드"
-        aria-hidden="true"></iframe>

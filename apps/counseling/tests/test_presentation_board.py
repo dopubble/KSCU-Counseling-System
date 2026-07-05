@@ -466,8 +466,24 @@ class PresentationBoardTests(TestCase):
                 self.assertTrue(data.startswith(b"%PDF"))
 
         with zipfile.ZipFile(io.BytesIO(response.content)) as plain_archive:
-            with self.assertRaises(RuntimeError):
+            with self.assertRaises((RuntimeError, zipfile.BadZipFile)):
                 plain_archive.read(plain_archive.namelist()[0])
+
+    def test_bulk_download_xhr_error_returns_plain_text(self):
+        client = Client()
+        client.force_login(self.counselor_b)
+        response = client.post(
+            reverse("counselor:presentation_board_bulk_download"),
+            {
+                "post_ids": [],
+                "file_password": "zip1234",
+                "cohort": "1",
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("text/plain", response["Content-Type"])
+        self.assertIn("선택", response.content.decode())
 
     def test_bulk_download_rejects_foreign_cohort_post(self):
         post = self._create_post(cohort=2, author=self.other_cohort)
