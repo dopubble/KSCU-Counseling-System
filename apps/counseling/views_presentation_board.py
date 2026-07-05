@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from urllib.parse import quote
+
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.db.models import Count
@@ -110,9 +112,12 @@ def _encrypted_zip_file_response(
         inner_filename=inner_filename,
         password=password,
     )
+    ascii_name = encrypted_zip_filename(inner_filename)
+    utf8_name = ascii_name
     response = HttpResponse(zip_bytes, content_type="application/zip")
     response["Content-Disposition"] = (
-        f'attachment; filename="{encrypted_zip_filename(inner_filename)}"'
+        f'attachment; filename="{ascii_name}"; '
+        f"filename*=UTF-8''{quote(utf8_name)}"
     )
     response["Content-Length"] = len(zip_bytes)
     return response

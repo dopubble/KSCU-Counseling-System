@@ -1,5 +1,4 @@
 import io
-import zipfile
 
 import pyzipper
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -319,4 +318,19 @@ class PresentationBoardTests(TestCase):
         with pyzipper.AESZipFile(io.BytesIO(zip_bytes)) as zf:
             zf.pwd = b"zip1234"
             self.assertEqual(zf.read("sample.hwp"), b"hello")
-        self.assertFalse(zipfile.is_zipfile(io.BytesIO(b"not-a-zip")))
+
+    def test_build_password_protected_zip_korean_filename(self):
+        from apps.counseling.presentation_file_download import (
+            build_password_protected_zip,
+            safe_inner_archive_name,
+        )
+
+        inner = safe_inner_archive_name("08. (한기상)보고서.hwp")
+        zip_bytes = build_password_protected_zip(
+            b"content",
+            inner_filename="08. (한기상)보고서.hwp",
+            password="1234",
+        )
+        with pyzipper.AESZipFile(io.BytesIO(zip_bytes)) as zf:
+            zf.pwd = b"1234"
+            self.assertEqual(zf.read(inner), b"content")
