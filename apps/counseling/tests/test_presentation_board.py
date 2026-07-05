@@ -343,6 +343,23 @@ class PresentationBoardTests(TestCase):
         with pikepdf.open(io.BytesIO(encrypted), password="pdf1234") as pdf:
             self.assertGreaterEqual(len(pdf.pages), 1)
 
+    def test_build_password_protected_download_falls_back_when_conversion_pdf_invalid(self):
+        from apps.counseling import presentation_file_download as download_mod
+
+        original = download_mod.convert_office_bytes_to_pdf
+        download_mod.convert_office_bytes_to_pdf = lambda *args, **kwargs: b"not-a-pdf"
+        try:
+            payload = download_mod.build_password_protected_download(
+                b"hwp-content",
+                inner_filename="report.hwp",
+                password=self.PEER_ZIP_PASSWORD,
+            )
+        finally:
+            download_mod.convert_office_bytes_to_pdf = original
+        self.assertEqual(payload.delivery, "zip")
+        extracted = self._extract_zip_with_password(payload.data, self.PEER_ZIP_PASSWORD)
+        self.assertTrue(extracted)
+
     def test_build_password_protected_zip_unit(self):
         from apps.counseling.presentation_file_download import build_password_protected_zip
 

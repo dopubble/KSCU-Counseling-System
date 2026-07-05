@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import logging
+import os
 import shutil
 import subprocess
 import tempfile
@@ -61,14 +62,23 @@ def convert_office_bytes_to_pdf(file_bytes: bytes, *, source_ext: str) -> bytes 
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
+        lo_profile = tmp_path / "lo-profile"
+        lo_profile.mkdir()
         source_path = tmp_path / f"source.{ext}"
         source_path.write_bytes(file_bytes)
+        env = {
+            **os.environ,
+            "HOME": str(tmp_path),
+            "SAL_USE_VCLPLUGIN": "svp",
+        }
         try:
             result = subprocess.run(
                 [
                     binary,
+                    f"-env:UserInstallation=file://{lo_profile.as_posix()}",
                     "--headless",
                     "--norestore",
+                    "--nologo",
                     "--convert-to",
                     "pdf",
                     "--outdir",
@@ -78,9 +88,10 @@ def convert_office_bytes_to_pdf(file_bytes: bytes, *, source_ext: str) -> bytes 
                 check=False,
                 timeout=120,
                 capture_output=True,
+                env=env,
             )
-        except subprocess.TimeoutExpired:
-            logger.warning("LibreOffice conversion timed out ext=%s", ext)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            logger.warning("LibreOffice conversion error ext=%s err=%s", ext, exc)
             return None
 
         if result.returncode != 0:
@@ -94,8 +105,21 @@ def convert_office_bytes_to_pdf(file_bytes: bytes, *, source_ext: str) -> bytes 
 
         pdf_path = tmp_path / "source.pdf"
         if pdf_path.is_file():
-            return pdf_path.read_bytes()
+            pdf_bytes = pdf_path.read_bytes()
+            if _is_valid_pdf_bytes(pdf_bytes):
+                return pdf_bytes
+            logger.warning("LibreOffice produced invalid PDF ext=%s size=%s", ext, len(pdf_bytes))
     return None
+
+
+def _is_valid_pdf_bytes(pdf_bytes: bytes) -> bool:
+    if not pdf_bytes or not pdf_bytes.startswith(b"%PDF"):
+        return False
+    try:
+        with pikepdf.open(io.BytesIO(pdf_bytes)) as pdf:
+            return len(pdf.pages) >= 1
+    except pikepdf.PdfError:
+        return False
 
 
 def encrypt_pdf_bytes(pdf_bytes: bytes, password: str) -> bytes:
@@ -112,6 +136,27 @@ def encrypt_pdf_bytes(pdf_bytes: bytes, password: str) -> bytes:
             ),
         )
         return out.getvalue()
+
+
+def _try_build_encrypted_pdf_payload(
+    pdf_bytes: bytes,
+    *,
+    filename: str,
+    password: str,
+) -> ProtectedDownloadPayload | None:
+    if not _is_valid_pdf_bytes(pdf_bytes):
+        return None
+    try:
+        encrypted = encrypt_pdf_bytes(pdf_bytes, password)
+    except pikepdf.PdfError:
+        logger.warning("PDF encryption failed filename=%s", filename, exc_info=True)
+        return None
+    return ProtectedDownloadPayload(
+        data=encrypted,
+        filename=filename,
+        content_type="application/pdf",
+        delivery="pdf",
+    )
 
 
 def build_password_protected_zip(
@@ -141,32 +186,38 @@ def build_password_protected_download(
     ext = Path(basename).suffix.lower()
 
     if ext == ".pdf":
-        encrypted = encrypt_pdf_bytes(file_bytes, password)
-        return ProtectedDownloadPayload(
-            data=encrypted,
+        payload = _try_build_encrypted_pdf_payload(
+            file_bytes,
             filename=basename,
-            content_type="application/pdf",
-            delivery="pdf",
+            password=password,
         )
+        if payload:
+            return payload
 
     if ext in CONVERT_TO_PDF_EXTENSIONS:
         pdf_bytes = convert_office_bytes_to_pdf(file_bytes, source_ext=ext)
         if pdf_bytes:
             stem = Path(basename).stem or "download"
-            return ProtectedDownloadPayload(
-                data=encrypt_pdf_bytes(pdf_bytes, password),
+            payload = _try_build_encrypted_pdf_payload(
+                pdf_bytes,
                 filename=f"{stem}.pdf",
-                content_type="application/pdf",
-                delivery="pdf",
+                password=password,
             )
+            if payload:
+                return payload
 
     zip_name = f"{Path(basename).stem or 'download'}.zip"
-    return ProtectedDownloadPayload(
-        data=build_password_protected_zip(
+    try:
+        zip_data = build_password_protected_zip(
             file_bytes,
             inner_filename=inner_filename,
             password=password,
-        ),
+        )
+    except Exception:
+        logger.exception("ZIP fallback failed filename=%s", inner_filename)
+        raise
+    return ProtectedDownloadPayload(
+        data=zip_data,
         filename=zip_name,
         content_type="application/zip",
         delivery="zip",

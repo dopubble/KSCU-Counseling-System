@@ -146,11 +146,24 @@ def _serve_presentation_file(
         )
         return _redirect_after_file_download_failure(request, fallback_url=fallback_url)
 
-    return _encrypted_download_file_response(
-        file_field,
-        inner_filename=filename,
-        password=password,
-    )
+    try:
+        return _encrypted_download_file_response(
+            file_field,
+            inner_filename=filename,
+            password=password,
+        )
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception(
+            "Presentation file protected download failed filename=%s",
+            filename,
+        )
+        messages.error(
+            request,
+            "파일을 준비하는 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+        )
+        return _redirect_after_file_download_failure(request, fallback_url=fallback_url)
 
 
 @counselor_required
