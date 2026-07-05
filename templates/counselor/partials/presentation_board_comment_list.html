@@ -57,7 +57,7 @@
                 {% if comment.file or comment.author_id == user.pk or is_staff_viewer %}
                 <div class="d-flex flex-wrap gap-2 mt-3 pt-3 border-top presentation-comment-actions">
                     {% if comment.file %}
-                    {% presentation_file_password_required comment.author_id as comment_download_requires_password %}
+                    {% presentation_comment_file_password_required comment.author_id as comment_download_requires_password %}
                     {% if comment_download_requires_password %}
                     <button type="button"
                             class="btn btn-sm btn-outline-secondary presentation-password-download"

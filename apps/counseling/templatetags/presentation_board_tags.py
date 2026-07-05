@@ -2,6 +2,7 @@ from django import template
 
 from apps.counseling.presentation_board import (
     format_presentation_comment_content,
+    requires_presentation_comment_file_password,
     requires_presentation_file_password,
 )
 
@@ -12,6 +13,12 @@ register = template.Library()
 def presentation_file_password_required(context, file_author_id):
     user = context["request"].user
     return requires_presentation_file_password(user, file_author_id)
+
+
+@register.simple_tag(takes_context=True)
+def presentation_comment_file_password_required(context, file_author_id):
+    user = context["request"].user
+    return requires_presentation_comment_file_password(user, file_author_id)
 
 
 @register.filter(name="format_presentation_comment")

@@ -10,7 +10,6 @@ from apps.counseling.constants import (
 )
 from apps.counseling.models import CounselingMethod
 from apps.counseling.presentation_board import (
-    PRESENTATION_BOARD_COMMENT_CONTENT_TEMPLATE,
     default_presentation_post_title,
 )
 
@@ -645,7 +644,7 @@ class PresentationBoardPostForm(forms.Form):
 
 
 class PresentationBoardCommentForm(forms.Form):
-    """사례발표 게시판 — 사례개념화보고서 댓글."""
+    """사례발표 게시판 — 사례개념화보고서 댓글 (간단 코멘트 + PDF)."""
 
     ALLOWED_EXTENSIONS = PresentationBoardPostForm.ALLOWED_EXTENSIONS
     MAX_FILE_SIZE = PresentationBoardPostForm.MAX_FILE_SIZE
@@ -654,18 +653,18 @@ class PresentationBoardCommentForm(forms.Form):
     MAX_SIZE_MESSAGE = PresentationBoardPostForm.MAX_SIZE_MESSAGE
 
     content = forms.CharField(
-        label="내용",
+        label="코멘트",
         required=False,
-        initial=PRESENTATION_BOARD_COMMENT_CONTENT_TEMPLATE,
         widget=forms.Textarea(
             attrs={
                 "class": "form-control",
-                "rows": 22,
+                "rows": 3,
+                "placeholder": "간단한 코멘트를 입력해 주세요. (선택)",
             }
         ),
     )
     file = forms.FileField(
-        label="사례개념화보고서 파일",
+        label="PDF 첨부",
         required=False,
         widget=forms.ClearableFileInput(
             attrs={"class": "form-control", "accept": ACCEPT_ATTR}
@@ -682,4 +681,15 @@ class PresentationBoardCommentForm(forms.Form):
         if file_obj.size > self.MAX_FILE_SIZE:
             raise forms.ValidationError(self.MAX_SIZE_MESSAGE)
         return file_obj
+
+    def clean(self):
+        cleaned = super().clean()
+        content = (cleaned.get("content") or "").strip()
+        file_obj = cleaned.get("file")
+        if not content and not file_obj:
+            raise forms.ValidationError(
+                "코멘트 또는 PDF 첨부 파일 중 하나는 입력해 주세요."
+            )
+        cleaned["content"] = content
+        return cleaned
 

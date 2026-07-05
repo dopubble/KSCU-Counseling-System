@@ -28,39 +28,6 @@ PRESENTATION_FORM_TEMPLATES = {
 }
 
 
-PRESENTATION_BOARD_COMMENT_CONTENT_TEMPLATE = """     
-   
-1. 호소문제
-     
-2. 촉발요인
-     
-3. 부정적 패턴
-     
-  1) 감정
-     
-    - 사고 자동적 사고
-       (1) 중간신념 
-       (2) 핵심신념
-     
-   2) 행동
-     
-   3) 관계
-     
-4. 유발요인
-     
-5. 유지요인
-     
-6. 상담목표
-     
-7. 상담초점
-     
-8. 상담전략
-     
-9. 상담개입
-     
-10. 예후 및 장애물"""
-
-
 PRESENTATION_FILE_PASSWORD_MIN_LENGTH = 4
 PRESENTATION_FILE_PASSWORD_NOTICE = (
     "다운로드할 PDF에 설정할 암호를 입력해 주세요. "
@@ -85,7 +52,13 @@ def user_can_download_presentation_file_without_password(user: User, author_id) 
 
 
 def requires_presentation_file_password(user: User, author_id) -> bool:
+    """게시글(수퍼비전 보고서) PDF — 다운로드 시 암호 설정."""
     return True
+
+
+def requires_presentation_comment_file_password(user: User, author_id) -> bool:
+    """댓글(사례개념화) PDF — 암호 없이 바로 다운로드."""
+    return False
 
 
 _PRESENTATION_COMMENT_SECTION_RE = re.compile(

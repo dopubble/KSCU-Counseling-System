@@ -101,7 +101,7 @@
         <div class="card-header bg-white py-3">
             <h2 class="h6 fw-semibold mb-2">[사례개념화 연습] 댓글달기</h2>
             <p class="small text-muted mb-0">
-                <span class="me-1" aria-hidden="true">•</span>아래 양식을 참고하여 사례개념화 연습 댓글을 달아 주시기 바랍니다.
+                간단한 코멘트와 사례개념화보고서 PDF 중 하나 이상 등록해 주세요.
             </p>
         </div>
         <div class="card-body">
@@ -111,12 +111,13 @@
                 {% csrf_token %}
                 <input type="hidden" name="cohort" value="{{ cohort }}">
                 <div class="mb-3">
+                    <label class="form-label fw-semibold" for="id_content">코멘트 <span class="text-muted fw-normal">(선택)</span></label>
                     {{ comment_form.content }}
                 </div>
                 <div class="mb-0">
-                    <label class="form-label fw-semibold" for="id_file">첨부 파일 <span class="text-muted fw-normal">(선택)</span></label>
+                    <label class="form-label fw-semibold" for="id_file">PDF 첨부 <span class="text-muted fw-normal">(선택)</span></label>
                     {{ comment_form.file }}
-                    <p class="form-text small mb-0">PDF · 최대 10MB</p>
+                    <p class="form-text small mb-0">PDF만 업로드 · 최대 10MB</p>
                 </div>
                 <button type="submit" class="btn btn-counselor text-white">댓글 등록</button>
             </form>

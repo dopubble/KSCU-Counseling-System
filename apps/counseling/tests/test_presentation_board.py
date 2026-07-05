@@ -5,7 +5,6 @@ from django.urls import reverse
 from apps.accounts.models import CounselorProfile, User, UserRole, UserStatus
 from apps.counseling.models import CasePresentationComment, CasePresentationPost
 from apps.counseling.presentation_board import (
-    PRESENTATION_BOARD_COMMENT_CONTENT_TEMPLATE,
     default_presentation_post_title,
     format_presentation_comment_content,
 )
@@ -102,6 +101,29 @@ class PresentationBoardTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "application/pdf")
         self.assertIn("attachment", response.get("Content-Disposition", ""))
+
+    def test_peer_get_comment_file_without_password(self):
+        post = self._create_post()
+        comment = CasePresentationComment.objects.create(
+            post=post,
+            author=self.counselor_b,
+            content="PDF 제출",
+            file=SimpleUploadedFile(
+                "concept.pdf",
+                MINIMAL_PDF,
+                content_type="application/pdf",
+            ),
+        )
+        client = Client()
+        client.force_login(self.counselor_a)
+        response = client.get(
+            reverse("counselor:presentation_board_comment_file", args=[comment.pk])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertIn("attachment", response.get("Content-Disposition", ""))
+        body = b"".join(response.streaming_content)
+        self.assertTrue(body.startswith(b"%PDF"))
 
     def test_author_sees_filename_download_button_on_detail(self):
         post = self._create_post()
@@ -271,10 +293,11 @@ class PresentationBoardTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, post.title)
         self.assertContains(response, "[사례개념화 연습] 댓글달기")
-        self.assertContains(response, "아래 양식을 참고하여 사례개념화 연습 댓글을 달아 주시기 바랍니다.")
-        self.assertContains(response, "이 PDF에 설정할 암호")
+        self.assertContains(response, "간단한 코멘트")
+        self.assertContains(response, "PDF 첨부")
+        self.assertContains(response, "placeholder=\"간단한 코멘트를 입력해 주세요. (선택)\"")
+        self.assertNotContains(response, "1. 호소문제")
         self.assertContains(response, "presentationBoardFileDownloadModal")
-        self.assertContains(response, "file_password")
 
     def test_peer_can_comment_without_file(self):
         post = self._create_post()
@@ -284,21 +307,32 @@ class PresentationBoardTests(TestCase):
             reverse("counselor:presentation_board_comment_create", args=[post.pk]),
             {
                 "cohort": "1",
-                "content": PRESENTATION_BOARD_COMMENT_CONTENT_TEMPLATE,
+                "content": "간단한 피드백입니다.",
             },
         )
         self.assertEqual(response.status_code, 302)
         comment = CasePresentationComment.objects.get(post=post)
         self.assertFalse(comment.file)
-        self.assertIn("1. 호소문제", comment.content)
+        self.assertEqual(comment.content, "간단한 피드백입니다.")
+
+    def test_comment_requires_content_or_file(self):
+        post = self._create_post()
+        client = Client()
+        client.force_login(self.counselor_b)
+        response = client.post(
+            reverse("counselor:presentation_board_comment_create", args=[post.pk]),
+            {"cohort": "1", "content": ""},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(CasePresentationComment.objects.filter(post=post).count(), 0)
 
     def test_detail_shows_full_comment_content(self):
         post = self._create_post()
-        long_tail = "10. 예후 및 장애물 — 전체 내용이 보여야 합니다."
+        body = "사례개념화 코멘트 — 전체 내용이 보여야 합니다."
         CasePresentationComment.objects.create(
             post=post,
             author=self.counselor_b,
-            content=PRESENTATION_BOARD_COMMENT_CONTENT_TEMPLATE + "\n" + long_tail,
+            content=body,
         )
         client = Client()
         client.force_login(self.counselor_a)
@@ -306,9 +340,31 @@ class PresentationBoardTests(TestCase):
             reverse("counselor:presentation_board_detail", args=[post.pk])
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "10. 예후 및 장애물")
-        self.assertContains(response, long_tail)
+        self.assertContains(response, body)
         self.assertNotContains(response, "…")
+
+    def test_comment_file_download_link_has_no_password_modal(self):
+        post = self._create_post()
+        comment = CasePresentationComment.objects.create(
+            post=post,
+            author=self.counselor_b,
+            content="PDF 제출",
+            file=SimpleUploadedFile(
+                "concept.pdf",
+                MINIMAL_PDF,
+                content_type="application/pdf",
+            ),
+        )
+        client = Client()
+        client.force_login(self.counselor_a)
+        response = client.get(
+            reverse("counselor:presentation_board_detail", args=[post.pk])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            reverse("counselor:presentation_board_comment_file", args=[comment.pk]),
+        )
 
     def test_detail_comment_accordion_and_participation(self):
         post = self._create_post()

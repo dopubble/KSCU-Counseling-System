@@ -162,6 +162,7 @@ def _serve_presentation_file(
     filename: str,
     fallback_url: str,
 ):
+    """게시글 PDF — POST + 암호 입력 후 암호화 다운로드."""
     if not file_field or not storage_name:
         raise Http404("File not found")
 
@@ -193,6 +194,28 @@ def _serve_presentation_file(
             "파일을 준비하는 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
         )
         return _redirect_after_file_download_failure(request, fallback_url=fallback_url)
+
+
+def _serve_presentation_comment_file(
+    *,
+    file_field,
+    storage_name: str,
+    filename: str,
+):
+    """댓글 PDF — 암호 없이 원본 그대로 다운로드."""
+    if not file_field or not storage_name:
+        raise Http404("File not found")
+    try:
+        download_name = filename or "conceptualization.pdf"
+        response = FileResponse(
+            file_field.open("rb"),
+            as_attachment=True,
+            filename=download_name,
+        )
+        response["Content-Type"] = "application/pdf"
+        return response
+    except FileNotFoundError:
+        raise Http404("File not found") from None
 
 
 def _parse_post_ids(raw_ids) -> list[uuid.UUID]:
@@ -403,23 +426,17 @@ def presentation_board_post_file(request, post_pk):
 
 
 @presentation_board_viewer_required
-@require_http_methods(["GET", "POST"])
+@require_GET
 def presentation_board_comment_file(request, comment_pk):
     comment = get_object_or_404(
         CasePresentationComment.objects.select_related("post"),
         pk=comment_pk,
     )
     require_presentation_board_access(request.user, comment.post.cohort)
-    fallback_url = reverse(
-        "counselor:presentation_board_detail",
-        kwargs={"post_pk": comment.post_id},
-    )
-    return _serve_presentation_file(
-        request,
+    return _serve_presentation_comment_file(
         file_field=comment.file,
         storage_name=comment.file.name if comment.file else "",
         filename=comment.filename,
-        fallback_url=fallback_url,
     )
 
 
