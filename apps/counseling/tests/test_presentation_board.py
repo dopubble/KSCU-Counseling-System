@@ -360,6 +360,21 @@ class PresentationBoardTests(TestCase):
         extracted = self._extract_zip_with_password(payload.data, self.PEER_ZIP_PASSWORD)
         self.assertTrue(extracted)
 
+    def test_storage_diagnostic_logs_on_missing_file(self):
+        from apps.counseling.presentation_file_download import (
+            _collect_presentation_file_storage_diagnostics,
+            read_uploaded_file_bytes,
+        )
+
+        post = self._create_post()
+        post.file.name = "presentation_board/missing/on/disk/report.hwp"
+        report = _collect_presentation_file_storage_diagnostics(post.file)
+        self.assertEqual(report["db_file_name"], post.file.name)
+        self.assertIn("media_root", report)
+
+        with self.assertRaises(FileNotFoundError):
+            read_uploaded_file_bytes(post.file, display_filename="report.hwp")
+
     def test_attachment_content_disposition_ascii_fallback(self):
         from apps.counseling.presentation_file_download import attachment_content_disposition
         from django.http import HttpResponse

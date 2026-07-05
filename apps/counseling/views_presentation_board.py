@@ -106,7 +106,7 @@ def _encrypted_download_file_response(
     password: str,
 ) -> HttpResponse:
     payload = build_password_protected_download(
-        read_uploaded_file_bytes(file_field),
+        read_uploaded_file_bytes(file_field, display_filename=inner_filename),
         inner_filename=inner_filename,
         password=password,
     )
@@ -150,13 +150,6 @@ def _serve_presentation_file(
             password=password,
         )
     except FileNotFoundError:
-        import logging
-
-        logging.getLogger(__name__).exception(
-            "Presentation file missing on storage storage_name=%s display_filename=%s",
-            storage_name,
-            filename,
-        )
         messages.error(
             request,
             "첨부 파일을 찾을 수 없습니다. 파일이 삭제되었거나 서버 저장소에 없을 수 있습니다.",

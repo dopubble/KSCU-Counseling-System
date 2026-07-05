@@ -64,13 +64,157 @@ def attachment_content_disposition(filename: str) -> str:
     )
 
 
-def read_uploaded_file_bytes(file_field) -> bytes:
+def _safe_listdir(directory: str | os.PathLike, *, limit: int = 40) -> dict:
+    """디렉터리 목록(진단용). 실패 시 error 키 반환."""
+    path = Path(directory)
+    try:
+        if not path.is_dir():
+            return {"path": str(path), "is_dir": False, "entries": []}
+        entries = sorted(path.iterdir(), key=lambda p: p.name)[:limit]
+        return {
+            "path": str(path),
+            "is_dir": True,
+            "entry_count": len(entries),
+            "truncated": len(entries) >= limit,
+            "entries": [p.name for p in entries],
+        }
+    except Exception as exc:
+        return {"path": str(path), "error": f"{type(exc).__name__}: {exc}"}
+
+
+def _collect_presentation_file_storage_diagnostics(file_field) -> dict:
+    """Railway 스토리지 진단 스냅샷(비밀값 제외)."""
+    from django.conf import settings
+
+    storage = getattr(file_field, "storage", None) if file_field else None
+    name = (getattr(file_field, "name", "") or "") if file_field else ""
+    storage_class = type(storage).__name__ if storage else None
+    storage_module = type(storage).__module__ if storage else None
+    default_backend = (getattr(settings, "STORAGES", {}) or {}).get("default", {}).get(
+        "BACKEND"
+    )
+
+    report: dict = {
+        "media_root": str(getattr(settings, "MEDIA_ROOT", "")),
+        "media_url": getattr(settings, "MEDIA_URL", ""),
+        "media_storage_mode": getattr(settings, "MEDIA_STORAGE_MODE", None),
+        "aws_storage_bucket_name_setting": getattr(
+            settings, "AWS_STORAGE_BUCKET_NAME", None
+        ),
+        "default_storage_backend": default_backend,
+        "storage_class": storage_class,
+        "storage_module": storage_module,
+        "db_file_name": name,
+        "fieldfile_path_attr": None,
+        "storage_path": None,
+        "absolute_path_isfile": None,
+        "absolute_path_getsize": None,
+        "storage_exists": None,
+        "storage_size": None,
+        "parent_dir_listing": None,
+        "media_root_listing": None,
+        "presentation_board_root_listing": None,
+        "s3": None,
+    }
+
+    if storage and name:
+        try:
+            report["storage_exists"] = storage.exists(name)
+        except Exception as exc:
+            report["storage_exists"] = f"ERROR {type(exc).__name__}: {exc}"
+
+        try:
+            report["storage_size"] = storage.size(name)
+        except Exception as exc:
+            report["storage_size"] = f"ERROR {type(exc).__name__}: {exc}"
+
+    if storage and name and hasattr(storage, "path"):
+        try:
+            abs_path = storage.path(name)
+            report["storage_path"] = abs_path
+            report["absolute_path_isfile"] = os.path.isfile(abs_path)
+            if os.path.isfile(abs_path):
+                report["absolute_path_getsize"] = os.path.getsize(abs_path)
+            parent = os.path.dirname(abs_path)
+            report["parent_dir_listing"] = _safe_listdir(parent)
+        except Exception as exc:
+            report["storage_path"] = f"ERROR {type(exc).__name__}: {exc}"
+
+    if file_field is not None:
+        try:
+            report["fieldfile_path_attr"] = file_field.path
+        except Exception as exc:
+            report["fieldfile_path_attr"] = f"ERROR {type(exc).__name__}: {exc}"
+
+    media_root = getattr(settings, "MEDIA_ROOT", None)
+    if media_root:
+        report["media_root_listing"] = _safe_listdir(media_root)
+        report["presentation_board_root_listing"] = _safe_listdir(
+            Path(media_root) / "presentation_board"
+        )
+
+    if storage and "s3" in (storage_module or "").lower():
+        s3_info: dict = {
+            "bucket_name": getattr(storage, "bucket_name", None),
+            "location_prefix": getattr(storage, "location", "") or "",
+            "region_name": getattr(storage, "region_name", None),
+            "endpoint_url": getattr(storage, "endpoint_url", None),
+        }
+        object_key = name
+        if s3_info["location_prefix"] and object_key:
+            object_key = f"{s3_info['location_prefix'].strip('/')}/{object_key.lstrip('/')}"
+        s3_info["object_key"] = object_key
+        try:
+            s3_info["connection_ok"] = storage.connection is not None
+        except Exception as exc:
+            s3_info["connection_ok"] = f"ERROR {type(exc).__name__}: {exc}"
+        if name:
+            try:
+                s3_info["head_object_ok"] = storage.exists(name)
+            except Exception as exc:
+                s3_info["head_object_ok"] = f"ERROR {type(exc).__name__}: {exc}"
+        report["s3"] = s3_info
+
+    return report
+
+
+def _format_presentation_storage_diagnostic(report: dict) -> str:
+    lines = [f"  {key}={value!r}" for key, value in report.items() if key != "s3"]
+    if report.get("s3"):
+        lines.append("  s3:")
+        for key, value in report["s3"].items():
+            lines.append(f"    {key}={value!r}")
+    return "\n".join(lines)
+
+
+def log_presentation_file_storage_diagnostics(
+    file_field,
+    *,
+    display_filename: str = "",
+    trigger: str = "unknown",
+) -> None:
+    """Railway 로그용 스토리지 진단 — logger.error로 강제 출력."""
+    report = _collect_presentation_file_storage_diagnostics(file_field)
+    logger.error(
+        "PRESENTATION_FILE_STORAGE_DIAGNOSTIC trigger=%s display_filename=%s\n%s",
+        trigger,
+        display_filename,
+        _format_presentation_storage_diagnostic(report),
+    )
+
+
+def read_uploaded_file_bytes(file_field, *, display_filename: str = "") -> bytes:
     """
     FieldFile에서 바이트를 읽는다.
     작성자 직접 다운로드(_presentation_file_response)와 동일하게
     file_field.open()을 우선 사용한다.
     """
     if not file_field or not getattr(file_field, "name", ""):
+        log_presentation_file_storage_diagnostics(
+            file_field,
+            display_filename=display_filename,
+            trigger="read_uploaded_file_bytes_no_name",
+        )
         raise FileNotFoundError("presentation file is not attached")
 
     name = file_field.name
@@ -90,13 +234,18 @@ def read_uploaded_file_bytes(file_field) -> bytes:
 
     storage = file_field.storage
     if hasattr(storage, "path"):
+        full_path = None
         try:
             full_path = storage.path(name)
             with open(full_path, "rb") as fp:
                 return fp.read()
         except Exception as exc:
             last_error = exc
-            logger.exception("Local path read failed name=%s path=%s", name, full_path)
+            logger.exception(
+                "Local path read failed name=%s path=%s",
+                name,
+                full_path,
+            )
 
     try:
         with storage.open(name, "rb") as fp:
@@ -105,6 +254,11 @@ def read_uploaded_file_bytes(file_field) -> bytes:
         last_error = exc
         logger.exception("Storage.open failed name=%s", name)
 
+    log_presentation_file_storage_diagnostics(
+        file_field,
+        display_filename=display_filename,
+        trigger="read_uploaded_file_bytes",
+    )
     raise FileNotFoundError(f"presentation file unavailable: {name}") from last_error
 
 
