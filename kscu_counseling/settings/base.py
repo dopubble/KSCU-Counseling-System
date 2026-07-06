@@ -215,8 +215,12 @@ ZOOM_CLIENT_ID = _env_str("ZOOM_CLIENT_ID")
 ZOOM_CLIENT_SECRET = _env_str("ZOOM_CLIENT_SECRET")
 # API로 생성한 회의의 Claim Host용 6자리 키 (Zoom 프로필과 동일 값, 상담사 화면 전용)
 ZOOM_HOST_KEY = _env_str("ZOOM_HOST_KEY")
-# Licensed Zoom 사용자 이메일 (쉼표 구분, 동시간대 회의 시 host_01/02로 분배)
+# Licensed Zoom 사용자 이메일 (쉼표 구분, 동시간대 회의 시 host 01/02/03… 자동 배정)
 ZOOM_LICENSED_USERS = _env_str("ZOOM_LICENSED_USERS")
+# 같은 시작 시각 비대면 동시 확정 상한 기본값(관리자 설정 없을 때). Django admin에서 상향 가능.
+DEFAULT_REMOTE_ZOOM_SIMULTANEOUS_CAPACITY = _env_int(
+    "DEFAULT_REMOTE_ZOOM_SIMULTANEOUS_CAPACITY", 2
+)
 # 관리자 캘린더 호스트 라벨 (미사용 시 Licensed 사용자 수에 맞춰 host_01,host_02 자동)
 ZOOM_HOST_POOL = _env_str("ZOOM_HOST_POOL")
 # 호스트 배정 시 예약 종료 후 점유 완충(분) — 기본 30

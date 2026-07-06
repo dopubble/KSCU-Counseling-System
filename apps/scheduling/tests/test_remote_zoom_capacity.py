@@ -122,16 +122,13 @@ class RemoteZoomCapacityTests(TestCase):
         case2 = _create_remote_case(client2, self.counselor_b, "B")
         case3 = _create_remote_case(client3, counselor_c, "C")
         _create_confirmed_remote_appointment(case1, scheduled_at=self.start)
-        _create_confirmed_remote_appointment(
-            case2,
-            scheduled_at=self.start + timedelta(minutes=30),
-        )
+        _create_confirmed_remote_appointment(case2, scheduled_at=self.start)
 
         pending = Appointment.objects.create(
             case=case3,
             counselor=case3.counselor,
             client=case3.client,
-            scheduled_at=self.start + timedelta(minutes=15),
+            scheduled_at=self.start,
             duration_minutes=DEFAULT_APPOINTMENT_DURATION_MINUTES,
             status=AppointmentStatus.PENDING,
         )
@@ -293,3 +290,76 @@ class RemoteZoomCapacityTests(TestCase):
         self.assertEqual(create_mock.call_args.kwargs["host_user_email"], "host2@example.com")
         delete_mock.assert_called_once_with("22222222222")
         update_mock.assert_not_called()
+
+
+@override_settings(
+    ZOOM_LICENSED_USERS="host1@example.com,host2@example.com,host3@example.com"
+)
+class RemoteZoomStaggeredHostTests(TestCase):
+    """동시간대 상한 2 + host_03 엇갈림 배정."""
+
+    def setUp(self):
+        from apps.scheduling.models import RemoteZoomSchedulingSettings
+
+        RemoteZoomSchedulingSettings.objects.update_or_create(
+            pk=RemoteZoomSchedulingSettings.SETTINGS_PK,
+            defaults={"simultaneous_session_capacity": 2},
+        )
+        self.base = timezone.now().replace(
+            hour=11, minute=0, second=0, microsecond=0
+        ) + timedelta(days=14)
+        self.counselor_a = _create_counselor("상담사A")
+        self.counselor_b = _create_counselor("상담사B")
+        self.counselor_c = _create_counselor("상담사C")
+
+    def test_10am_allowed_when_two_confirmed_at_11am(self):
+        case1 = _create_remote_case(_create_client("내담자1"), self.counselor_a, "A")
+        case2 = _create_remote_case(_create_client("내담자2"), self.counselor_b, "B")
+        _create_confirmed_remote_appointment(case1, scheduled_at=self.base)
+        _create_confirmed_remote_appointment(case2, scheduled_at=self.base)
+
+        slot_10 = self.base - timedelta(hours=1)
+        ok, message = check_remote_zoom_capacity(
+            Appointment(
+                case=case1,
+                counselor=case1.counselor,
+                client=case1.client,
+                scheduled_at=slot_10,
+                duration_minutes=DEFAULT_APPOINTMENT_DURATION_MINUTES,
+                status=AppointmentStatus.PENDING,
+            ),
+            scheduled_at=slot_10,
+        )
+        self.assertTrue(ok, message)
+
+    def test_third_11am_blocked_even_with_three_licensed_hosts(self):
+        case1 = _create_remote_case(_create_client("내담자1"), self.counselor_a, "A")
+        case2 = _create_remote_case(_create_client("내담자2"), self.counselor_b, "B")
+        case3 = _create_remote_case(_create_client("내담자3"), self.counselor_c, "C")
+        _create_confirmed_remote_appointment(case1, scheduled_at=self.base)
+        _create_confirmed_remote_appointment(case2, scheduled_at=self.base)
+
+        pending = Appointment.objects.create(
+            case=case3,
+            counselor=case3.counselor,
+            client=case3.client,
+            scheduled_at=self.base,
+            duration_minutes=DEFAULT_APPOINTMENT_DURATION_MINUTES,
+            status=AppointmentStatus.PENDING,
+        )
+        ok, message = check_remote_zoom_capacity(pending, scheduled_at=self.base)
+        self.assertFalse(ok)
+        self.assertEqual(message, REMOTE_ZOOM_CAPACITY_FULL_MESSAGE)
+
+    def test_admin_can_raise_simultaneous_capacity(self):
+        from apps.scheduling.models import RemoteZoomSchedulingSettings
+        from apps.scheduling.zoom_scheduling_settings import (
+            get_remote_zoom_simultaneous_capacity,
+        )
+
+        settings_row = RemoteZoomSchedulingSettings.objects.get(
+            pk=RemoteZoomSchedulingSettings.SETTINGS_PK
+        )
+        settings_row.simultaneous_session_capacity = 3
+        settings_row.save()
+        self.assertEqual(get_remote_zoom_simultaneous_capacity(), 3)

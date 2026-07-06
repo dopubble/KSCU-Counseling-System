@@ -1,6 +1,7 @@
 import uuid
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 
 from apps.scheduling.constants import DEFAULT_APPOINTMENT_DURATION_MINUTES
@@ -73,6 +74,62 @@ class CounselorAvailability(models.Model):
         prefix = "매주" if self.is_recurring else str(self.specific_date or "")
         status = "가능" if self.is_available else "차단"
         return f"{self.counselor.name} - {prefix} {self.start_time}-{self.end_time} ({status})"
+
+
+class RemoteZoomSchedulingSettings(models.Model):
+    """
+    비대면 Zoom 운영 설정 (단일 행).
+
+  simultaneous_session_capacity: 같은 시작 시각 동시 확정 상한 (기본 2).
+  ZOOM_LICENSED_USERS의 추가 계정(host_03 등)은 버퍼 엇갈림 배정용.
+    """
+
+    SETTINGS_PK = 1
+
+    id = models.PositiveSmallIntegerField(
+        primary_key=True,
+        default=SETTINGS_PK,
+        editable=False,
+    )
+    simultaneous_session_capacity = models.PositiveSmallIntegerField(
+        "동시간대 비대면 최대 건수",
+        default=2,
+        help_text=(
+            "같은 시작 시각(예: 11:00)에 확정 가능한 비대면 상담 최대 건수. "
+            "ZOOM_LICENSED_USERS에 host_03 등을 추가하면 10시·11시 엇갈림 배정에만 "
+            "쓰이고, 이 값을 늘리지 않는 한 11시 3건은 불가합니다."
+        ),
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Zoom 운영 설정"
+        verbose_name_plural = "Zoom 운영 설정"
+
+    def save(self, *args, **kwargs):
+        self.pk = self.SETTINGS_PK
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def clean(self):
+        from apps.scheduling.zoom_hosts import get_zoom_licensed_user_emails
+
+        if self.simultaneous_session_capacity < 1:
+            raise ValidationError(
+                {"simultaneous_session_capacity": "1건 이상이어야 합니다."}
+            )
+        pool_size = len(get_zoom_licensed_user_emails())
+        if pool_size and self.simultaneous_session_capacity > pool_size:
+            raise ValidationError(
+                {
+                    "simultaneous_session_capacity": (
+                        f"Licensed Zoom 호스트 수({pool_size})를 초과할 수 없습니다."
+                    )
+                }
+            )
+
+    def __str__(self):
+        return f"비대면 동시간대 최대 {self.simultaneous_session_capacity}건"
 
 
 class AvailabilityException(models.Model):

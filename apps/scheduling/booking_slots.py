@@ -33,8 +33,9 @@ from apps.scheduling.in_person_room_capacity import (
 from apps.scheduling.models import Appointment, AppointmentStatus, AvailabilityException, CounselorAvailability
 from apps.scheduling.remote_zoom_capacity import (
     appointment_duration_minutes,
-    count_overlapping_confirmed_remote,
+    is_remote_zoom_slot_available,
     remote_zoom_capacity_limit,
+    remote_zoom_same_start_remaining,
 )
 
 SlotState = Literal[
@@ -353,6 +354,12 @@ class MonthBookingContext:
         return False
 
     def _venue_full(self, slot_start: datetime, slot_end: datetime) -> bool:
+        if self.counseling_method == CounselingMethod.REMOTE:
+            return not is_remote_zoom_slot_available(
+                scheduled_at=slot_start,
+                duration_minutes=self.duration_minutes,
+                exclude_appointment_id=self.exclude_appointment_id,
+            )
         if self.venue_limit <= 0:
             return False
         count = sum(
@@ -396,11 +403,9 @@ class MonthBookingContext:
                     slot_start,
                     slot_end,
                 )
-                zoom_remaining = _venue_remaining(
-                    self.remote_peers,
-                    self.zoom_limit,
-                    slot_start,
-                    slot_end,
+                zoom_remaining = remote_zoom_same_start_remaining(
+                    scheduled_at=slot_start,
+                    exclude_appointment_id=self.exclude_appointment_id,
                 )
             slots.append(
                 BookingSlot(
@@ -423,15 +428,11 @@ def _venue_capacity_state(
     exclude_appointment_id=None,
 ) -> SlotState | None:
     if counseling_method == CounselingMethod.REMOTE:
-        limit = remote_zoom_capacity_limit()
-        if limit <= 0:
-            return None
-        count = count_overlapping_confirmed_remote(
+        if not is_remote_zoom_slot_available(
             scheduled_at=scheduled_at,
             duration_minutes=duration_minutes,
             exclude_appointment_id=exclude_appointment_id,
-        )
-        if count >= limit:
+        ):
             return "zoom_full"
     elif counseling_method == CounselingMethod.IN_PERSON:
         limit = in_person_room_capacity_limit()

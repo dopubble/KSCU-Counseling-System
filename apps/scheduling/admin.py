@@ -1,6 +1,28 @@
 from django.contrib import admin
 
-from .models import Appointment, AvailabilityException, CounselorAvailability
+from .models import (
+    Appointment,
+    AvailabilityException,
+    CounselorAvailability,
+    RemoteZoomSchedulingSettings,
+)
+
+
+@admin.register(RemoteZoomSchedulingSettings)
+class RemoteZoomSchedulingSettingsAdmin(admin.ModelAdmin):
+    list_display = ("simultaneous_session_capacity", "updated_at")
+    fields = ("simultaneous_session_capacity", "updated_at")
+    readonly_fields = ("updated_at",)
+
+    def has_add_permission(self, request):
+        if RemoteZoomSchedulingSettings.objects.filter(
+            pk=RemoteZoomSchedulingSettings.SETTINGS_PK
+        ).exists():
+            return False
+        return super().has_add_permission(request)
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(CounselorAvailability)

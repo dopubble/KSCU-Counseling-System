@@ -37,10 +37,17 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        from apps.scheduling.remote_zoom_capacity import remote_zoom_capacity_limit
+        from apps.scheduling.zoom_scheduling_settings import remote_zoom_host_pool_size
+
         engine = connection.settings_dict.get("ENGINE", "")
         db_label = "postgres" if "postgres" in engine else "sqlite/local"
         self.stdout.write(f"Database: {db_label}")
         self.stdout.write(f"Licensed hosts: {', '.join(get_zoom_licensed_user_emails())}")
+        self.stdout.write(
+            f"동시간대 상한(관리자): {remote_zoom_capacity_limit()}건 · "
+            f"호스트 풀: {remote_zoom_host_pool_size()}대"
+        )
         self.stdout.write("")
 
         client_names = [
