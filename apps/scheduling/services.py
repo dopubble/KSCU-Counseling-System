@@ -700,6 +700,13 @@ def confirm_appointment_with_zoom(
     appointment.confirmed_at = timezone.now()
     appointment.save(update_fields=["status", "confirmed_at", "updated_at"])
 
+    if _appointment_uses_zoom(appointment) and zoom_meeting:
+        from apps.scheduling.duplicate_zoom_host_fix import (
+            rebalance_zoom_hosts_after_confirm,
+        )
+
+        rebalance_zoom_hosts_after_confirm(appointment, notify_link_change=False)
+
     if notify:
         _notify_appointment_confirmation(appointment)
 

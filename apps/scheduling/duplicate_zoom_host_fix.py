@@ -310,3 +310,61 @@ def fix_duplicate_future_zoom_hosts(
             skipped += 1
 
     return fixed, skipped, len(clusters), messages, clusters
+
+
+def rebalance_zoom_hosts_after_confirm(
+    trigger: Appointment,
+    *,
+    notify_link_change: bool = False,
+) -> list[str]:
+    """
+    확정 직후 — 트리거 예약과 30분 버퍼 겹치는 확정 비대면 중
+    stored zoom_host_email ≠ 알고리즘 기대값이면 Zoom 재생성 (locked 무시).
+    """
+    if not is_zoom_configured():
+        return []
+
+    appointments = list(confirmed_remote_appointments_queryset())
+    if not appointments:
+        return []
+
+    expected = assign_host_emails_for_appointments(appointments)
+    licensed = get_zoom_licensed_user_emails()
+    primary = licensed[0].strip().lower() if licensed else ""
+
+    candidates: list[tuple[Appointment, str]] = []
+    for apt in appointments:
+        exp = (expected.get(str(apt.pk), "") or "").strip().lower()
+        stored = _stored_host_email(apt)
+        if not exp or stored == exp:
+            continue
+        if apt.pk != trigger.pk and not _intervals_conflict(trigger, apt):
+            continue
+        zoom = getattr(apt, "zoom_meeting", None)
+        if not zoom or not (zoom.zoom_meeting_id or "").strip():
+            continue
+        candidates.append((apt, exp))
+
+    candidates.sort(
+        key=lambda item: (item[1] == primary, item[0].scheduled_at, str(item[0].pk))
+    )
+
+    messages: list[str] = []
+    for apt, exp in candidates:
+        try:
+            messages.append(
+                reassign_appointment_zoom_host(
+                    apt,
+                    exp,
+                    dry_run=False,
+                    notify_link_change=notify_link_change,
+                )
+            )
+        except (ZoomAPIError, ZoomNotConfiguredError, ValueError) as exc:
+            clear_zoom_token_cache()
+            label = (
+                f"{apt.client.name} "
+                f"{timezone.localtime(apt.scheduled_at):%Y-%m-%d %H:%M}"
+            )
+            messages.append(f"[error] {label}: {exc}")
+    return messages
