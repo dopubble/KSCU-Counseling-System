@@ -20,7 +20,7 @@ from apps.scheduling.zoom_capacity import (
 )
 from apps.scheduling.zoom_hosts import (
     assign_host_emails_for_appointments,
-    confirmed_remote_appointments_queryset,
+    buffer_overlapping_confirmed_remote_peers,
     host_id_for_email,
     remote_slot_candidate,
 )
@@ -96,9 +96,11 @@ def zoom_host_assignable_for_slot(
         scheduled_at=start,
     )
 
-    peers = list(confirmed_remote_appointments_queryset())
-    if exclude_appointment_id:
-        peers = [apt for apt in peers if apt.pk != exclude_appointment_id]
+    peers = buffer_overlapping_confirmed_remote_peers(
+        scheduled_at=scheduled_at,
+        duration_minutes=duration_minutes,
+        exclude_appointment_id=exclude_appointment_id,
+    )
 
     candidate = remote_slot_candidate(
         candidate_key,

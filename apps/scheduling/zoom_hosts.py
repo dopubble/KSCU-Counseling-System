@@ -13,6 +13,7 @@ from apps.reports.appointment_calendar import (
     _calendar_localtime,
     _intervals_overlap,
     get_zoom_host_buffer_minutes,
+    intervals_conflict_with_buffer,
 )
 from apps.scheduling.constants import DEFAULT_APPOINTMENT_DURATION_MINUTES
 from apps.scheduling.models import Appointment, AppointmentStatus
@@ -93,6 +94,28 @@ def confirmed_remote_appointments_queryset():
     )
 
 
+def buffer_overlapping_confirmed_remote_peers(
+    *,
+    scheduled_at: datetime,
+    duration_minutes: int,
+    exclude_appointment_id=None,
+) -> list[Appointment]:
+    """80분 버퍼 윈도우와 겹치는 확정 비대면만 (전역 일정 간섭 제거)."""
+    start = _calendar_localtime(scheduled_at)
+    duration = duration_minutes or DEFAULT_APPOINTMENT_DURATION_MINUTES
+    end = start + timedelta(minutes=duration)
+    peers: list[Appointment] = []
+    for peer in confirmed_remote_appointments_queryset():
+        if exclude_appointment_id and peer.pk == exclude_appointment_id:
+            continue
+        peer_start = _calendar_localtime(peer.scheduled_at)
+        peer_duration = peer.duration_minutes or DEFAULT_APPOINTMENT_DURATION_MINUTES
+        peer_end = peer_start + timedelta(minutes=peer_duration)
+        if intervals_conflict_with_buffer(start, end, peer_start, peer_end):
+            peers.append(peer)
+    return peers
+
+
 def assign_host_emails_for_appointments(
     appointments: list[Appointment],
 ) -> dict[str, str]:
@@ -152,6 +175,15 @@ def assign_host_emails_for_appointments(
                 assigned_host = host
                 break
         if assigned_host is None:
+            # 이미 확정·Zoom 생성된 건은 DB 호스트로 점유를 남겨야 이후 배정이 host_01을 중복 사용하지 않음
+            if (
+                apt.status == AppointmentStatus.CONFIRMED
+                and stored
+                and stored in licensed_set
+            ):
+                pinned_id = host_id_for_email(stored)
+                if pinned_id:
+                    _reserve(pinned_id, interval)
             continue
         _reserve(assigned_host, interval)
         email = email_for_host_id(assigned_host)
@@ -182,16 +214,19 @@ def remote_slot_candidate(
 
 
 def resolve_zoom_host_email_for_appointment(appointment: Appointment) -> str:
-    """단일 예약 생성 시 전체 확정 비대면 일정 기준 호스트 이메일."""
+    """단일 예약 생성 시 버퍼 겹치는 확정 비대면 + 본인 기준 호스트 이메일."""
     emails = get_zoom_licensed_user_emails()
     if not emails:
         return ""
 
-    peers = list(confirmed_remote_appointments_queryset())
+    duration = appointment.duration_minutes or DEFAULT_APPOINTMENT_DURATION_MINUTES
+    peers = buffer_overlapping_confirmed_remote_peers(
+        scheduled_at=appointment.scheduled_at,
+        duration_minutes=duration,
+        exclude_appointment_id=appointment.pk,
+    )
     if appointment.pk and appointment not in peers:
         peers.append(appointment)
-    elif appointment.pk:
-        peers = [apt if apt.pk != appointment.pk else appointment for apt in peers]
 
     assignments = assign_host_emails_for_appointments(peers)
     return assignments.get(str(appointment.pk), "")
