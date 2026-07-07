@@ -14,6 +14,7 @@ from apps.counseling.models import (
     CounselingMethod,
 )
 from apps.reports.appointment_calendar import (
+    GCAL_HOST_COLORS,
     HOST_COLORS,
     REMOTE_NO_ZOOM_COLORS,
     assign_zoom_hosts,
@@ -73,6 +74,17 @@ class AppointmentCalendarTests(TestCase):
         colors = _resolve_event_colors(host_id=host_id, is_remote=True)
         self.assertEqual(colors["bg"], HOST_COLORS["host_01"]["bg"])
         self.assertNotEqual(colors["bg"], REMOTE_NO_ZOOM_COLORS["bg"])
+
+    @override_settings(
+        CALENDAR_GCAL_UI=True,
+        ZOOM_LICENSED_USERS="sscukscu@gmail.com,sedulife@mail.kcu.ac",
+    )
+    def test_gcal_ui_uses_pastel_host_colors_not_vivid(self):
+        """운영 파스텔 UI — 진한 HOST_COLORS가 아닌 GCAL 팔레트."""
+        pastel = _resolve_event_colors(host_id="host_01", is_remote=True)
+        vivid = HOST_COLORS["host_01"]["bg"]
+        self.assertEqual(pastel["bg"], GCAL_HOST_COLORS["host_01"]["bg"])
+        self.assertNotEqual(pastel["bg"], vivid)
 
     def test_assign_zoom_hosts_splits_overlaps(self):
         start = timezone.now().replace(minute=0, second=0, microsecond=0)
