@@ -102,7 +102,8 @@ def zip_entry_name_for_post(post: CasePresentationPost, *, used_names: set[str])
     filename = get_valid_filename(post.filename) or "report.pdf"
     if not filename.lower().endswith(".pdf"):
         filename = f"{filename}.pdf"
-    base = f"{post.cohort}기_{author}_{filename}"
+    post_id = str(post.pk).split("-", 1)[0]
+    base = f"{post.cohort}기_{author}_{post_id}_{filename}"
     candidate = base
     counter = 2
     while candidate in used_names:
@@ -132,16 +133,24 @@ def build_password_protected_zip(
 def build_presentation_posts_zip(posts, password: str) -> bytes:
     entries: list[tuple[str, bytes]] = []
     used_names: set[str] = set()
+    missing_labels: list[str] = []
     for post in posts:
+        label = f"{post.author.name} — {post.title}"
         if not post.file or not post.file.name:
             logger.warning("Skipping presentation post without file pk=%s", post.pk)
+            missing_labels.append(label)
             continue
         try:
             raw_bytes = read_uploaded_file_bytes(post.file)
         except FileNotFoundError:
             logger.warning("Presentation post file missing on storage pk=%s", post.pk)
+            missing_labels.append(label)
             continue
         entries.append((zip_entry_name_for_post(post, used_names=used_names), raw_bytes))
+    if missing_labels:
+        raise FileNotFoundError(
+            "다음 게시글의 첨부 파일을 찾을 수 없습니다: " + "; ".join(missing_labels)
+        )
     if not entries:
         raise FileNotFoundError("다운로드할 첨부 파일을 찾을 수 없습니다.")
     return build_password_protected_zip(entries, password)

@@ -711,6 +711,76 @@ class PresentationBoardTests(TestCase):
             with self.assertRaises(RuntimeError):
                 plain_archive.read(plain_archive.namelist()[0])
 
+    def test_bulk_zip_download_korean_filenames_include_both_posts(self):
+        import io
+
+        import pyzipper
+
+        self.counselor_a.name = "신영화"
+        self.counselor_a.save(update_fields=["name"])
+        self.counselor_b.name = "한진이"
+        self.counselor_b.save(update_fields=["name"])
+
+        post_shin = self._create_post(
+            author=self.counselor_a,
+            title="[사례발표] 신영화-수퍼비전보고서",
+            file=SimpleUploadedFile(
+                "한기상전문상담사_사례발표보고서이_옥.pdf",
+                MINIMAL_PDF,
+                content_type="application/pdf",
+            ),
+        )
+        post_han = CasePresentationPost.objects.create(
+            cohort=1,
+            author=self.counselor_b,
+            title="[사례발표] 한진이-수퍼비전보고서",
+            file=SimpleUploadedFile(
+                "한기상전문상담사_사례발표보고서_홍O서님.pdf",
+                MINIMAL_PDF,
+                content_type="application/pdf",
+            ),
+        )
+        client = Client()
+        client.force_login(self.counselor_b)
+        response = client.post(
+            reverse("counselor:presentation_board_bulk_download"),
+            {
+                "post_ids": [str(post_shin.pk), str(post_han.pk)],
+                "file_password": "zip1234",
+                "cohort": "1",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        with pyzipper.ZipFile(io.BytesIO(response.content)) as archive:
+            archive.setpassword(b"zip1234")
+            names = archive.namelist()
+            self.assertEqual(len(names), 2)
+            joined = "\n".join(names)
+            self.assertIn("신영화", joined)
+            self.assertIn("한진이", joined)
+
+    def test_bulk_zip_download_errors_when_selected_file_missing(self):
+        post_a = self._create_post()
+        post_b = self._create_post(
+            author=self.counselor_b,
+            title=default_presentation_post_title("동기상담사"),
+        )
+        post_b.file.storage.delete(post_b.file.name)
+
+        client = Client()
+        client.force_login(self.counselor_b)
+        response = client.post(
+            reverse("counselor:presentation_board_bulk_download"),
+            {
+                "post_ids": [str(post_a.pk), str(post_b.pk)],
+                "file_password": "zip1234",
+                "cohort": "1",
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("동기상담사", response.content.decode())
+
     def test_bulk_download_xhr_error_returns_plain_text(self):
         client = Client()
         client.force_login(self.counselor_b)

@@ -516,17 +516,19 @@ def presentation_board_bulk_download(request):
             fallback_url=fallback_url,
         )
 
-    posts = list(
-        CasePresentationPost.objects.filter(pk__in=post_ids)
-        .select_related("author")
-        .order_by("-cohort", "-created_at")
-    )
-    if len(posts) != len(set(post_ids)):
+    posts_by_id = {
+        post.pk: post
+        for post in CasePresentationPost.objects.filter(pk__in=post_ids).select_related(
+            "author"
+        )
+    }
+    if len(posts_by_id) != len(set(post_ids)):
         return _presentation_download_error_response(
             request,
             "선택한 게시글 중 일부를 찾을 수 없습니다.",
             fallback_url=fallback_url,
         )
+    posts = [posts_by_id[post_pk] for post_pk in post_ids]
 
     for post in posts:
         require_presentation_board_access(request.user, post.cohort)
