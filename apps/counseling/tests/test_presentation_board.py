@@ -740,3 +740,33 @@ class PresentationBoardTests(TestCase):
             },
         )
         self.assertEqual(response.status_code, 403)
+
+    def test_restore_presentation_post_file_at_existing_storage_path(self):
+        from io import StringIO
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+
+        from django.conf import settings
+        from django.core.management import call_command
+
+        post = self._create_post()
+        storage_name = post.file.name
+        post.file.storage.delete(storage_name)
+        self.assertFalse(post.file.storage.exists(storage_name))
+
+        with TemporaryDirectory() as tmp:
+            source = Path(tmp) / "restored.pdf"
+            source.write_bytes(MINIMAL_PDF)
+            out = StringIO()
+            call_command(
+                "restore_presentation_post_file",
+                "--author-name",
+                "발표자",
+                "--source",
+                str(source),
+                stdout=out,
+            )
+
+        self.assertTrue(post.file.storage.exists(storage_name))
+        restored = Path(settings.MEDIA_ROOT) / storage_name
+        self.assertEqual(restored.read_bytes(), MINIMAL_PDF)
