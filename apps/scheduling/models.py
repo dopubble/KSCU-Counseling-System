@@ -238,4 +238,6 @@ class Appointment(models.Model):
         return self.scheduled_at
 
     def __str__(self):
-        return f"{self.client.name} - {self.scheduled_at:%Y-%m-%d %H:%M}"
+        from apps.scheduling.availability import format_local_datetime
+
+        return f"{self.client.name} - {format_local_datetime(self.scheduled_at)}"
