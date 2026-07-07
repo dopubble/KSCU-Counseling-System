@@ -14,14 +14,19 @@ from apps.counseling.models import (
     CounselingMethod,
 )
 from apps.reports.appointment_calendar import (
+    HOST_COLORS,
+    REMOTE_NO_ZOOM_COLORS,
     assign_zoom_hosts,
     appointment_overlaps_range,
     build_calendar_events,
     get_mock_calendar_events,
     CalendarInterval,
     parse_calendar_bound,
+    resolve_calendar_zoom_host_display,
     zoom_host_label,
+    _resolve_event_colors,
 )
+from apps.scheduling.zoom_hosts import host_id_for_email
 from apps.scheduling.models import Appointment, AppointmentStatus
 
 
@@ -29,6 +34,45 @@ class AppointmentCalendarTests(TestCase):
     def test_zoom_host_label(self):
         self.assertEqual(zoom_host_label("host_01"), "Zoom 호스트 1번")
         self.assertEqual(zoom_host_label("host_02"), "Zoom 호스트 2번")
+
+    @override_settings(
+        CALENDAR_GCAL_UI=False,
+        ZOOM_LICENSED_USERS="sscukscu@gmail.com,sedulife@mail.kcu.ac",
+    )
+    def test_hakyss_stored_host_uses_host03_yellow_not_blue(self):
+        """구현정 등 hakyss 고정 → host_03(누런/주황), 블루 fallback 아님."""
+        host_id, stored, expected, mismatch = resolve_calendar_zoom_host_display(
+            is_remote=True,
+            zoom_host_email="hakyss@mail.kcu.ac",
+            expected_host_id="host_01",
+            email_to_host_id=host_id_for_email,
+        )
+        self.assertEqual(host_id, "host_03")
+        self.assertEqual(stored, "host_03")
+        self.assertEqual(expected, "host_01")
+        self.assertTrue(mismatch)
+        colors = _resolve_event_colors(host_id=host_id, is_remote=True)
+        self.assertEqual(colors["bg"], HOST_COLORS["host_03"]["bg"])
+        self.assertNotEqual(colors["bg"], REMOTE_NO_ZOOM_COLORS["bg"])
+
+    @override_settings(
+        CALENDAR_GCAL_UI=False,
+        ZOOM_LICENSED_USERS="sscukscu@gmail.com,sedulife@mail.kcu.ac",
+    )
+    def test_kim_sumi_stored_host01_stays_purple_not_blue(self):
+        """김수미 DB host_01 → 보라(host_01), 알고리즘이 달라도 색은 DB 기준."""
+        host_id, stored, expected, mismatch = resolve_calendar_zoom_host_display(
+            is_remote=True,
+            zoom_host_email="sscukscu@gmail.com",
+            expected_host_id="host_02",
+            email_to_host_id=host_id_for_email,
+        )
+        self.assertEqual(host_id, "host_01")
+        self.assertEqual(stored, "host_01")
+        self.assertTrue(mismatch)
+        colors = _resolve_event_colors(host_id=host_id, is_remote=True)
+        self.assertEqual(colors["bg"], HOST_COLORS["host_01"]["bg"])
+        self.assertNotEqual(colors["bg"], REMOTE_NO_ZOOM_COLORS["bg"])
 
     def test_assign_zoom_hosts_splits_overlaps(self):
         start = timezone.now().replace(minute=0, second=0, microsecond=0)

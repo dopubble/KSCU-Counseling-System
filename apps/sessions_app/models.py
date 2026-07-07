@@ -179,7 +179,7 @@ class ZoomMeeting(models.Model):
         max_length=20,
         blank=True,
         default="",
-        help_text="외부 Zoom 계정 회의 등 — 회기별 Claim Host 6자리. 비우면 ZOOM_HOST_KEY 환경변수.",
+        help_text="해당 예약 1건 전용 Claim Host 6자리(외부 Zoom 등). 비우면 ZOOM_HOST_KEY.",
     )
     recording_url = models.URLField("녹화 URL", max_length=2000, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

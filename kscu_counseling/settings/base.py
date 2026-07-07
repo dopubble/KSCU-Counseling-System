@@ -70,8 +70,26 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
-# Google Calendar 스타일 예약 캘린더 UI (기본 활성, CALENDAR_GCAL_UI=false 로 끌 수 있음)
-CALENDAR_GCAL_UI = _env_str("CALENDAR_GCAL_UI", "True").lower() in ("true", "1", "yes")
+# Google Calendar 스타일 예약 캘린더 UI (테스트·스테이징 기본, 운영은 CALENDAR_GCAL_UI=true 로만 켬)
+def is_test_deployment() -> bool:
+    """테스트·스테이징 배포 여부."""
+    env = _env_str("KSCU_DEPLOY_ENV", "").lower()
+    if env in ("test", "staging", "uat"):
+        return True
+    for label in (_env_str("RAILWAY_PUBLIC_DOMAIN", ""), _env_str("RAILWAY_SERVICE_NAME", "")):
+        text = label.lower()
+        if any(token in text for token in ("test", "staging", "uat")):
+            return True
+    return False
+
+
+_gcal_ui_raw = _env_str("CALENDAR_GCAL_UI", "").lower()
+if _gcal_ui_raw in ("true", "1", "yes"):
+    CALENDAR_GCAL_UI = True
+elif _gcal_ui_raw in ("false", "0", "no"):
+    CALENDAR_GCAL_UI = False
+else:
+    CALENDAR_GCAL_UI = is_test_deployment()
 
 SECRET_KEY = _env_str("SECRET_KEY", "django-insecure-dev-key-change-in-production")
 

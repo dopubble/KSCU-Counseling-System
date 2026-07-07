@@ -94,7 +94,7 @@ def resolve_appointment_zoom_counselor_url(
 
 
 def appointment_counselor_host_key(appointment: Optional["Appointment"]) -> str:
-    """회기별 호스트 키(Claim Host) — ZoomMeeting.counselor_host_key 우선."""
+    """해당 예약 1건 전용 호스트 키 — ZoomMeeting.counselor_host_key (없으면 빈 문자열)."""
     if appointment is None:
         return ""
     zoom = getattr(appointment, "zoom_meeting", None)

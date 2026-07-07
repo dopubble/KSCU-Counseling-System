@@ -49,6 +49,39 @@ def calendar_gcal_ui_enabled() -> bool:
     return getattr(settings, "CALENDAR_GCAL_UI", False)
 
 
+def resolve_calendar_zoom_host_display(
+    *,
+    is_remote: bool,
+    zoom_host_email: str | None,
+    expected_host_id: str,
+    email_to_host_id,
+) -> tuple[str, str, str, bool]:
+    """
+    캘린더 이벤트 색상·라벨용 호스트 ID.
+
+    색상은 DB zoom_host_email 기준(운영 규칙). Licensed 풀 외(hakyss 등) → host_03.
+    expected_host_id(알고리즘)는 불일치 툴팁용만 쓰고 색상을 바꾸지 않는다.
+    """
+    if not is_remote:
+        return "", "", "", False
+
+    stored_email = (zoom_host_email or "").strip()
+    host_stored_id = ""
+    host_id = ""
+    if stored_email:
+        host_stored_id = email_to_host_id(stored_email)
+        if not host_stored_id:
+            host_stored_id = "host_03"
+        host_id = host_stored_id
+    elif expected_host_id:
+        host_id = expected_host_id
+
+    mismatch = bool(
+        host_stored_id and expected_host_id and host_stored_id != expected_host_id
+    )
+    return host_id, host_stored_id, expected_host_id, mismatch
+
+
 def _resolve_event_colors(
     *,
     host_id: str,
@@ -410,7 +443,17 @@ def build_calendar_events(
             logger.exception("캘린더 이벤트 변환 실패 appointment_id=%s", apt.pk)
             continue
 
-    host_assignments = assign_zoom_hosts(intervals)
+    from apps.scheduling.zoom_hosts import (
+        assign_host_emails_for_appointments,
+        host_id_for_email,
+    )
+
+    host_assignments = {
+        apt_id: host_id_for_email(email)
+        for apt_id, email in assign_host_emails_for_appointments(
+            list(appointments)
+        ).items()
+    }
     events: list[dict[str, Any]] = []
 
     for apt, interval in zip(appointments, intervals, strict=True):
@@ -430,17 +473,24 @@ def build_calendar_events(
 
             host_id = ""
             host_stored_id = ""
+            host_expected_id = ""
             host_mismatch = False
             if is_remote:
-                from apps.scheduling.zoom_hosts import host_id_for_email
-
-                host_id = host_assignments.get(str(apt.id), "") or ""
+                stored_email = ""
                 if zoom_meeting and getattr(zoom_meeting, "zoom_host_email", ""):
-                    host_stored_id = host_id_for_email(zoom_meeting.zoom_host_email)
-                    if not host_stored_id and zoom_meeting.zoom_host_email.strip():
-                        host_stored_id = "host_03"
-                    if host_stored_id and host_id and host_stored_id != host_id:
-                        host_mismatch = True
+                    stored_email = zoom_meeting.zoom_host_email
+                host_expected_id = host_assignments.get(str(apt.id), "") or ""
+                (
+                    host_id,
+                    host_stored_id,
+                    host_expected_id,
+                    host_mismatch,
+                ) = resolve_calendar_zoom_host_display(
+                    is_remote=True,
+                    zoom_host_email=stored_email,
+                    expected_host_id=host_expected_id,
+                    email_to_host_id=host_id_for_email,
+                )
 
             row = {
                 "id": str(apt.id),
