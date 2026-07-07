@@ -102,6 +102,19 @@ class PresentationBoardTests(TestCase):
         self.assertEqual(response["Content-Type"], "application/pdf")
         self.assertIn("attachment", response.get("Content-Disposition", ""))
 
+    def test_post_file_xhr_error_returns_plain_text(self):
+        post = self._create_post()
+        client = Client()
+        client.force_login(self.counselor_b)
+        response = client.post(
+            reverse("counselor:presentation_board_post_file", args=[post.pk]),
+            {"file_password": "ab"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("text/plain", response["Content-Type"])
+        self.assertIn("4자", response.content.decode())
+
     def test_peer_get_comment_file_without_password(self):
         post = self._create_post()
         comment = CasePresentationComment.objects.create(

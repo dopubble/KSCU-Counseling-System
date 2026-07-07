@@ -179,29 +179,29 @@ def _serve_presentation_file(
 
     password = (request.POST.get("file_password") or "").strip()
     if len(password) < PRESENTATION_FILE_PASSWORD_MIN_LENGTH:
-        messages.error(
+        return _presentation_download_error_response(
             request,
             f"파일 암호는 {PRESENTATION_FILE_PASSWORD_MIN_LENGTH}자 이상 입력해 주세요.",
+            fallback_url=fallback_url,
         )
-        return _redirect_after_file_download_failure(request, fallback_url=fallback_url)
 
     try:
         raw_bytes = read_uploaded_file_bytes(file_field)
         encrypted = encrypt_pdf_bytes(raw_bytes, password)
         return _encrypted_pdf_download_response(pdf_bytes=encrypted, filename=filename)
     except FileNotFoundError:
-        messages.error(
+        return _presentation_download_error_response(
             request,
             "첨부 파일을 찾을 수 없습니다. 파일이 삭제되었거나 서버 저장소에 없을 수 있습니다.",
+            fallback_url=fallback_url,
         )
-        return _redirect_after_file_download_failure(request, fallback_url=fallback_url)
     except Exception:
         logger.exception("Presentation encrypted PDF download failed filename=%s", filename)
-        messages.error(
+        return _presentation_download_error_response(
             request,
             "파일을 준비하는 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+            fallback_url=fallback_url,
         )
-        return _redirect_after_file_download_failure(request, fallback_url=fallback_url)
 
 
 def _serve_presentation_comment_file(
