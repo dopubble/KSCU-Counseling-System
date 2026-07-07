@@ -34,21 +34,14 @@ def resolve_appointment_zoom_counselor_url(
     appointment: Optional["Appointment"],
     case: "Case",
 ) -> str:
-    """상담사 입장 URL — start_url 우선, 없으면 join_url."""
-    if appointment is None:
-        return ""
-    zoom = getattr(appointment, "zoom_meeting", None)
-    if zoom:
-        start_url = (zoom.start_url or "").strip()
-        if start_url:
-            return start_url
-        join_url = (zoom.join_url or "").strip()
-        if join_url:
-            return join_url
-    case_url = (case.zoom_meeting_url or "").strip()
-    if case_url and not is_zoom_host_url(case_url):
-        return case_url
-    return ""
+    """
+    상담사 입장 URL — 기본은 join_url(레거시).
+
+    Zoom API가 저장한 start_url(/s/, zak=)은 호스트 계정 전용이라
+    상담사 버튼에 쓰면 「호스트로 로그인」 차단 화면이 뜬다.
+    회기별 counselor_host_key 가 있어도 URL 은 join_url 유지(Claim Host).
+    """
+    return resolve_appointment_zoom_join_url(appointment, case)
 
 
 def appointment_counselor_host_key(appointment: Optional["Appointment"]) -> str:

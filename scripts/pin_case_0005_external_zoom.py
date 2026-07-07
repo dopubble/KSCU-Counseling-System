@@ -114,6 +114,6 @@ zm = apt.zoom_meeting
 print("\n=== 적용 완료 ===")
 print(f"  locked           : {appointment_zoom_link_is_locked(apt)}")
 print(f"  내담자 join URL  : {resolve_appointment_zoom_join_url(apt, case)[:80]}...")
-print(f"  상담사 입장 URL  : {resolve_appointment_zoom_counselor_url(apt, case)[:80]}...")
+print(f"  상담사 입장 URL(join): {resolve_appointment_zoom_join_url(apt, case)[:80]}...")
 print(f"  호스트 키(회기)  : {appointment_counselor_host_key(apt)}")
 print("OK")

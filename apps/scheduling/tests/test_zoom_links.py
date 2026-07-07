@@ -85,7 +85,7 @@ class ZoomLinkResolverTests(TestCase):
             url,
         )
 
-    def test_counselor_resolver_prefers_start_url(self):
+    def test_counselor_resolver_uses_join_url_even_when_start_url_stored(self):
         from apps.scheduling.zoom_links import resolve_appointment_zoom_counselor_url
 
         zm = ZoomMeeting.objects.get(appointment=self.appointment)
@@ -94,7 +94,7 @@ class ZoomLinkResolverTests(TestCase):
         apt = Appointment.objects.select_related("zoom_meeting").get(pk=self.appointment.pk)
         self.assertEqual(
             resolve_appointment_zoom_counselor_url(apt, self.case),
-            "https://zoom.us/s/81733363550",
+            "https://zoom.us/j/81733363550",
         )
         self.assertEqual(
             resolve_appointment_zoom_join_url(apt, self.case),

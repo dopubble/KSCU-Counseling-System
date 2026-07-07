@@ -1596,13 +1596,11 @@ class CounselorSessionCardView:
 
     @property
     def zoom_url(self) -> str:
-        """상담사 — start_url 우선, 없으면 join_url."""
+        """상담사·내담자 공통 join_url (레거시 — start_url 미사용)."""
         appointment = self.appointment
         if appointment is None:
             return self._card.zoom_url
-        from apps.scheduling.zoom_links import resolve_appointment_zoom_counselor_url
-
-        return resolve_appointment_zoom_counselor_url(appointment, appointment.case)
+        return _resolve_appointment_zoom_url(appointment, appointment.case)
 
     @property
     def show_zoom_host_key_help(self) -> bool:
@@ -1611,7 +1609,8 @@ class CounselorSessionCardView:
         from apps.scheduling.utils import is_zoom_host_key_configured
         from apps.scheduling.zoom_links import appointment_counselor_host_key
 
-        if appointment_counselor_host_key(self.appointment):
+        override = appointment_counselor_host_key(self.appointment)
+        if override:
             return True
         return is_zoom_host_key_configured()
 
@@ -1620,11 +1619,11 @@ class CounselorSessionCardView:
         from apps.scheduling.utils import get_zoom_host_key
         from apps.scheduling.zoom_links import appointment_counselor_host_key
 
-        if not self.show_zoom_host_key_help:
-            return ""
         override = appointment_counselor_host_key(self.appointment)
         if override:
             return override
+        if not self.show_zoom_host_key_help:
+            return ""
         return get_zoom_host_key()
 
     @property
