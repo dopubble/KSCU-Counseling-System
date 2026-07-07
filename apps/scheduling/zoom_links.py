@@ -30,11 +30,42 @@ def is_zoom_host_url(url: str) -> bool:
     return "/s/" in normalized or "zak=" in normalized
 
 
+def resolve_appointment_zoom_counselor_url(
+    appointment: Optional["Appointment"],
+    case: "Case",
+) -> str:
+    """상담사 입장 URL — start_url 우선, 없으면 join_url."""
+    if appointment is None:
+        return ""
+    zoom = getattr(appointment, "zoom_meeting", None)
+    if zoom:
+        start_url = (zoom.start_url or "").strip()
+        if start_url:
+            return start_url
+        join_url = (zoom.join_url or "").strip()
+        if join_url:
+            return join_url
+    case_url = (case.zoom_meeting_url or "").strip()
+    if case_url and not is_zoom_host_url(case_url):
+        return case_url
+    return ""
+
+
+def appointment_counselor_host_key(appointment: Optional["Appointment"]) -> str:
+    """회기별 호스트 키(Claim Host) — ZoomMeeting.counselor_host_key 우선."""
+    if appointment is None:
+        return ""
+    zoom = getattr(appointment, "zoom_meeting", None)
+    if zoom is None:
+        return ""
+    return (getattr(zoom, "counselor_host_key", None) or "").strip()
+
+
 def resolve_appointment_zoom_join_url(
     appointment: Optional["Appointment"],
     case: "Case",
 ) -> str:
-    """참가 join_url — 상담사·내담자·이메일 공통."""
+    """참가 join_url — 내담자·이메일·알림 공통 (호스트 URL 제외)."""
     if appointment is None:
         return ""
     zoom = getattr(appointment, "zoom_meeting", None)

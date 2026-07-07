@@ -169,6 +169,13 @@ class ZoomMeeting(models.Model):
         default="",
         help_text="회의를 생성한 Zoom Licensed 사용자 이메일",
     )
+    counselor_host_key = models.CharField(
+        "상담사 호스트 키(Claim Host)",
+        max_length=20,
+        blank=True,
+        default="",
+        help_text="외부 Zoom 계정 회의 등 — 회기별 Claim Host 6자리. 비우면 ZOOM_HOST_KEY 환경변수.",
+    )
     recording_url = models.URLField("녹화 URL", max_length=2000, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

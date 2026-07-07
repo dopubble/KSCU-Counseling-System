@@ -275,11 +275,13 @@ def pin_appointment_zoom_link(
     join_url: str,
     zoom_meeting_id: str = "",
     zoom_host_email: str = "",
+    start_url: str = "",
+    counselor_host_key: str = "",
     session_number: int = 1,
     case_number: str | None = None,
     dry_run: bool = True,
 ) -> OpsFixupLine:
-    """기존 Zoom 회의 join_url을 DB에 직접 고정 (API로 새 회의 생성하지 않음)."""
+    """기존 Zoom 회의 URL을 DB에 직접 고정 (API로 새 회의 생성하지 않음)."""
     task, appointment = _get_fixup_appointment(
         client_name=client_name,
         client_email=client_email,
@@ -306,18 +308,45 @@ def pin_appointment_zoom_link(
     zoom = getattr(appointment, "zoom_meeting", None)
     current_url = (zoom.join_url or "").strip() if zoom else ""
     case_url = (appointment.case.zoom_meeting_url or "").strip()
+    target_start = (start_url or "").strip()
+    target_host_key = (counselor_host_key or "").strip()
+    current_start = (zoom.start_url or "").strip() if zoom else ""
+    current_host_key = (getattr(zoom, "counselor_host_key", None) or "").strip() if zoom else ""
+
     if appointment_zoom_link_is_locked(appointment):
-        if case_url != current_url:
-            if dry_run:
-                return OpsFixupLine(
-                    task,
-                    "dry_run",
-                    f"Case URL만 동기화: {case_url or '(없음)'} → {current_url}",
-                )
-            sync_case_zoom_meeting_url(appointment, join_url=current_url)
-            return OpsFixupLine(task, "ok", f"확정 join_url 유지, Case URL 동기화")
-        return OpsFixupLine(task, "ok", f"이미 {current_url}")
-    if current_url == target_url and case_url == target_url:
+        needs_case_sync = case_url != current_url and current_url
+        needs_start = target_start and target_start != current_start
+        needs_host_key = target_host_key and target_host_key != current_host_key
+        if not needs_case_sync and current_url == target_url and not needs_start and not needs_host_key:
+            return OpsFixupLine(task, "ok", f"이미 {current_url}")
+        if dry_run:
+            parts = []
+            if current_url != target_url:
+                parts.append(f"join {current_url or '(없음)'} → {target_url}")
+            if needs_start:
+                parts.append(f"start → {target_start}")
+            if needs_host_key:
+                parts.append(f"host_key → {target_host_key}")
+            return OpsFixupLine(task, "dry_run", "; ".join(parts) or "변경 없음")
+        defaults = {
+            "zoom_meeting_id": meeting_id or (zoom.zoom_meeting_id if zoom else ""),
+            "join_url": target_url,
+            "zoom_host_email": (zoom_host_email or (zoom.zoom_host_email if zoom else "")).strip(),
+        }
+        if target_start:
+            defaults["start_url"] = target_start
+        if target_host_key:
+            defaults["counselor_host_key"] = target_host_key
+        ZoomMeeting.objects.update_or_create(appointment=appointment, defaults=defaults)
+        sync_case_zoom_meeting_url(appointment, join_url=target_url)
+        return OpsFixupLine(task, "ok", f"잠금 예약 갱신: join={target_url}")
+
+    if (
+        current_url == target_url
+        and case_url == target_url
+        and (not target_start or target_start == current_start)
+        and (not target_host_key or target_host_key == current_host_key)
+    ):
         return OpsFixupLine(task, "ok", f"이미 {target_url}")
 
     if dry_run:
@@ -327,15 +356,17 @@ def pin_appointment_zoom_link(
             f"{current_url or '(없음)'} → {target_url}",
         )
 
+    defaults = {
+        "zoom_meeting_id": meeting_id,
+        "join_url": target_url,
+        "start_url": target_start,
+        "password": "",
+        "zoom_host_email": (zoom_host_email or "").strip(),
+        "counselor_host_key": target_host_key,
+    }
     ZoomMeeting.objects.update_or_create(
         appointment=appointment,
-        defaults={
-            "zoom_meeting_id": meeting_id,
-            "join_url": target_url,
-            "start_url": "",
-            "password": "",
-            "zoom_host_email": (zoom_host_email or "").strip(),
-        },
+        defaults=defaults,
     )
     sync_case_zoom_meeting_url(appointment, join_url=target_url)
     return OpsFixupLine(task, "ok", target_url)

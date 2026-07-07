@@ -85,6 +85,31 @@ class ZoomLinkResolverTests(TestCase):
             url,
         )
 
+    def test_counselor_resolver_prefers_start_url(self):
+        from apps.scheduling.zoom_links import resolve_appointment_zoom_counselor_url
+
+        zm = ZoomMeeting.objects.get(appointment=self.appointment)
+        zm.start_url = "https://zoom.us/s/81733363550"
+        zm.save(update_fields=["start_url"])
+        apt = Appointment.objects.select_related("zoom_meeting").get(pk=self.appointment.pk)
+        self.assertEqual(
+            resolve_appointment_zoom_counselor_url(apt, self.case),
+            "https://zoom.us/s/81733363550",
+        )
+        self.assertEqual(
+            resolve_appointment_zoom_join_url(apt, self.case),
+            "https://zoom.us/j/81733363550",
+        )
+
+    def test_appointment_counselor_host_key_override(self):
+        from apps.scheduling.zoom_links import appointment_counselor_host_key
+
+        zm = ZoomMeeting.objects.get(appointment=self.appointment)
+        zm.counselor_host_key = "877273"
+        zm.save(update_fields=["counselor_host_key"])
+        apt = Appointment.objects.select_related("zoom_meeting").get(pk=self.appointment.pk)
+        self.assertEqual(appointment_counselor_host_key(apt), "877273")
+
     def test_sync_case_zoom_meeting_url_updates_case_from_appointment(self):
         sync_case_zoom_meeting_url(
             self.appointment,
