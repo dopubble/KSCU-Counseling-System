@@ -121,3 +121,41 @@ class DuplicateZoomHostFixTests(TestCase):
         mock_reassign.assert_called_once_with(
             a2, HOST2, dry_run=False, notify_link_change=False
         )
+
+    @patch(
+        "apps.scheduling.duplicate_zoom_host_fix.reassign_appointment_zoom_host",
+        return_value="[fixed]",
+    )
+    @patch(
+        "apps.scheduling.duplicate_zoom_host_fix.assign_host_emails_for_appointments",
+        return_value={"1": HOST2, "2": HOST2},
+    )
+    @patch(
+        "apps.scheduling.duplicate_zoom_host_fix.confirmed_remote_appointments_queryset",
+    )
+    @patch(
+        "apps.scheduling.duplicate_zoom_host_fix.is_zoom_configured",
+        return_value=True,
+    )
+    def test_rebalance_after_confirm_fixes_same_day_stored_mismatch(
+        self,
+        _mock_configured,
+        mock_qs,
+        _mock_assign,
+        mock_reassign,
+    ):
+        from apps.scheduling.duplicate_zoom_host_fix import (
+            rebalance_zoom_hosts_after_confirm,
+        )
+
+        day = timezone.make_aware(datetime(2026, 7, 8, 10, 0), KST)
+        other_day = timezone.make_aware(datetime(2026, 7, 9, 10, 0), KST)
+        a1 = _make_apt(1, day, HOST1)
+        a2 = _make_apt(2, day + timedelta(hours=2), HOST2)
+        a3 = _make_apt(3, other_day, HOST1)
+        mock_qs.return_value = [a1, a2, a3]
+
+        rebalance_zoom_hosts_after_confirm(a2)
+        mock_reassign.assert_called_once_with(
+            a1, HOST2, dry_run=False, notify_link_change=False
+        )

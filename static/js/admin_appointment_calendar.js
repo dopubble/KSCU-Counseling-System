@@ -224,6 +224,11 @@
             if (props.zoom_host_label) {
                 parts.push(props.zoom_host_label);
             }
+            if (props.zoom_host_mismatch && props.zoom_host_stored_id) {
+                parts.push(
+                    `DB호스트 불일치(저장=${props.zoom_host_stored_id})`
+                );
+            }
             info.el.title = parts.join(" · ");
             info.el.setAttribute("role", "button");
             info.el.setAttribute("tabindex", "0");

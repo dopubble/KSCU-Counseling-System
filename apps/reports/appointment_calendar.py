@@ -345,6 +345,8 @@ def _serialize_event_row(row: dict[str, Any]) -> dict[str, Any]:
             "session_number": row.get("session_number"),
             "zoom_host_id": host_id,
             "zoom_host_label": zoom_host_label(host_id) if host_id else "",
+            "zoom_host_stored_id": (row.get("zoom_host_stored_id") or "").strip(),
+            "zoom_host_mismatch": bool(row.get("zoom_host_mismatch")),
             "zoom_url": zoom_url,
             "case_number": row.get("case_number") or "",
             "counseling_method": method,
@@ -427,15 +429,18 @@ def build_calendar_events(
             counselor_name = apt.counselor.name or "상담사"
 
             host_id = ""
+            host_stored_id = ""
+            host_mismatch = False
             if is_remote:
-                if zoom_meeting and getattr(zoom_meeting, "zoom_host_email", ""):
-                    from apps.scheduling.zoom_hosts import host_id_for_email
+                from apps.scheduling.zoom_hosts import host_id_for_email
 
-                    host_id = host_id_for_email(zoom_meeting.zoom_host_email)
-                    if not host_id and zoom_meeting.zoom_host_email.strip():
-                        host_id = "host_03"
-                if not host_id:
-                    host_id = host_assignments.get(str(apt.id), "")
+                host_id = host_assignments.get(str(apt.id), "") or ""
+                if zoom_meeting and getattr(zoom_meeting, "zoom_host_email", ""):
+                    host_stored_id = host_id_for_email(zoom_meeting.zoom_host_email)
+                    if not host_stored_id and zoom_meeting.zoom_host_email.strip():
+                        host_stored_id = "host_03"
+                    if host_stored_id and host_id and host_stored_id != host_id:
+                        host_mismatch = True
 
             row = {
                 "id": str(apt.id),
@@ -446,6 +451,8 @@ def build_calendar_events(
                 "client_name": client_name,
                 "session_number": session_no,
                 "zoom_host_id": host_id,
+                "zoom_host_stored_id": host_stored_id,
+                "zoom_host_mismatch": host_mismatch,
                 "zoom_url": zoom_url,
                 "counseling_method": apt.case.counseling_method,
                 "status": apt.status,

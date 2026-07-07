@@ -406,7 +406,7 @@ def fix_mismatched_zoom_host_assignments(
 ) -> tuple[int, int, list[str]]:
     """
     zoom_host_email이 호스트 배정 알고리즘(30분 버퍼 포함)과 다르면 재생성.
-    join_url·meeting_id가 이미 있는 확정 예약은 건드리지 않는다.
+    join_url이 잠겨 있어도 호스트 불일치면 재생성한다.
     반환: (fixed, skipped, errors)
     """
     if not is_zoom_configured():
@@ -433,10 +433,6 @@ def fix_mismatched_zoom_host_assignments(
     skipped = 0
 
     for appointment in appointments:
-        if appointment_zoom_link_is_locked(appointment):
-            skipped += 1
-            continue
-
         stored_host = _stored_host(appointment)
         if stored_host and stored_host not in licensed_set:
             skipped += 1

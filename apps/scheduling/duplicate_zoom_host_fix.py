@@ -318,7 +318,7 @@ def rebalance_zoom_hosts_after_confirm(
     notify_link_change: bool = False,
 ) -> list[str]:
     """
-    확정 직후 — 트리거 예약과 30분 버퍼 겹치는 확정 비대면 중
+    확정 직후 — 같은 날(트리거 예약 일자) 확정 비대면 중
     stored zoom_host_email ≠ 알고리즘 기대값이면 Zoom 재생성 (locked 무시).
     """
     if not is_zoom_configured():
@@ -328,17 +328,18 @@ def rebalance_zoom_hosts_after_confirm(
     if not appointments:
         return []
 
+    trigger_day = timezone.localtime(trigger.scheduled_at).date()
     expected = assign_host_emails_for_appointments(appointments)
     licensed = get_zoom_licensed_user_emails()
     primary = licensed[0].strip().lower() if licensed else ""
 
     candidates: list[tuple[Appointment, str]] = []
     for apt in appointments:
+        if timezone.localtime(apt.scheduled_at).date() != trigger_day:
+            continue
         exp = (expected.get(str(apt.pk), "") or "").strip().lower()
         stored = _stored_host_email(apt)
         if not exp or stored == exp:
-            continue
-        if apt.pk != trigger.pk and not _intervals_conflict(trigger, apt):
             continue
         zoom = getattr(apt, "zoom_meeting", None)
         if not zoom or not (zoom.zoom_meeting_id or "").strip():
