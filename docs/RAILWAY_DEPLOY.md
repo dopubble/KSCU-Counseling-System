@@ -259,25 +259,28 @@ S3(R2 등) 사용 시: `MEDIA_USE_S3=true`와 `AWS_STORAGE_BUCKET_NAME`, `AWS_AC
 
 **배포 시 자동 실행되지 않음** (필요할 때만 Railway Shell에서 수동):
 
+> **Railway Shell:** `python`만 치면 Django가 없습니다. 아래처럼 **`/opt/venv/bin/python`** 을 쓰세요.
+
 ```bash
-# 운영 일괄 수정 (Zoom 호스트·특정 내담자 등) — dry-run 먼저
-python manage.py ops_production_fixup
-python manage.py ops_production_fixup --apply
-
-# 1회기 로스터 복구
-python manage.py repair_session1_confirmations
-python manage.py repair_session1_confirmations --apply
-
-# 매칭 대기 테스트 계정 삭제
-python manage.py purge_client_accounts
-python manage.py purge_client_accounts --apply
-
-# Zoom join URL 일괄 sync (위험 — dry-run 필수)
-python manage.py sync_zoom_join_urls --dry-run
+PY=/opt/venv/bin/python
 
 # 상담 전 Zoom 점검 (오늘·내일 확정 비대면 — join 누락·호스트 URL 위험)
-python manage.py check_zoom_upcoming
-python manage.py check_zoom_upcoming --days 2 --strict
+$PY manage.py check_zoom_upcoming --days 2 --strict
+
+# 운영 일괄 수정 (Zoom 호스트·특정 내담자 등) — dry-run 먼저
+$PY manage.py ops_production_fixup
+$PY manage.py ops_production_fixup --apply
+
+# 1회기 로스터 복구
+$PY manage.py repair_session1_confirmations
+$PY manage.py repair_session1_confirmations --apply
+
+# 매칭 대기 테스트 계정 삭제
+$PY manage.py purge_client_accounts
+$PY manage.py purge_client_accounts --apply
+
+# Zoom join URL 일괄 sync (위험 — dry-run 필수)
+$PY manage.py sync_zoom_join_urls --dry-run
 ```
 
 > **주의:** 새 커밋에 **데이터 변경 마이그레이션**(`RunPython` 등)이 포함되면 `migrate`만으로도 DB가 바뀔 수 있습니다. 배포 전 `python manage.py showmigrations --plan`으로 미적용 migration을 확인하세요.
