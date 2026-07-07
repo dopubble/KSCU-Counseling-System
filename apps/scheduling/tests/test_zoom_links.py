@@ -178,14 +178,21 @@ class ZoomLinkResolverTests(TestCase):
         self.assertIn("counselor@example.com", recipients)
         self.assertIn("81733363550", mail.outbox[0].body)
 
+    @patch("apps.scheduling.services.get_zoom_meeting")
+    @patch("apps.scheduling.services.update_zoom_meeting_participant_settings")
     @patch("apps.scheduling.services.create_zoom_meeting")
-    def test_create_zoom_meeting_notifies_when_link_changes(self, mock_create):
-        mock_create.return_value = {
+    def test_create_zoom_meeting_notifies_when_link_changes(
+        self, mock_create, mock_patch, mock_get
+    ):
+        meeting_payload = {
             "id": "99999999999",
             "join_url": "https://zoom.us/j/99999999999",
             "start_url": "https://zoom.us/s/new",
             "password": "",
         }
+        mock_create.return_value = meeting_payload
+        mock_patch.return_value = {}
+        mock_get.return_value = meeting_payload
         with override_settings(
             EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
             EMAIL_ASYNC=False,

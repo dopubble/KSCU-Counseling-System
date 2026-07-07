@@ -213,6 +213,19 @@ def _create_zoom_meeting_for_appointment(
         host_user_email=host_email or None,
     )
 
+    meeting_id = str(meeting_data.get("id", "")).strip()
+    if meeting_id:
+        # 계정 기본값이 join_before_host를 덮어쓰는 경우가 있어 생성 직후 PATCH.
+        try:
+            update_zoom_meeting_participant_settings(meeting_id)
+            meeting_data = get_zoom_meeting(meeting_id)
+        except ZoomAPIError as exc:
+            logger.warning(
+                "Zoom meeting %s settings patch after create failed: %s",
+                meeting_id,
+                exc,
+            )
+
     join_url = (meeting_data.get("join_url") or "").strip()
     start_url = (meeting_data.get("start_url") or "").strip()
     if not join_url and not start_url:
