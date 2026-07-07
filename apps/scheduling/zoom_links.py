@@ -9,6 +9,10 @@ if TYPE_CHECKING:
     from apps.scheduling.models import Appointment
 
 
+class ZoomLaunchPolicyError(RuntimeError):
+    """상담사·내담자 UI에 호스트 전용 URL이 노출될 때."""
+
+
 def appointment_zoom_link_is_locked(appointment: "Appointment") -> bool:
     """
     확정 예약에 join_url·meeting_id가 저장되어 있으면 True.
@@ -28,6 +32,51 @@ def is_zoom_host_url(url: str) -> bool:
     if not normalized:
         return False
     return "/s/" in normalized or "zak=" in normalized
+
+
+def sanitize_participant_zoom_url(url: str) -> str:
+    """
+    UI·이메일·알림용 참가 URL만 반환.
+    호스트 전용 URL이 들어오면 빈 문자열(버튼 비활성) — 로그인 차단 화면 방지.
+    """
+    normalized = (url or "").strip()
+    if not normalized or is_zoom_host_url(normalized):
+        return ""
+    return normalized
+
+
+def verify_counselor_zoom_join_policy() -> None:
+    """
+    배포 전 검사 — 상담사·내담자 resolver가 join_url만 반환하는지 확인.
+    start_url 우선 로직이 다시 들어가면 배포를 막는다.
+    """
+    class _StubZoom:
+        join_url = "https://zoom.us/j/81733363550"
+        start_url = "https://zoom.us/s/81733363550?zak=secret"
+
+    class _StubApt:
+        zoom_meeting = _StubZoom()
+
+    class _StubCase:
+        zoom_meeting_url = "https://zoom.us/j/stale"
+
+    apt = _StubApt()
+    case = _StubCase()
+    join_url = resolve_appointment_zoom_join_url(apt, case)
+    counselor_url = resolve_appointment_zoom_counselor_url(apt, case)
+    if not join_url or is_zoom_host_url(join_url):
+        raise ZoomLaunchPolicyError(
+            "resolve_appointment_zoom_join_url이 참가 URL(/j/)을 반환하지 않습니다."
+        )
+    if counselor_url != join_url:
+        raise ZoomLaunchPolicyError(
+            "상담사·내담자 Zoom URL이 달라졌습니다. "
+            "상담사는 join_url + Claim Host만 사용해야 합니다."
+        )
+    if is_zoom_host_url(counselor_url):
+        raise ZoomLaunchPolicyError(
+            "상담사 Zoom URL이 호스트 전용(/s/)입니다. 배포 시 상담 입장 장애가 납니다."
+        )
 
 
 def resolve_appointment_zoom_counselor_url(
@@ -63,11 +112,9 @@ def resolve_appointment_zoom_join_url(
         return ""
     zoom = getattr(appointment, "zoom_meeting", None)
     if zoom and (zoom.join_url or "").strip():
-        return zoom.join_url.strip()
+        return sanitize_participant_zoom_url(zoom.join_url)
     case_url = (case.zoom_meeting_url or "").strip()
-    if case_url and not is_zoom_host_url(case_url):
-        return case_url
-    return ""
+    return sanitize_participant_zoom_url(case_url)
 
 
 def capture_appointment_zoom_join_url(appointment: "Appointment") -> str:

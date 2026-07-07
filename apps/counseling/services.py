@@ -1596,11 +1596,13 @@ class CounselorSessionCardView:
 
     @property
     def zoom_url(self) -> str:
-        """상담사·내담자 공통 join_url (레거시 — start_url 미사용)."""
+        """상담사 입장 — join_url + Claim Host (start_url 미사용)."""
+        from apps.scheduling.zoom_links import resolve_appointment_zoom_counselor_url
+
         appointment = self.appointment
         if appointment is None:
             return self._card.zoom_url
-        return _resolve_appointment_zoom_url(appointment, appointment.case)
+        return resolve_appointment_zoom_counselor_url(appointment, appointment.case)
 
     @property
     def show_zoom_host_key_help(self) -> bool:

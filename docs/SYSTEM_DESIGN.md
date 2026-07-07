@@ -795,12 +795,12 @@ Appointment CONFIRMED
     → 알림 발송 (join_url)
 ```
 
-### 11.3 보안
+### 11.3 입장 URL (운영)
 
-- 내담자: `join_url`만 제공
-- 상담사: `start_url` (Host)
-- Waiting Room 활성화
-- 미팅 패스워드 자동 생성
+- **내담자·상담사·이메일·알림**: `join_url` (`/j/`)만 사용
+- **상담사 호스트 권한**: `join_url` 입장 후 **Claim Host** + `ZOOM_HOST_KEY`(또는 회기별 `counselor_host_key`)
+- **`start_url` (`/s/`)**: Zoom API 보관용. 기관 Zoom 계정 로그인 전용이라 상담사 UI에 연결하지 않음
+- 회의 설정: `join_before_host: true`, `waiting_room: false`
 
 ### 11.4 (선택) Webhook
 

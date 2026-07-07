@@ -19,13 +19,20 @@ from apps.counseling.models import (
     CounselingApplication,
     CounselingMethod,
 )
-from apps.counseling.services import _resolve_appointment_zoom_url
+from apps.counseling.services import (
+    CounselorSessionCardView,
+    _resolve_appointment_zoom_url,
+    build_case_session_cards,
+)
 from apps.scheduling.models import Appointment, AppointmentStatus
 from apps.scheduling.services import _create_zoom_meeting_for_appointment
 from apps.scheduling.zoom_links import (
     appointment_zoom_link_is_locked,
     resolve_appointment_zoom_join_url,
+    sanitize_participant_zoom_url,
     sync_case_zoom_meeting_url,
+    verify_counselor_zoom_join_policy,
+    ZoomLaunchPolicyError,
 )
 from apps.sessions_app.models import ZoomMeeting
 
@@ -109,6 +116,29 @@ class ZoomLinkResolverTests(TestCase):
         zm.save(update_fields=["counselor_host_key"])
         apt = Appointment.objects.select_related("zoom_meeting").get(pk=self.appointment.pk)
         self.assertEqual(appointment_counselor_host_key(apt), "877273")
+
+    def test_sanitize_participant_zoom_url_rejects_host_urls(self):
+        self.assertEqual(
+            sanitize_participant_zoom_url("https://zoom.us/j/81733363550"),
+            "https://zoom.us/j/81733363550",
+        )
+        self.assertEqual(sanitize_participant_zoom_url("https://zoom.us/s/host"), "")
+        self.assertEqual(
+            sanitize_participant_zoom_url("https://zoom.us/j/1?zak=token"),
+            "",
+        )
+
+    def test_verify_counselor_zoom_join_policy(self):
+        verify_counselor_zoom_join_policy()
+
+    def test_counselor_session_card_uses_join_url_not_start_url(self):
+        self.case.total_sessions = 3
+        self.case.save(update_fields=["total_sessions"])
+        cards = build_case_session_cards(self.case)
+        card = next(c for c in cards if c.session_number == 1)
+        view = CounselorSessionCardView(card)
+        self.assertIn("/j/", view.zoom_url)
+        self.assertNotIn("/s/", view.zoom_url)
 
     def test_sync_case_zoom_meeting_url_updates_case_from_appointment(self):
         sync_case_zoom_meeting_url(

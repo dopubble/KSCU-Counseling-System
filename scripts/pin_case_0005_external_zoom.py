@@ -6,7 +6,8 @@ Railway Shell:
 
 전체 복사 후 DRY_RUN=True 로 1회, 확인 후 False 로 재실행.
 
-주의: 상담사 start_url·회기별 호스트 키 UI는 코드 배포(migrate 포함) 후 동작합니다.
+주의: 상담사·내담자 UI는 join_url(/j/)만 사용. start_url은 DB 보관용.
+    상담사 호스트 권한은 Claim Host + counselor_host_key(또는 ZOOM_HOST_KEY).
 """
 
 from datetime import datetime, timedelta

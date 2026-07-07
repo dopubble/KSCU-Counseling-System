@@ -7,6 +7,8 @@ import os
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
+from apps.scheduling.zoom_links import ZoomLaunchPolicyError, verify_counselor_zoom_join_policy
+
 
 def _on_railway() -> bool:
     return bool(
@@ -23,7 +25,16 @@ class Command(BaseCommand):
     )
 
     def handle(self, *args, **options):
+        try:
+            verify_counselor_zoom_join_policy()
+        except ZoomLaunchPolicyError as exc:
+            raise CommandError(
+                f"Zoom 입장 URL 정책 위반: {exc} "
+                "상담사 버튼은 join_url(/j/)만 사용해야 합니다."
+            ) from exc
+
         if not _on_railway():
+            self.stdout.write(self.style.SUCCESS("check_deploy_safety: Zoom join_url 정책 ok"))
             self.stdout.write(
                 self.style.NOTICE(
                     "check_deploy_safety: Railway가 아니므로 미디어 검사를 건너뜁니다."
@@ -42,6 +53,7 @@ class Command(BaseCommand):
                 "docs/RAILWAY_DEPLOY.md §9.1 참고."
             )
 
+        self.stdout.write(self.style.SUCCESS("check_deploy_safety: Zoom join_url 정책 ok"))
         self.stdout.write(
             self.style.SUCCESS(
                 f"check_deploy_safety: ok (media={mode}, MEDIA_ROOT={media_root})"

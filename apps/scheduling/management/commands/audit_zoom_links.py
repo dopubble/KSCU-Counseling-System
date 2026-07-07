@@ -12,6 +12,7 @@ from django.utils import timezone
 from apps.scheduling.zoom_hosts import host_id_for_email
 from apps.scheduling.zoom_links import (
     appointment_zoom_link_is_locked,
+    is_zoom_host_url,
     resolve_appointment_zoom_join_url,
 )
 from apps.scheduling.models import Appointment, AppointmentStatus
@@ -114,12 +115,14 @@ class Command(BaseCommand):
         mismatch_rows = 0
         case_stale_rows = 0
         missing_rows = 0
+        host_url_rows = 0
         for apt in appointments:
             case = apt.case
             zm = getattr(apt, "zoom_meeting", None)
             active_url = resolve_appointment_zoom_join_url(apt, case)
             case_url = (case.zoom_meeting_url or "").strip()
             db_join = (zm.join_url if zm else "") or ""
+            db_start = (zm.start_url if zm else "") or ""
             db_meeting_id = (zm.zoom_meeting_id if zm else "") or ""
             host_email = (zm.zoom_host_email if zm else "") or ""
             host_id = host_id_for_email(host_email) or (
@@ -143,6 +146,7 @@ class Command(BaseCommand):
                 and active_url.rstrip("/") != case_url.rstrip("/")
             )
             missing_zoom = not locked
+            host_url_risk = bool(active_url) and is_zoom_host_url(active_url)
 
             if not email_dashboard_match:
                 mismatch_rows += 1
@@ -150,6 +154,8 @@ class Command(BaseCommand):
                 case_stale_rows += 1
             if missing_zoom:
                 missing_rows += 1
+            if host_url_risk:
+                host_url_rows += 1
 
             if options.get("missing_only") and not missing_zoom:
                 continue
@@ -171,6 +177,16 @@ class Command(BaseCommand):
             )
             self.stdout.write(f"  case_url (Case DB): {case_url or '(empty)'}")
             self.stdout.write(f"  db_join (ZoomMeeting): {db_join or '(empty)'}")
+            if db_start:
+                self.stdout.write(
+                    f"  db_start (API 보관, UI 미사용): {db_start[:80]}{'…' if len(db_start) > 80 else ''}"
+                )
+            if host_url_risk:
+                self.stdout.write(
+                    self.style.ERROR(
+                        "  CRITICAL: active_url이 호스트 URL — 상담사 로그인 차단 화면 위험"
+                    )
+                )
             self.stdout.write(
                 f"  meeting_id: active={active_mid or '-'} case={case_mid or '-'} "
                 f"db_join={join_mid or '-'}"
@@ -200,7 +216,7 @@ class Command(BaseCommand):
         self.stdout.write(
             f"Checked {len(appointments)} appointment(s), "
             f"real mismatches: {mismatch_rows}, case_url stale: {case_stale_rows}, "
-            f"missing zoom: {missing_rows}"
+            f"missing zoom: {missing_rows}, host_url risk: {host_url_rows}"
         )
         if case_stale_rows:
             self.stdout.write(

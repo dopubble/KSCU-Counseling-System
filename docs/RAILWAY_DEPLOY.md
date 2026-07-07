@@ -252,7 +252,7 @@ S3(R2 등) 사용 시: `MEDIA_USE_S3=true`와 `AWS_STORAGE_BUCKET_NAME`, `AWS_AC
 
 | 단계 | 내용 |
 |------|------|
-| `check_deploy_safety` | Volume/S3 미설정 시 배포 중단 |
+| `check_deploy_safety` | Volume/S3 미설정 시 배포 중단 + **Zoom join_url 정책 검사** |
 | `migrate` | **새 마이그레이션만** DB 스키마 반영 |
 | `collectstatic` | 빌드 시 정적 파일만 갱신 (DB·미디어 무관) |
 | Gunicorn 재시작 | 프로세스만 교체 (Postgres·Volume 데이터 유지) |
@@ -274,6 +274,10 @@ python manage.py purge_client_accounts --apply
 
 # Zoom join URL 일괄 sync (위험 — dry-run 필수)
 python manage.py sync_zoom_join_urls --dry-run
+
+# 상담 전 Zoom 점검 (오늘·내일 확정 비대면 — join 누락·호스트 URL 위험)
+python manage.py check_zoom_upcoming
+python manage.py check_zoom_upcoming --days 2 --strict
 ```
 
 > **주의:** 새 커밋에 **데이터 변경 마이그레이션**(`RunPython` 등)이 포함되면 `migrate`만으로도 DB가 바뀔 수 있습니다. 배포 전 `python manage.py showmigrations --plan`으로 미적용 migration을 확인하세요.

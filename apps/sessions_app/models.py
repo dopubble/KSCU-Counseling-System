@@ -160,7 +160,12 @@ class ZoomMeeting(models.Model):
     )
     zoom_meeting_id = models.CharField("Zoom Meeting ID", max_length=100)
     join_url = models.URLField("참가 URL", max_length=2000)
-    start_url = models.URLField("호스트 URL", max_length=2000, blank=True)
+    start_url = models.URLField(
+        "호스트 URL",
+        max_length=2000,
+        blank=True,
+        help_text="Zoom API 보관용(/s/, zak=). 상담사·내담자 UI·메일에는 사용하지 않음.",
+    )
     password = models.CharField("비밀번호", max_length=50, blank=True)
     zoom_host_email = models.EmailField(
         "Zoom 호스트(Licensed 사용자)",
