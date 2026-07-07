@@ -67,7 +67,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--continue-on-error",
             action="store_true",
-            help="예외·오류가 있어도 exit code 0 (Railway preDeploy용)",
+            help="예외·오류가 있어도 exit code 0",
         )
         parser.add_argument(
             "--reschedule-confirmed",

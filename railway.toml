@@ -7,6 +7,7 @@ builder = "nixpacks"
 buildCommand = "python manage.py collectstatic --noinput"
 
 [deploy]
+# preDeploy: check_deploy_safety + migrate only (see scripts/railway_predeploy.sh)
 preDeployCommand = "sh scripts/railway_predeploy.sh"
 startCommand = "gunicorn kscu_counseling.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --worker-class gthread --threads 4 --timeout 120 --graceful-timeout 30 --keep-alive 5"
 restartPolicyType = "ON_FAILURE"

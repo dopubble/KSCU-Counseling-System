@@ -64,7 +64,7 @@ Nixpacks가 **루트 `requirements.txt`**(운영 의존성)를 자동 설치합�
 | 항목 | 값 |
 |------|-----|
 | **Build Command** | `python manage.py collectstatic --noinput` |
-| **Pre-deploy Command** | `python manage.py migrate --noinput` |
+| **Pre-deploy Command** | `sh scripts/railway_predeploy.sh` (`check_deploy_safety` + `migrate`만) |
 | **Start Command** | `gunicorn kscu_counseling.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120` |
 
 대시보드에서 `railway.toml`을 쓰지 않을 경우 위 명령을 **Settings → Deploy**에 직접 입력하세요.
@@ -242,7 +242,41 @@ STAFF_NOTIFY_EMAILS=
 4. 재배포 후 상담사가 **과제를 다시 제출** (이전 업로드 파일은 복구되지 않음)
 5. 이후 ZIP·개별 다운로드가 정상 동작
 
-S3(R2 등) 사용 시: `AWS_STORAGE_BUCKET_NAME`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` 설정 (선택: `AWS_S3_ENDPOINT_URL`, `AWS_S3_REGION_NAME`)
+S3(R2 등) 사용 시: `MEDIA_USE_S3=true`와 `AWS_STORAGE_BUCKET_NAME`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` 설정 (선택: `AWS_S3_ENDPOINT_URL`, `AWS_S3_REGION_NAME`)
+
+`MEDIA_ROOT` 또는 S3 없이 배포하면 `check_deploy_safety`가 **배포를 중단**합니다 (에페메럴 디스크 유실 방지).
+
+### 9.2 안전한 배포 정책 (코드만 반영)
+
+**일상 배포(preDeploy)에서 자동 실행되는 것**
+
+| 단계 | 내용 |
+|------|------|
+| `check_deploy_safety` | Volume/S3 미설정 시 배포 중단 |
+| `migrate` | **새 마이그레이션만** DB 스키마 반영 |
+| `collectstatic` | 빌드 시 정적 파일만 갱신 (DB·미디어 무관) |
+| Gunicorn 재시작 | 프로세스만 교체 (Postgres·Volume 데이터 유지) |
+
+**배포 시 자동 실행되지 않음** (필요할 때만 Railway Shell에서 수동):
+
+```bash
+# 운영 일괄 수정 (Zoom 호스트·특정 내담자 등) — dry-run 먼저
+python manage.py ops_production_fixup
+python manage.py ops_production_fixup --apply
+
+# 1회기 로스터 복구
+python manage.py repair_session1_confirmations
+python manage.py repair_session1_confirmations --apply
+
+# 매칭 대기 테스트 계정 삭제
+python manage.py purge_client_accounts
+python manage.py purge_client_accounts --apply
+
+# Zoom join URL 일괄 sync (위험 — dry-run 필수)
+python manage.py sync_zoom_join_urls --dry-run
+```
+
+> **주의:** 새 커밋에 **데이터 변경 마이그레이션**(`RunPython` 등)이 포함되면 `migrate`만으로도 DB가 바뀔 수 있습니다. 배포 전 `python manage.py showmigrations --plan`으로 미적용 migration을 확인하세요.
 
 ---
 
@@ -264,6 +298,7 @@ Railway Project: kscu-counseling
 |------|------|
 | `kscu_counseling/settings/production.py` | HTTPS·CSRF·WhiteNoise |
 | `railway.toml` | Web 빌드/배포 명령 |
+| `scripts/railway_predeploy.sh` | 배포 전 안전 검사 + migrate |
 | `scripts/railway_web.sh` | Web Start Command 참고 |
 | `scripts/railway_celery.sh` | Celery Start Command 참고 |
 | `requirements/prod.txt` | gunicorn, whitenoise |
