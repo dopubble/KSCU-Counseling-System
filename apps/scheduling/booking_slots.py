@@ -405,6 +405,7 @@ class MonthBookingContext:
                 )
                 zoom_remaining = remote_zoom_same_start_remaining(
                     scheduled_at=slot_start,
+                    duration_minutes=self.duration_minutes,
                     exclude_appointment_id=self.exclude_appointment_id,
                 )
             slots.append(

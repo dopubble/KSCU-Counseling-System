@@ -99,8 +99,9 @@ def assign_host_emails_for_appointments(
     """
     겹치는 비대면 예약에 Licensed 이메일 배정.
 
-    1) 확정 순(confirmed_at)으로 DB 저장 호스트를 우선 점유(먼저 잡은 회기 유지)
-    2) 나머지는 상담 시각 순 → 같은 시각이면 확정 빠른 순으로 빈 호스트 배정
+    확정 순(confirmed_at) → 같은 순서면 상담 시각 → pk 순으로
+    빈 호스트를 배정한다. 버퍼 안에서 호스트가 없으면 해당 건은 결과에 없음(예약 불가).
+    Licensed 풀 외(hakyss 등) 저장 호스트는 이 함수에서 건너뛴다.
     """
     licensed_emails = get_zoom_licensed_user_emails()
     if not licensed_emails:
@@ -132,43 +133,18 @@ def assign_host_emails_for_appointments(
     def _reserve(host_id: str, interval: CalendarInterval) -> None:
         host_schedules[host_id].append((interval.start, _occupied_end(interval)))
 
-    # Pass 1 — 먼저 확정된 예약의 저장 호스트 유지
-    pin_order = sorted(
-        remote_pairs,
-        key=lambda pair: (
-            pair[0].confirmed_at or _SORT_LAST,
-            pair[1].start,
-            pair[0].pk,
-        ),
-    )
-    for apt, interval in pin_order:
-        if apt.status != AppointmentStatus.CONFIRMED:
-            continue
+    def _order_key(pair: tuple) -> tuple:
+        apt, interval = pair
+        if apt.status == AppointmentStatus.CONFIRMED and apt.confirmed_at:
+            return (apt.confirmed_at, interval.start, apt.pk or 0)
+        return (_SORT_LAST, interval.start, apt.pk or 0)
+
+    for apt, interval in sorted(remote_pairs, key=_order_key):
         zoom = getattr(apt, "zoom_meeting", None)
         stored = (zoom.zoom_host_email or "").strip().lower() if zoom else ""
-        if not stored or stored not in licensed_set:
+        if stored and stored not in licensed_set:
             continue
-        host_id = host_id_for_email(stored)
-        if not host_id:
-            continue
-        occ_end = _occupied_end(interval)
-        if _host_is_free(host_id, interval.start, occ_end):
-            _reserve(host_id, interval)
-            result[str(apt.pk)] = stored
 
-    # Pass 2 — 미배정 건: 상담 시각 순 배정
-    assign_order = sorted(
-        remote_pairs,
-        key=lambda pair: (
-            pair[1].start,
-            pair[0].confirmed_at or _SORT_LAST,
-            pair[0].pk,
-        ),
-    )
-    for apt, interval in assign_order:
-        pk = str(apt.pk)
-        if pk in result:
-            continue
         occ_end = _occupied_end(interval)
         assigned_host: str | None = None
         for host in pool:
@@ -180,9 +156,29 @@ def assign_host_emails_for_appointments(
         _reserve(assigned_host, interval)
         email = email_for_host_id(assigned_host)
         if email:
-            result[pk] = email
+            result[str(apt.pk)] = email
 
     return result
+
+
+def remote_slot_candidate(
+    candidate_key: str,
+    *,
+    scheduled_at: datetime,
+    duration_minutes: int,
+):
+    """용량 검사용 미저장 비대면 후보(확정 순서상 마지막)."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        pk=candidate_key,
+        status=AppointmentStatus.PENDING,
+        confirmed_at=None,
+        scheduled_at=scheduled_at,
+        duration_minutes=duration_minutes,
+        case=SimpleNamespace(counseling_method=CounselingMethod.REMOTE),
+        zoom_meeting=None,
+    )
 
 
 def resolve_zoom_host_email_for_appointment(appointment: Appointment) -> str:

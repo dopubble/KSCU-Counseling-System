@@ -123,3 +123,28 @@ class ZoomHostAssignmentTests(TestCase):
         emails = assign_host_emails_for_appointments([kim, sun])
         self.assertEqual(emails["101"], HOST_01)
         self.assertEqual(emails["102"], HOST_02)
+
+    @override_settings(
+        ZOOM_LICENSED_USERS="sscukscu@gmail.com,sedulife@mail.kcu.ac",
+        ZOOM_HOST_BUFFER_MINUTES=30,
+    )
+    def test_pending_second_overlapping_booker_gets_host02(self):
+        """확정 전 2번째 예약(Zoom 미생성)도 resolve 시 host_02 배정."""
+        day = timezone.make_aware(datetime(2026, 7, 8, 11, 0), KST)
+        kim = _remote_appointment(
+            201,
+            day,
+            confirmed_at=timezone.make_aware(datetime(2026, 7, 1, 9, 0), KST),
+            host_email=HOST_01,
+        )
+        pending = _remote_appointment(
+            202,
+            day + timedelta(minutes=30),
+            confirmed_at=None,
+            host_email="",
+        )
+        pending.status = AppointmentStatus.PENDING
+        pending.zoom_meeting = None
+        emails = assign_host_emails_for_appointments([kim, pending])
+        self.assertEqual(emails["201"], HOST_01)
+        self.assertEqual(emails["202"], HOST_02)

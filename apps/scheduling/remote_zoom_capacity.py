@@ -1,88 +1,46 @@
-"""비대면(Zoom) 동시 예약 용량 — 동시간대 상한·호스트 풀·30분 버퍼."""
+"""비대면(Zoom) 동시 예약 용량 — zoom_capacity + 호스트 배정 조합."""
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from apps.counseling.models import CounselingMethod
-from apps.reports.appointment_calendar import (
-    CalendarInterval,
-    _calendar_localtime,
-    assign_zoom_hosts,
-)
+from apps.reports.appointment_calendar import _calendar_localtime
 from apps.scheduling.constants import DEFAULT_APPOINTMENT_DURATION_MINUTES
-from apps.scheduling.models import Appointment, AppointmentStatus
-from apps.scheduling.zoom_hosts import get_zoom_licensed_user_emails
-from apps.scheduling.zoom_scheduling_settings import (
-    get_remote_zoom_simultaneous_capacity,
-    remote_zoom_host_pool_size,
+from apps.scheduling.models import Appointment
+from apps.scheduling.zoom_capacity import (
+    REMOTE_ZOOM_CAPACITY_FULL_MESSAGE,
+    appointment_duration_minutes,
+    check_remote_zoom_buffer_capacity,
+    count_buffer_overlapping_confirmed_remote,
+    is_remote_zoom_buffer_slot_available,
+    remote_zoom_buffer_overlapping_remaining,
+    remote_zoom_capacity_limit,
+    remote_zoom_licensed_slot_limit,
+)
+from apps.scheduling.zoom_hosts import (
+    assign_host_emails_for_appointments,
+    confirmed_remote_appointments_queryset,
+    host_id_for_email,
+    remote_slot_candidate,
 )
 
-REMOTE_ZOOM_CAPACITY_FULL_MESSAGE = (
-    "해당 시간대 비대면 상담 예약이 만석입니다. 다른 시간을 선택해 주세요."
-)
-
-
-def appointment_duration_minutes(appointment: Appointment) -> int:
-    duration = appointment.duration_minutes or DEFAULT_APPOINTMENT_DURATION_MINUTES
-    return duration if duration > 0 else DEFAULT_APPOINTMENT_DURATION_MINUTES
-
-
-def remote_zoom_capacity_limit() -> int:
-    """예약 UI·API — 같은 시작 시각 동시 확정 상한 (기본 2, 관리자 조정 가능)."""
-    return get_remote_zoom_simultaneous_capacity()
-
-
-def _slot_start_key(dt: datetime) -> datetime:
-    return _calendar_localtime(dt).replace(second=0, microsecond=0)
-
-
-def _candidate_interval_id(*, appointment_id, scheduled_at: datetime) -> str:
-    if appointment_id:
-        return str(appointment_id)
-    return f"candidate:{scheduled_at.isoformat()}"
-
-
-def _confirmed_remote_intervals(
-    *,
-    exclude_appointment_id=None,
-) -> list[CalendarInterval]:
-    peers = Appointment.objects.filter(
-        status=AppointmentStatus.CONFIRMED,
-        case__counseling_method=CounselingMethod.REMOTE,
-    ).select_related("case")
-    if exclude_appointment_id:
-        peers = peers.exclude(pk=exclude_appointment_id)
-
-    intervals: list[CalendarInterval] = []
-    for appointment in peers.iterator():
-        start = _calendar_localtime(appointment.scheduled_at)
-        end = start + timedelta(minutes=appointment_duration_minutes(appointment))
-        intervals.append(
-            CalendarInterval(
-                appointment_id=str(appointment.pk),
-                start=start,
-                end=end,
-                is_remote=True,
-            )
-        )
-    return intervals
-
-
-def count_same_start_confirmed_remote(
-    *,
-    scheduled_at: datetime,
-    exclude_appointment_id=None,
-) -> int:
-    """같은 시작 시각(분 단위) 확정 비대면 예약 수."""
-    target = _slot_start_key(scheduled_at)
-    return sum(
-        1
-        for peer in _confirmed_remote_intervals(
-            exclude_appointment_id=exclude_appointment_id
-        )
-        if _slot_start_key(peer.start) == target
-    )
+# 하위 호환 re-export
+__all__ = [
+    "REMOTE_ZOOM_CAPACITY_FULL_MESSAGE",
+    "appointment_duration_minutes",
+    "remote_zoom_capacity_limit",
+    "remote_zoom_licensed_slot_limit",
+    "count_buffer_overlapping_confirmed_remote",
+    "count_overlapping_confirmed_remote",
+    "remote_zoom_buffer_overlapping_remaining",
+    "remote_zoom_same_start_remaining",
+    "zoom_host_assignable_for_slot",
+    "is_remote_zoom_slot_available",
+    "check_remote_zoom_capacity",
+    "ensure_remote_zoom_capacity",
+    "get_remote_zoom_busy_intervals",
+]
 
 
 def count_overlapping_confirmed_remote(
@@ -91,30 +49,32 @@ def count_overlapping_confirmed_remote(
     duration_minutes: int,
     exclude_appointment_id=None,
 ) -> int:
-    """버퍼 포함 겹침 수 — 레거시·잔여 좌석 추정용."""
-    from apps.reports.appointment_calendar import intervals_conflict_with_buffer
-
-    start = _calendar_localtime(scheduled_at)
-    end = start + timedelta(minutes=duration_minutes)
-    count = 0
-    for peer in _confirmed_remote_intervals(exclude_appointment_id=exclude_appointment_id):
-        if intervals_conflict_with_buffer(start, end, peer.start, peer.end):
-            count += 1
-    return count
+    """버퍼 포함 겹침 수 (zoom_capacity 단일 규칙)."""
+    return count_buffer_overlapping_confirmed_remote(
+        scheduled_at=scheduled_at,
+        duration_minutes=duration_minutes,
+        exclude_appointment_id=exclude_appointment_id,
+    )
 
 
 def remote_zoom_same_start_remaining(
     *,
     scheduled_at: datetime,
+    duration_minutes: int = DEFAULT_APPOINTMENT_DURATION_MINUTES,
     exclude_appointment_id=None,
 ) -> int:
-    """같은 시작 시각 기준 남은 동시 확정 슬롯."""
-    cap = remote_zoom_capacity_limit()
-    used = count_same_start_confirmed_remote(
+    """슬롯 UI — 버퍼 포함 겹침 기준 남은 좌석 (하위 호환 함수명)."""
+    return remote_zoom_buffer_overlapping_remaining(
         scheduled_at=scheduled_at,
+        duration_minutes=duration_minutes,
         exclude_appointment_id=exclude_appointment_id,
     )
-    return max(0, cap - used)
+
+
+def _candidate_interval_id(*, appointment_id, scheduled_at: datetime) -> str:
+    if appointment_id:
+        return str(appointment_id)
+    return f"candidate:{scheduled_at.isoformat()}"
 
 
 def zoom_host_assignable_for_slot(
@@ -124,45 +84,32 @@ def zoom_host_assignable_for_slot(
     exclude_appointment_id=None,
     candidate_id: str | None = None,
 ) -> tuple[bool, str | None]:
-    """
-    신규·변경 슬롯에 배정 가능한 Zoom 호스트가 있는지.
+    """Licensed 호스트 풀에 배정 가능한지 (용량 통과 후 호스트 배정)."""
+    from apps.scheduling.zoom_scheduling_settings import remote_zoom_host_pool_size
 
-    1) 같은 시작 시각 확정 건수가 simultaneous 상한 이상이면 불가.
-    2) Licensed 전체 호스트 풀(host_03 포함)로 버퍼 포함 배정 시도.
-    """
     if remote_zoom_host_pool_size() <= 0:
         return True, None
 
     start = _calendar_localtime(scheduled_at)
-    end = start + timedelta(minutes=duration_minutes)
     candidate_key = candidate_id or _candidate_interval_id(
         appointment_id=exclude_appointment_id,
         scheduled_at=start,
     )
 
-    simultaneous = remote_zoom_capacity_limit()
-    same_start = count_same_start_confirmed_remote(
-        scheduled_at=start,
-        exclude_appointment_id=exclude_appointment_id,
-    )
-    if same_start >= simultaneous:
-        return False, None
+    peers = list(confirmed_remote_appointments_queryset())
+    if exclude_appointment_id:
+        peers = [apt for apt in peers if apt.pk != exclude_appointment_id]
 
-    peers = _confirmed_remote_intervals(exclude_appointment_id=exclude_appointment_id)
-    intervals = list(peers)
-    intervals.append(
-        CalendarInterval(
-            appointment_id=candidate_key,
-            start=start,
-            end=end,
-            is_remote=True,
-        )
+    candidate = remote_slot_candidate(
+        candidate_key,
+        scheduled_at=scheduled_at,
+        duration_minutes=duration_minutes,
     )
-    assignments = assign_zoom_hosts(intervals)
-    host_id = assignments.get(candidate_key)
-    if host_id:
-        return True, host_id
-    return False, None
+    assignments = assign_host_emails_for_appointments(peers + [candidate])
+    email = (assignments.get(candidate_key) or "").strip()
+    if not email:
+        return False, None
+    return True, host_id_for_email(email)
 
 
 def is_remote_zoom_slot_available(
@@ -171,6 +118,13 @@ def is_remote_zoom_slot_available(
     duration_minutes: int = DEFAULT_APPOINTMENT_DURATION_MINUTES,
     exclude_appointment_id=None,
 ) -> bool:
+    """① 80분 버퍼 윈도우 내 REMOTE < limit  ② Licensed 호스트 배정 가능."""
+    if not is_remote_zoom_buffer_slot_available(
+        scheduled_at=scheduled_at,
+        duration_minutes=duration_minutes,
+        exclude_appointment_id=exclude_appointment_id,
+    ):
+        return False
     ok, _host_id = zoom_host_assignable_for_slot(
         scheduled_at=scheduled_at,
         duration_minutes=duration_minutes,
@@ -186,7 +140,7 @@ def check_remote_zoom_capacity(
     duration_minutes: int | None = None,
     exclude_appointment_id=None,
 ) -> tuple[bool, str]:
-    """비대면 예약이 Zoom 호스트 풀(버퍼 포함) 내인지 확인."""
+    """비대면 예약 용량 + 호스트 배정 가능 여부."""
     if appointment.case.counseling_method != CounselingMethod.REMOTE:
         return True, ""
 
@@ -201,13 +155,22 @@ def check_remote_zoom_capacity(
         if exclude_appointment_id is not None
         else appointment.pk
     )
-    ok, _host_id = zoom_host_assignable_for_slot(
+
+    ok, message = check_remote_zoom_buffer_capacity(
+        scheduled_at=when,
+        duration_minutes=duration,
+        exclude_appointment_id=exclude,
+    )
+    if not ok:
+        return False, message
+
+    host_ok, _host_id = zoom_host_assignable_for_slot(
         scheduled_at=when,
         duration_minutes=duration,
         exclude_appointment_id=exclude,
         candidate_id=str(exclude) if exclude else None,
     )
-    if not ok:
+    if not host_ok:
         return False, REMOTE_ZOOM_CAPACITY_FULL_MESSAGE
     return True, ""
 
@@ -238,11 +201,15 @@ def get_remote_zoom_busy_intervals(
     exclude_appointment_id=None,
 ) -> list[dict[str, str]]:
     """캘린더 UI용 — 구간과 겹치는 확정 비대면 예약 목록."""
+    from apps.scheduling.zoom_capacity import _confirmed_remote_intervals
+
     range_start = _calendar_localtime(range_start)
     range_end = _calendar_localtime(range_end)
 
     intervals: list[dict[str, str]] = []
-    for peer in _confirmed_remote_intervals(exclude_appointment_id=exclude_appointment_id):
+    for peer in _confirmed_remote_intervals(
+        exclude_appointment_id=exclude_appointment_id
+    ):
         if peer.start < range_end and peer.end > range_start:
             intervals.append(
                 {

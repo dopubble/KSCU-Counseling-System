@@ -95,9 +95,8 @@ class RemoteZoomSchedulingSettings(models.Model):
         "동시간대 비대면 최대 건수",
         default=2,
         help_text=(
-            "같은 시작 시각(예: 11:00)에 확정 가능한 비대면 상담 최대 건수. "
-            "ZOOM_LICENSED_USERS에 host_03 등을 추가하면 10시·11시 엇갈림 배정에만 "
-            "쓰이고, 이 값을 늘리지 않는 한 11시 3건은 불가합니다."
+            "Licensed Zoom 호스트 수 이하로 설정. "
+            "실제 예약 차단은 상담 50분+버퍼 30분(80분) 겹침 기준으로 적용됩니다."
         ),
     )
     updated_at = models.DateTimeField(auto_now=True)
@@ -236,6 +235,12 @@ class Appointment(models.Model):
     def appointment_datetime(self):
         """상담 예약 일시 (운영 규칙·취소 정책에서 사용)."""
         return self.scheduled_at
+
+    def clean(self):
+        from apps.scheduling.validators import validate_remote_zoom_concurrency
+
+        super().clean()
+        validate_remote_zoom_concurrency(self)
 
     def __str__(self):
         from apps.scheduling.availability import format_local_datetime

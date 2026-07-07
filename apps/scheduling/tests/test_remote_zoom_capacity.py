@@ -312,7 +312,8 @@ class RemoteZoomStaggeredHostTests(TestCase):
         self.counselor_b = _create_counselor("상담사B")
         self.counselor_c = _create_counselor("상담사C")
 
-    def test_10am_allowed_when_two_confirmed_at_11am(self):
+    def test_10am_blocked_when_two_confirmed_at_11am_overlap_buffer(self):
+        """11:00 2건 확정 시 10:00은 80분 버퍼 윈도우 겹침으로 불가."""
         case1 = _create_remote_case(_create_client("내담자1"), self.counselor_a, "A")
         case2 = _create_remote_case(_create_client("내담자2"), self.counselor_b, "B")
         _create_confirmed_remote_appointment(case1, scheduled_at=self.base)
@@ -330,7 +331,8 @@ class RemoteZoomStaggeredHostTests(TestCase):
             ),
             scheduled_at=slot_10,
         )
-        self.assertTrue(ok, message)
+        self.assertFalse(ok)
+        self.assertEqual(message, REMOTE_ZOOM_CAPACITY_FULL_MESSAGE)
 
     def test_third_11am_blocked_even_with_three_licensed_hosts(self):
         case1 = _create_remote_case(_create_client("내담자1"), self.counselor_a, "A")
