@@ -266,3 +266,18 @@ class RemoteZoomCapacityPolicyTests(TestCase):
         self.assertEqual(slot_10.zoom_remaining, 0)
         self.assertEqual(slot_11.state, "zoom_full")
         self.assertEqual(slot_11.zoom_remaining, 0)
+
+    def test_schedule_form_validates_without_case_on_instance(self):
+        """상담사 직접 예약 폼 — case 미연결 인스턴스 full_clean 시 500 방지."""
+        from apps.scheduling.forms import AppointmentScheduleForm
+
+        when = self.base + timedelta(hours=2)
+        form = AppointmentScheduleForm(
+            {
+                "scheduled_at": when.strftime("%Y-%m-%dT%H:%M"),
+                "duration_minutes": str(DEFAULT_APPOINTMENT_DURATION_MINUTES),
+            },
+            counselor_label=True,
+            calendar_picker=True,
+        )
+        self.assertTrue(form.is_valid(), form.errors)

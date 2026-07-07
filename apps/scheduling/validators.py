@@ -18,12 +18,14 @@ def validate_remote_zoom_concurrency(appointment) -> None:
     비대면 확정 예약 — 50분 상담 + 30분 버퍼 범위 내 동시 REMOTE 상한 검사.
     대면·취소·대기 예약은 검사하지 않는다.
     """
-    if appointment.case.counseling_method != CounselingMethod.REMOTE:
+    if not appointment.case_id:
         return
     if appointment.status not in (
         AppointmentStatus.CONFIRMED,
         AppointmentStatus.SCHEDULED,
     ):
+        return
+    if appointment.case.counseling_method != CounselingMethod.REMOTE:
         return
     if not appointment.scheduled_at:
         return
