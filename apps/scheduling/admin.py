@@ -3,7 +3,9 @@ from django.db import transaction
 from django.http import HttpResponseRedirect
 from django.urls import reverse
 
-from apps.counseling.models import CounselingMethod
+from apps.counseling.models import Case, CounselingMethod
+from apps.scheduling.zoom_links import appointment_zoom_link_is_locked
+from apps.sessions_app.models import ZoomMeeting
 
 from .models import (
     Appointment,
@@ -16,22 +18,81 @@ from .services import AppointmentServiceError, confirm_appointment_with_zoom
 from .utils import ZoomAPIError, ZoomNotConfiguredError
 
 
-def _admin_intends_remote_confirm(obj: Appointment, *, change: bool) -> bool:
-    """Admin에서 비대면 확정 처리(Zoom 발급)가 필요한 저장인지."""
-    if obj.status != AppointmentStatus.CONFIRMED:
+def _case_is_remote(case_id) -> bool:
+    if not case_id:
         return False
-    if not obj.case_id:
-        return False
-    if obj.case.counseling_method != CounselingMethod.REMOTE:
-        return False
-    if not change:
-        return True
-    prior_status = (
-        Appointment.objects.filter(pk=obj.pk)
-        .values_list("status", flat=True)
+    method = (
+        Case.objects.filter(pk=case_id)
+        .values_list("counseling_method", flat=True)
         .first()
     )
-    return prior_status != AppointmentStatus.CONFIRMED
+    return method == CounselingMethod.REMOTE
+
+
+def _appointment_lacks_zoom(appointment: Appointment) -> bool:
+    if not appointment.pk:
+        return True
+    zoom = (
+        ZoomMeeting.objects.filter(appointment_id=appointment.pk)
+        .only("join_url", "zoom_meeting_id")
+        .first()
+    )
+    if zoom is None:
+        return True
+    appointment.zoom_meeting = zoom
+    return not appointment_zoom_link_is_locked(appointment)
+
+
+def _previous_status_for_admin_save(
+    *,
+    obj: Appointment,
+    change: bool,
+    form,
+) -> str | None:
+    if not change:
+        return None
+    if form is not None:
+        initial = getattr(form, "initial", None) or {}
+        if "status" in initial:
+            return initial.get("status")
+    if obj.pk:
+        return (
+            Appointment.objects.filter(pk=obj.pk)
+            .values_list("status", flat=True)
+            .first()
+        )
+    return None
+
+
+def _admin_intends_remote_confirm(
+    obj: Appointment,
+    *,
+    change: bool,
+    form=None,
+) -> bool:
+    """
+    Admin에서 비대면 확정 + Zoom 발급이 필요한 저장인지.
+
+    - 신규(CONFIRMED) 또는 PENDING→CONFIRMED 전환: confirm_appointment_with_zoom
+    - 이미 CONFIRMED인데 ZoomMeeting이 없는 건(이전 패스로 깨진 상태): 재발급
+    """
+    if obj.status != AppointmentStatus.CONFIRMED:
+        return False
+    if not _case_is_remote(obj.case_id):
+        return False
+
+    if not change:
+        return True
+
+    previous_status = _previous_status_for_admin_save(
+        obj=obj,
+        change=change,
+        form=form,
+    )
+    if previous_status != AppointmentStatus.CONFIRMED:
+        return True
+
+    return _appointment_lacks_zoom(obj)
 
 
 @admin.register(RemoteZoomSchedulingSettings)
@@ -94,13 +155,14 @@ class AppointmentAdmin(admin.ModelAdmin):
 
     @transaction.atomic
     def save_model(self, request, obj, form, change):
-        if not _admin_intends_remote_confirm(obj, change=change):
+        if not _admin_intends_remote_confirm(obj, change=change, form=form):
             super().save_model(request, obj, form, change)
             return
 
         try:
             obj.status = AppointmentStatus.PENDING
             super().save_model(request, obj, form, change)
+            obj.refresh_from_db(fields=["status", "case_id", "scheduled_at", "duration_minutes"])
             confirm_appointment_with_zoom(obj, notify=True)
         except (
             AppointmentServiceError,

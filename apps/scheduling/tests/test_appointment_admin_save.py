@@ -102,7 +102,9 @@ class AppointmentAdminSaveModelTests(TestCase):
             status=AppointmentStatus.CONFIRMED,
             session_number=1,
         )
-        self.assertTrue(_admin_intends_remote_confirm(obj, change=False))
+        self.assertTrue(
+            _admin_intends_remote_confirm(obj, change=False, form=self.form)
+        )
 
     def test_admin_intends_remote_confirm_false_for_in_person(self):
         self.case.counseling_method = CounselingMethod.IN_PERSON
@@ -114,7 +116,86 @@ class AppointmentAdminSaveModelTests(TestCase):
             scheduled_at=self.scheduled_at,
             status=AppointmentStatus.CONFIRMED,
         )
-        self.assertFalse(_admin_intends_remote_confirm(obj, change=False))
+        self.assertFalse(
+            _admin_intends_remote_confirm(obj, change=False, form=self.form)
+        )
+
+    def test_admin_intends_remote_confirm_uses_fresh_case_from_db(self):
+        """폼 인스턴스에 캐시된 대면 Case가 있어도 DB가 REMOTE면 Zoom 경로."""
+        self.case.counseling_method = CounselingMethod.IN_PERSON
+        self.case.save(update_fields=["counseling_method"])
+        obj = Appointment(
+            case=self.case,
+            counselor=self.counselor,
+            client=self.client_user,
+            scheduled_at=self.scheduled_at,
+            status=AppointmentStatus.CONFIRMED,
+            session_number=4,
+        )
+        Case.objects.filter(pk=self.case.pk).update(
+            counseling_method=CounselingMethod.REMOTE
+        )
+        self.assertTrue(
+            _admin_intends_remote_confirm(obj, change=False, form=self.form)
+        )
+
+    def test_admin_intends_remote_confirm_for_pending_to_confirmed_edit(self):
+        appointment = Appointment.objects.create(
+            case=self.case,
+            counselor=self.counselor,
+            client=self.client_user,
+            scheduled_at=self.scheduled_at,
+            duration_minutes=DEFAULT_APPOINTMENT_DURATION_MINUTES,
+            status=AppointmentStatus.PENDING,
+            session_number=5,
+        )
+        form = _DummyForm()
+        form.initial = {"status": AppointmentStatus.PENDING}
+        obj = self._edited_copy(appointment, status=AppointmentStatus.CONFIRMED)
+        self.assertTrue(
+            _admin_intends_remote_confirm(obj, change=True, form=form)
+        )
+
+    def test_admin_intends_remote_confirm_for_confirmed_without_zoom(self):
+        appointment = Appointment.objects.create(
+            case=self.case,
+            counselor=self.counselor,
+            client=self.client_user,
+            scheduled_at=self.scheduled_at,
+            duration_minutes=DEFAULT_APPOINTMENT_DURATION_MINUTES,
+            status=AppointmentStatus.CONFIRMED,
+            confirmed_at=timezone.now(),
+            session_number=6,
+        )
+        form = _DummyForm()
+        form.initial = {"status": AppointmentStatus.CONFIRMED}
+        obj = self._edited_copy(appointment, status=AppointmentStatus.CONFIRMED)
+        self.assertTrue(
+            _admin_intends_remote_confirm(obj, change=True, form=form)
+        )
+
+    def test_admin_intends_remote_confirm_skips_confirmed_with_zoom(self):
+        appointment = Appointment.objects.create(
+            case=self.case,
+            counselor=self.counselor,
+            client=self.client_user,
+            scheduled_at=self.scheduled_at,
+            duration_minutes=DEFAULT_APPOINTMENT_DURATION_MINUTES,
+            status=AppointmentStatus.CONFIRMED,
+            confirmed_at=timezone.now(),
+            session_number=7,
+        )
+        ZoomMeeting.objects.create(
+            appointment=appointment,
+            zoom_meeting_id="12345",
+            join_url="https://zoom.us/j/12345",
+        )
+        form = _DummyForm()
+        form.initial = {"status": AppointmentStatus.CONFIRMED}
+        obj = self._edited_copy(appointment, status=AppointmentStatus.CONFIRMED)
+        self.assertFalse(
+            _admin_intends_remote_confirm(obj, change=True, form=form)
+        )
 
     @patch("apps.scheduling.services.create_zoom_meeting")
     @patch("apps.scheduling.services.get_zoom_meeting")
@@ -205,8 +286,45 @@ class AppointmentAdminSaveModelTests(TestCase):
         self.assertEqual(appointment.status, AppointmentStatus.CONFIRMED)
         self.assertTrue(ZoomMeeting.objects.filter(appointment=appointment).exists())
 
+    @patch("apps.scheduling.services.create_zoom_meeting")
+    @patch("apps.scheduling.services.get_zoom_meeting")
+    @patch("apps.scheduling.services.update_zoom_meeting_participant_settings")
+    def test_confirmed_without_zoom_reissue_on_resave(
+        self,
+        _mock_patch_settings,
+        mock_get_zoom,
+        mock_create_zoom_api,
+    ):
+        mock_create_zoom_api.return_value = {
+            "id": "777",
+            "join_url": "https://zoom.us/j/777",
+            "start_url": "",
+            "password": "",
+        }
+        mock_get_zoom.return_value = mock_create_zoom_api.return_value
+
+        appointment = Appointment.objects.create(
+            case=self.case,
+            counselor=self.counselor,
+            client=self.client_user,
+            scheduled_at=self.scheduled_at,
+            duration_minutes=DEFAULT_APPOINTMENT_DURATION_MINUTES,
+            status=AppointmentStatus.CONFIRMED,
+            confirmed_at=timezone.now(),
+            session_number=8,
+        )
+        form = _DummyForm()
+        form.initial = {"status": AppointmentStatus.CONFIRMED}
+        obj = self._edited_copy(appointment, status=AppointmentStatus.CONFIRMED)
+        self.appointment_admin.save_model(self.request, obj, form, change=True)
+
+        appointment.refresh_from_db()
+        self.assertEqual(appointment.status, AppointmentStatus.CONFIRMED)
+        self.assertTrue(ZoomMeeting.objects.filter(appointment=appointment).exists())
+        mock_create_zoom_api.assert_called_once()
+
     @patch("apps.scheduling.admin.confirm_appointment_with_zoom")
-    def test_already_confirmed_edit_does_not_reconfirm(self, mock_confirm):
+    def test_already_confirmed_with_zoom_does_not_reconfirm(self, mock_confirm):
         appointment = Appointment.objects.create(
             case=self.case,
             counselor=self.counselor,
@@ -217,9 +335,16 @@ class AppointmentAdminSaveModelTests(TestCase):
             confirmed_at=timezone.now(),
             session_number=3,
         )
+        ZoomMeeting.objects.create(
+            appointment=appointment,
+            zoom_meeting_id="33333",
+            join_url="https://zoom.us/j/33333",
+        )
+        form = _DummyForm()
+        form.initial = {"status": AppointmentStatus.CONFIRMED}
         new_time = self.scheduled_at + timedelta(days=1)
         obj = self._edited_copy(appointment, scheduled_at=new_time)
-        self.appointment_admin.save_model(self.request, obj, self.form, change=True)
+        self.appointment_admin.save_model(self.request, obj, form, change=True)
         mock_confirm.assert_not_called()
         appointment.refresh_from_db()
         self.assertEqual(appointment.scheduled_at, new_time)
