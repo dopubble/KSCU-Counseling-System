@@ -92,21 +92,22 @@ class AppointmentAdmin(admin.ModelAdmin):
     ordering = ("-scheduled_at",)
     date_hierarchy = "scheduled_at"
 
+    @transaction.atomic
     def save_model(self, request, obj, form, change):
         if not _admin_intends_remote_confirm(obj, change=change):
             super().save_model(request, obj, form, change)
             return
 
         try:
-            with transaction.atomic():
-                obj.status = AppointmentStatus.PENDING
-                super().save_model(request, obj, form, change)
-                confirm_appointment_with_zoom(obj, notify=True)
+            obj.status = AppointmentStatus.PENDING
+            super().save_model(request, obj, form, change)
+            confirm_appointment_with_zoom(obj, notify=True)
         except (
             AppointmentServiceError,
             ZoomAPIError,
             ZoomNotConfiguredError,
         ) as exc:
+            transaction.set_rollback(True)
             messages.error(
                 request,
                 f"비대면 예약 확정 및 Zoom 연동에 실패했습니다. 변경 사항은 저장되지 않았습니다. ({exc})",

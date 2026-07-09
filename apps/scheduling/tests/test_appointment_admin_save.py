@@ -154,7 +154,7 @@ class AppointmentAdminSaveModelTests(TestCase):
         "apps.scheduling.admin.confirm_appointment_with_zoom",
         side_effect=AppointmentServiceError("호스트 없음"),
     )
-    def test_save_model_zoom_failure_rolls_back_and_sets_flag(self, _mock_confirm):
+    def test_save_model_zoom_failure_rolls_back(self, _mock_confirm):
         obj = Appointment(
             case=self.case,
             counselor=self.counselor,
