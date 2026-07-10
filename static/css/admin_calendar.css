@@ -81,6 +81,14 @@
     margin-bottom: 0.65rem;
 }
 
+#adminAppointmentDetailModal .detail-phone {
+    margin-left: 0.2rem;
+    font-weight: 400;
+    color: #64748b;
+    font-size: 0.92em;
+    white-space: nowrap;
+}
+
 @media (max-width: 767.98px) {
     .admin-calendar-shell {
         padding: 0.75rem 0.35rem;

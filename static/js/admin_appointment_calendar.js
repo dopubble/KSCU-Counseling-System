@@ -71,6 +71,30 @@
         row.classList.toggle("d-none", Boolean(hidden));
     }
 
+    function setDetailNameWithPhone(id, name, phone) {
+        const row = document.getElementById(id);
+        if (!row) return;
+        const valueEl = row.querySelector("[data-detail-value]");
+        if (!valueEl) return;
+
+        const trimmedName = (name || "").trim();
+        const trimmedPhone = (phone || "").trim();
+        valueEl.textContent = "";
+
+        if (!trimmedName) {
+            valueEl.textContent = "—";
+            return;
+        }
+
+        valueEl.appendChild(document.createTextNode(trimmedName));
+        if (trimmedPhone) {
+            const phoneSpan = document.createElement("span");
+            phoneSpan.className = "detail-phone";
+            phoneSpan.textContent = `(${trimmedPhone})`;
+            valueEl.appendChild(phoneSpan);
+        }
+    }
+
     function openDetailModal(event) {
         if (!detailModal) return;
         const props = event.extendedProps || {};
@@ -78,8 +102,16 @@
             ? `${props.session_number}회차`
             : "—";
 
-        setDetail("detailClient", "내담자", props.client_name || event.title);
-        setDetail("detailCounselor", "담당 상담사", props.counselor_name);
+        setDetailNameWithPhone(
+            "detailClient",
+            props.client_name || event.title,
+            props.client_phone,
+        );
+        setDetailNameWithPhone(
+            "detailCounselor",
+            props.counselor_name,
+            props.counselor_phone,
+        );
         setDetail("detailSession", "상담 회차", sessionLabel);
         setDetail("detailScheduled", "확정 일시", formatScheduledRange(event));
         setDetail("detailMethod", "상담 방식", props.counseling_method_label);

@@ -315,6 +315,8 @@ def get_mock_calendar_events(*, base_date: datetime | None = None) -> list[dict[
             "end": (day + timedelta(hours=15)).isoformat(),
             "counselor": "박상담",
             "client_name": "김내담",
+            "client_phone": "010-1234-5678",
+            "counselor_phone": "010-8765-4321",
             "session_number": 3,
             "zoom_host_id": "host_01",
             "zoom_url": "https://zoom.us/j/1234567890",
@@ -329,6 +331,8 @@ def get_mock_calendar_events(*, base_date: datetime | None = None) -> list[dict[
             "end": (day + timedelta(hours=15, minutes=30)).isoformat(),
             "counselor": "최상담",
             "client_name": "이내담",
+            "client_phone": "010-2222-3333",
+            "counselor_phone": "010-4444-5555",
             "session_number": 1,
             "zoom_host_id": "host_02",
             "zoom_url": "https://zoom.us/j/0987654321",
@@ -343,6 +347,8 @@ def get_mock_calendar_events(*, base_date: datetime | None = None) -> list[dict[
             "end": (day + timedelta(days=1, hours=11, minutes=50)).isoformat(),
             "counselor": "정상담",
             "client_name": "박내담",
+            "client_phone": "",
+            "counselor_phone": "010-6666-7777",
             "session_number": 2,
             "zoom_host_id": "",
             "zoom_url": "",
@@ -374,7 +380,9 @@ def _serialize_event_row(row: dict[str, Any]) -> dict[str, Any]:
         "borderColor": colors["border"],
         "extendedProps": {
             "client_name": row.get("client_name") or "",
+            "client_phone": (row.get("client_phone") or "").strip(),
             "counselor_name": row.get("counselor") or row.get("counselor_name") or "",
+            "counselor_phone": (row.get("counselor_phone") or "").strip(),
             "session_number": row.get("session_number"),
             "zoom_host_id": host_id,
             "zoom_host_label": zoom_host_label(host_id) if host_id else "",
@@ -469,7 +477,9 @@ def build_calendar_events(
             session_no = apt.session_number
             session_label = f"{session_no}회차" if session_no else "회차 미지정"
             client_name = apt.client.name or "내담자"
+            client_phone = (apt.client.phone or "").strip()
             counselor_name = apt.counselor.name or "상담사"
+            counselor_phone = (apt.counselor.phone or "").strip() if apt.counselor else ""
 
             host_id = ""
             host_stored_id = ""
@@ -498,7 +508,9 @@ def build_calendar_events(
                 "start": interval.start.isoformat(),
                 "end": interval.end.isoformat(),
                 "counselor": counselor_name,
+                "counselor_phone": counselor_phone,
                 "client_name": client_name,
+                "client_phone": client_phone,
                 "session_number": session_no,
                 "zoom_host_id": host_id,
                 "zoom_host_stored_id": host_stored_id,

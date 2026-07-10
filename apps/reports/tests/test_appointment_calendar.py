@@ -166,6 +166,57 @@ class AppointmentCalendarTests(TestCase):
         self.assertIn("title", first)
         self.assertIn("extendedProps", first)
         self.assertEqual(first["extendedProps"]["zoom_host_id"], "host_01")
+        self.assertEqual(first["extendedProps"]["client_phone"], "010-1234-5678")
+        self.assertEqual(first["extendedProps"]["counselor_phone"], "010-8765-4321")
+
+    def test_build_calendar_events_includes_phone_numbers(self):
+        client_user = User.objects.create_user(
+            email="phone-cal-client@example.com",
+            password="pass",
+            name="전화내담",
+            phone="010-1111-2222",
+            role=UserRole.CLIENT,
+        )
+        counselor = User.objects.create_user(
+            email="phone-cal-counselor@example.com",
+            password="pass",
+            name="전화상담사",
+            phone="010-3333-4444",
+            role=UserRole.COUNSELOR,
+        )
+        application = CounselingApplication.objects.create(
+            client=client_user,
+            counseling_types=["개인상담"],
+            reason="test",
+            counseling_method=CounselingMethod.IN_PERSON,
+            status=ApplicationStatus.IN_PROGRESS,
+        )
+        case = Case.objects.create(
+            application=application,
+            client=client_user,
+            counselor=counselor,
+            case_number="CASE-CAL-PHONE",
+            status=CaseStatus.ACTIVE,
+            counseling_method=CounselingMethod.IN_PERSON,
+        )
+        scheduled_at = timezone.make_aware(datetime(2026, 7, 15, 14, 0))
+        appointment = Appointment.objects.create(
+            case=case,
+            counselor=counselor,
+            client=client_user,
+            scheduled_at=scheduled_at,
+            status=AppointmentStatus.CONFIRMED,
+            session_number=2,
+            confirmed_at=timezone.now(),
+        )
+
+        day_start = parse_calendar_bound("2026-07-15T00:00:00+09:00")
+        day_end = parse_calendar_bound("2026-07-16T00:00:00+09:00")
+        events = build_calendar_events(start=day_start, end=day_end)
+        event = next(item for item in events if item["id"] == str(appointment.pk))
+        props = event["extendedProps"]
+        self.assertEqual(props["client_phone"], "010-1111-2222")
+        self.assertEqual(props["counselor_phone"], "010-3333-4444")
 
     def test_build_calendar_events_empty(self):
         events = build_calendar_events()
