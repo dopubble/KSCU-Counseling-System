@@ -10,7 +10,7 @@
 }
 
 .admin-calendar-page--gcal-ui .fc {
-    --fc-today-bg-color: rgba(32, 33, 36, 0.06);
+    --fc-today-bg-color: rgba(252, 165, 186, 0.28);
     --fc-event-text-color: var(--gcal-text);
 }
 
