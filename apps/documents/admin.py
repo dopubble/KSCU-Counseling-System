@@ -1,4 +1,6 @@
 from django.contrib import admin
+from django.urls import reverse
+from django.utils.html import format_html
 
 from .models import ClosureReport, ConsentDocument, SessionMaterial
 
@@ -15,6 +17,25 @@ class ConsentDocumentAdmin(admin.ModelAdmin):
         "verified_by",
     )
     list_filter = ("doc_type",)
+    readonly_fields = ("signed_at", "updated_at", "file_download")
+
+    def get_exclude(self, request, obj=None):
+        # ConsentMediaStorage has no url(); Admin FileField widget calls file.url on change.
+        if obj is not None:
+            return ("file",)
+        return super().get_exclude(request, obj)
+
+    @admin.display(description="파일")
+    def file_download(self, obj):
+        if not obj or not obj.file:
+            return "—"
+        url = reverse("documents:consent_file", kwargs={"pk": obj.pk})
+        filename = obj.get_download_filename()
+        return format_html(
+            '<a href="{}?disposition=inline" target="_blank" rel="noopener noreferrer">{}</a>',
+            url,
+            filename,
+        )
 
 
 @admin.register(ClosureReport)
