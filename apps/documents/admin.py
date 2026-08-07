@@ -1,12 +1,14 @@
 import io
+import logging
 import zipfile
 
 from django.contrib import admin, messages
 from django.contrib.admin import RelatedOnlyFieldListFilter
-from django.http import HttpResponse
-from django.shortcuts import get_object_or_404
+from django.http import Http404, HttpResponse
 from django.urls import path, reverse
+from django.utils import timezone
 from django.utils.html import format_html
+from django.utils.http import content_disposition_header
 
 from apps.documents.views import _consent_file_response
 
@@ -17,6 +19,8 @@ from .models import (
     ConsentDocType,
     SessionMaterial,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class RequiredDocTypeFilter(admin.SimpleListFilter):
@@ -76,7 +80,7 @@ class ConsentDocumentAdmin(admin.ModelAdmin):
         urls = super().get_urls()
         custom = [
             path(
-                "<path:object_id>/file/",
+                "<uuid:object_id>/file/",
                 self.admin_site.admin_view(self.serve_consent_file),
                 name="documents_consentdocument_file",
             ),
@@ -84,14 +88,18 @@ class ConsentDocumentAdmin(admin.ModelAdmin):
         return custom + urls
 
     def serve_consent_file(self, request, object_id):
-        consent = get_object_or_404(
-            ConsentDocument.objects.select_related(
-                "application__case__counselor",
-                "application__case__client",
-                "client",
-            ),
-            pk=object_id,
+        consent = self.get_object(
+            request,
+            str(object_id),
+            from_field=None,
         )
+        if consent is None:
+            logger.warning(
+                "consent admin file: document not found object_id=%s user=%s",
+                object_id,
+                getattr(request.user, "email", None),
+            )
+            raise Http404("Consent document not found")
         inline = request.GET.get("disposition", "attachment") == "inline"
         return _consent_file_response(consent, inline=inline)
 
@@ -148,7 +156,7 @@ class ConsentDocumentAdmin(admin.ModelAdmin):
             filename,
         )
 
-    @admin.action(description="선택한 동의서 ZIP 다운로드")
+    @admin.action(description="선택한 동의서 일괄 다운로드 (ZIP)")
     def download_selected_consents_zip(self, request, queryset):
         queryset = queryset.select_related("client", "application__case__counselor")
         buffer = io.BytesIO()
@@ -157,7 +165,7 @@ class ConsentDocumentAdmin(admin.ModelAdmin):
 
         with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
             for consent in queryset:
-                if not consent.file:
+                if not consent.file or not consent.file.name:
                     continue
                 filename = consent.get_download_filename() or "consent.bin"
                 if filename in used_names:
@@ -165,9 +173,17 @@ class ConsentDocumentAdmin(admin.ModelAdmin):
                 used_names.add(filename)
                 try:
                     with consent.file.open("rb") as handle:
-                        archive.writestr(filename, handle.read())
+                        entry = zipfile.ZipInfo(filename)
+                        entry.flag_bits |= 0x800  # UTF-8 filename
+                        archive.writestr(entry, handle.read())
                     added += 1
-                except FileNotFoundError:
+                except FileNotFoundError as exc:
+                    logger.warning(
+                        "consent zip skip missing file pk=%s name=%r err=%s",
+                        consent.pk,
+                        consent.file.name,
+                        exc,
+                    )
                     continue
 
         if added == 0:
@@ -179,8 +195,12 @@ class ConsentDocumentAdmin(admin.ModelAdmin):
             return None
 
         buffer.seek(0)
+        zip_name = timezone.localtime().strftime("동의서_일괄다운로드_%Y%m%d_%H%M%S.zip")
         response = HttpResponse(buffer.getvalue(), content_type="application/zip")
-        response["Content-Disposition"] = 'attachment; filename="consents.zip"'
+        response["Content-Disposition"] = content_disposition_header(
+            as_attachment=True,
+            filename=zip_name,
+        )
         return response
 
 
