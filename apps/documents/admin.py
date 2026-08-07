@@ -126,10 +126,19 @@ class ConsentDocumentAdmin(admin.ModelAdmin):
             return f"{url}?disposition=inline"
         return url
 
+    def _consent_file_missing_label(self, obj):
+        if not obj:
+            return "—"
+        deleted_at = timezone.localtime(obj.updated_at)
+        return format_html(
+            '<span class="text-muted" title="파일 삭제됨">삭제 {}</span>',
+            deleted_at.strftime("%Y-%m-%d %H:%M"),
+        )
+
     @admin.display(description="보기")
     def file_view_link(self, obj):
-        if not obj or not obj.file:
-            return "—"
+        if not obj or not obj.file or not obj.file.name:
+            return self._consent_file_missing_label(obj)
         return format_html(
             '<a href="{}" target="_blank" rel="noopener noreferrer">보기</a>',
             self._consent_file_url(obj, inline=True),
@@ -137,8 +146,8 @@ class ConsentDocumentAdmin(admin.ModelAdmin):
 
     @admin.display(description="다운로드")
     def file_download_link(self, obj):
-        if not obj or not obj.file:
-            return "—"
+        if not obj or not obj.file or not obj.file.name:
+            return self._consent_file_missing_label(obj)
         return format_html(
             '<a href="{}">다운로드</a>',
             self._consent_file_url(obj, inline=False),
