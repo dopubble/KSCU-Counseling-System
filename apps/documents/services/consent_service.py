@@ -53,3 +53,21 @@ def upsert_counselor_consent(*, case, doc_type: str, file_obj, uploaded_by):
     consent.file = file_obj
     consent.save()
     return consent
+
+
+@transaction.atomic
+def delete_counselor_consent(*, case, doc_type: str) -> bool:
+    """상담사 필수 동의서 파일 삭제 — 스토리지 파일과 DB file 필드만 초기화."""
+    doc_type = doc_type.upper()
+    if doc_type not in COUNSELOR_REQUIRED_DOC_TYPES:
+        raise ValueError(f"unsupported doc_type: {doc_type}")
+
+    consent = ConsentDocument.objects.filter(
+        application=case.application,
+        doc_type=doc_type,
+    ).first()
+    if not consent or not consent.file:
+        return False
+
+    consent.file.delete(save=True)
+    return True

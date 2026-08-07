@@ -3,27 +3,32 @@
         <i class="bi bi-file-earmark-check me-1" aria-hidden="true"></i>필수 서류 (오프라인 동의서)
     </div>
     <div class="card-body">
+        <div id="consent-delete-alert" class="alert alert-success py-2 small d-none" role="status"></div>
         {% for row in consent_rows %}
-        <div class="consent-slot mb-3 pb-3{% if not forloop.last %} border-bottom{% endif %}">
+        <div class="consent-slot mb-3 pb-3{% if not forloop.last %} border-bottom{% endif %}"
+             data-doc-type="{{ row.doc_type }}">
             <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
                 <span class="fw-semibold small">{{ row.label }}</span>
                 {% if row.doc and row.doc.file %}
-                <span class="badge text-bg-success">제출 완료</span>
+                <span class="badge text-bg-success consent-status-badge">제출 완료</span>
                 {% else %}
-                <span class="badge text-bg-danger">미제출</span>
+                <span class="badge text-bg-danger consent-status-badge">미제출</span>
                 {% endif %}
             </div>
-            {% if row.doc and row.doc.file %}
-            <p class="small mb-1">
-                <a href="{% url 'documents:consent_file' row.doc.pk %}?disposition=inline"
-                   target="_blank"
-                   rel="noopener noreferrer">{{ row.doc.get_download_filename }}</a>
-            </p>
-            <p class="text-muted small mb-2">최종 수정: {{ row.doc.updated_at|date:"Y-m-d H:i" }}</p>
-            {% endif %}
+            <div class="consent-file-info{% if not row.doc or not row.doc.file %} d-none{% endif %}">
+                {% if row.doc and row.doc.file %}
+                <p class="small mb-1 consent-file-link">
+                    <a href="{% url 'documents:consent_file' row.doc.pk %}?disposition=inline"
+                       target="_blank"
+                       rel="noopener noreferrer">{{ row.doc.get_download_filename }}</a>
+                </p>
+                <p class="text-muted small mb-2 consent-file-updated">최종 수정: {{ row.doc.updated_at|date:"Y-m-d H:i" }}</p>
+                {% endif %}
+            </div>
             <form method="post"
                   enctype="multipart/form-data"
-                  action="{% url 'counselor:consent_upload' case.pk row.doc_type %}">
+                  action="{% url 'counselor:consent_upload' case.pk row.doc_type %}"
+                  class="consent-upload-form">
                 {% csrf_token %}
                 <div class="input-group input-group-sm">
                     <input type="file"
@@ -32,9 +37,17 @@
                            accept=".pdf,.jpg,.jpeg,.png"
                            required
                            aria-label="{{ row.label }} 파일">
-                    <button type="submit" class="btn btn-outline-primary">
+                    <button type="submit" class="btn btn-outline-primary consent-upload-btn">
                         {% if row.doc and row.doc.file %}재업로드{% else %}업로드{% endif %}
                     </button>
+                    {% if row.doc and row.doc.file %}
+                    <button type="button"
+                            class="btn btn-outline-danger consent-delete-btn"
+                            data-delete-url="{% url 'counselor:consent_delete' case.pk row.doc_type %}"
+                            aria-label="{{ row.label }} 삭제">
+                        삭제
+                    </button>
+                    {% endif %}
                 </div>
             </form>
         </div>
@@ -42,3 +55,75 @@
         <p class="text-muted small mb-0">PDF, JPG, PNG · 파일당 최대 10MB</p>
     </div>
 </div>
+<script>
+(function () {
+    var card = document.getElementById("consent-documents");
+    if (!card) {
+        return;
+    }
+    var alertBox = document.getElementById("consent-delete-alert");
+    var csrfInput = card.querySelector("input[name=csrfmiddlewaretoken]");
+    var csrfToken = csrfInput ? csrfInput.value : "";
+
+    function showMessage(text) {
+        if (!alertBox) {
+            return;
+        }
+        alertBox.textContent = text;
+        alertBox.classList.remove("d-none");
+    }
+
+    card.querySelectorAll(".consent-delete-btn").forEach(function (button) {
+        button.addEventListener("click", function () {
+            if (!window.confirm("업로드한 파일을 삭제하시겠습니까?")) {
+                return;
+            }
+
+            var slot = button.closest(".consent-slot");
+            var deleteUrl = button.getAttribute("data-delete-url");
+            button.disabled = true;
+
+            fetch(deleteUrl, {
+                method: "POST",
+                headers: {
+                    "X-CSRFToken": csrfToken,
+                    "X-Requested-With": "XMLHttpRequest",
+                },
+                credentials: "same-origin",
+            })
+                .then(function (response) {
+                    return response.json().then(function (data) {
+                        return { ok: response.ok, data: data };
+                    });
+                })
+                .then(function (result) {
+                    if (!result.ok || !result.data.ok) {
+                        throw new Error(result.data.message || "파일 삭제에 실패했습니다.");
+                    }
+
+                    var badge = slot.querySelector(".consent-status-badge");
+                    var fileInfo = slot.querySelector(".consent-file-info");
+                    var uploadBtn = slot.querySelector(".consent-upload-btn");
+
+                    if (badge) {
+                        badge.textContent = "미제출";
+                        badge.classList.remove("text-bg-success");
+                        badge.classList.add("text-bg-danger");
+                    }
+                    if (fileInfo) {
+                        fileInfo.classList.add("d-none");
+                    }
+                    if (uploadBtn) {
+                        uploadBtn.textContent = "업로드";
+                    }
+                    button.remove();
+                    showMessage(result.data.message);
+                })
+                .catch(function (error) {
+                    button.disabled = false;
+                    window.alert(error.message || "파일 삭제에 실패했습니다.");
+                });
+        });
+    });
+})();
+</script>

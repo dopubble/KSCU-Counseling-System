@@ -199,3 +199,44 @@ class ConsentUploadTests(TestCase):
                 doc_type=ConsentDocType.PRIVACY,
             ).exists()
         )
+
+    def test_counselor_can_delete_uploaded_consent(self):
+        consent = upsert_counselor_consent(
+            case=self.case,
+            doc_type=ConsentDocType.PRIVACY,
+            file_obj=self._pdf_file(),
+            uploaded_by=self.counselor,
+        )
+        storage_path = consent.file.path
+        self.assertTrue(os.path.exists(storage_path))
+
+        self.http.login(email="counselor@example.com", password="pass12345")
+        url = reverse(
+            "counselor:consent_delete",
+            kwargs={"case_pk": self.case.pk, "doc_type": ConsentDocType.PRIVACY},
+        )
+        response = self.http.post(
+            url,
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["ok"])
+
+        consent.refresh_from_db()
+        self.assertFalse(consent.file)
+        self.assertFalse(os.path.exists(storage_path))
+
+    def test_other_counselor_cannot_delete_consent(self):
+        upsert_counselor_consent(
+            case=self.case,
+            doc_type=ConsentDocType.PRIVACY,
+            file_obj=self._pdf_file(),
+            uploaded_by=self.counselor,
+        )
+        self.http.login(email="other@example.com", password="pass12345")
+        url = reverse(
+            "counselor:consent_delete",
+            kwargs={"case_pk": self.case.pk, "doc_type": ConsentDocType.PRIVACY},
+        )
+        response = self.http.post(url)
+        self.assertEqual(response.status_code, 404)

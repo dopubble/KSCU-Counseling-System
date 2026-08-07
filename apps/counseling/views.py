@@ -49,7 +49,11 @@ from apps.sessions_app.models import (
     TerminationCounselingRecord,
 )
 from apps.documents.forms import ConsentUploadForm
-from apps.documents.services.consent_service import build_consent_rows, upsert_counselor_consent
+from apps.documents.services.consent_service import (
+    build_consent_rows,
+    delete_counselor_consent,
+    upsert_counselor_consent,
+)
 from apps.sessions_app.pdf import (
     PDF_PASSWORD_NOTICE,
     build_initial_record_pdf,
@@ -2307,6 +2311,31 @@ def counselor_consent_upload(request, case_pk, doc_type):
         raise Http404 from None
 
     messages.success(request, "동의서가 제출되었습니다.")
+    return redirect("counselor:case_detail", pk=case.pk)
+
+
+@counselor_required
+@require_POST
+def counselor_consent_delete(request, case_pk, doc_type):
+    """필수 동의서(오프라인 스캔) 파일 삭제."""
+    case = _get_counselor_case(request, case_pk)
+    try:
+        deleted = delete_counselor_consent(case=case, doc_type=doc_type)
+    except ValueError:
+        raise Http404 from None
+
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        if deleted:
+            return JsonResponse({"ok": True, "message": "파일이 삭제되었습니다."})
+        return JsonResponse(
+            {"ok": False, "message": "삭제할 파일이 없습니다."},
+            status=404,
+        )
+
+    if deleted:
+        messages.success(request, "파일이 삭제되었습니다.")
+    else:
+        messages.warning(request, "삭제할 파일이 없습니다.")
     return redirect("counselor:case_detail", pk=case.pk)
 
 

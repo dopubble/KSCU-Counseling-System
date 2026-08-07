@@ -161,6 +161,11 @@ urlpatterns = [
         name="consent_upload",
     ),
     path(
+        "case/<uuid:case_pk>/consents/<str:doc_type>/delete/",
+        views.counselor_consent_delete,
+        name="consent_delete",
+    ),
+    path(
         "case/<uuid:case_pk>/session/<int:session_number>/materials/upload/",
         views.counselor_session_material_upload,
         name="session_material_upload",
