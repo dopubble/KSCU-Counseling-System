@@ -4,8 +4,11 @@ import zipfile
 from django.contrib import admin, messages
 from django.contrib.admin import RelatedOnlyFieldListFilter
 from django.http import HttpResponse
-from django.urls import reverse
+from django.shortcuts import get_object_or_404
+from django.urls import path, reverse
 from django.utils.html import format_html
+
+from apps.documents.views import _consent_file_response
 
 from .models import (
     COUNSELOR_REQUIRED_DOC_TYPES,
@@ -69,6 +72,29 @@ class ConsentDocumentAdmin(admin.ModelAdmin):
     readonly_fields = ("signed_at", "updated_at", "file_download")
     actions = ("download_selected_consents_zip",)
 
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path(
+                "<path:object_id>/file/",
+                self.admin_site.admin_view(self.serve_consent_file),
+                name="documents_consentdocument_file",
+            ),
+        ]
+        return custom + urls
+
+    def serve_consent_file(self, request, object_id):
+        consent = get_object_or_404(
+            ConsentDocument.objects.select_related(
+                "application__case__counselor",
+                "application__case__client",
+                "client",
+            ),
+            pk=object_id,
+        )
+        inline = request.GET.get("disposition", "attachment") == "inline"
+        return _consent_file_response(consent, inline=inline)
+
     def get_exclude(self, request, obj=None):
         # ConsentMediaStorage has no url(); Admin FileField widget calls file.url on change.
         excluded = ["verified_by"]
@@ -87,7 +113,7 @@ class ConsentDocumentAdmin(admin.ModelAdmin):
         return "—"
 
     def _consent_file_url(self, obj, *, inline: bool) -> str:
-        url = reverse("documents:consent_file", kwargs={"pk": obj.pk})
+        url = reverse("admin:documents_consentdocument_file", args=[obj.pk])
         if inline:
             return f"{url}?disposition=inline"
         return url
@@ -106,7 +132,7 @@ class ConsentDocumentAdmin(admin.ModelAdmin):
         if not obj or not obj.file:
             return "—"
         return format_html(
-            '<a href="{}" download>다운로드</a>',
+            '<a href="{}">다운로드</a>',
             self._consent_file_url(obj, inline=False),
         )
 

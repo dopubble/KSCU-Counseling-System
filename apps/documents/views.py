@@ -4,25 +4,28 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
+from django.utils.http import content_disposition_header
 
 from apps.documents.access import user_can_access_consent
 from apps.documents.models import ConsentDocument
 
 
 def _consent_file_response(consent, *, inline: bool):
-    if not consent.file:
+    if not consent.file or not consent.file.name:
         raise Http404("File not found")
-    filename = consent.get_download_filename()
+    filename = consent.get_download_filename() or "consent.bin"
     content_type, _ = mimetypes.guess_type(filename)
     content_type = content_type or "application/octet-stream"
-    response = FileResponse(
-        consent.file.open("rb"),
-        content_type=content_type,
+    try:
+        file_handle = consent.file.open("rb")
+    except FileNotFoundError as exc:
+        raise Http404("File not found") from exc
+
+    response = FileResponse(file_handle, content_type=content_type)
+    response["Content-Disposition"] = content_disposition_header(
         as_attachment=not inline,
         filename=filename,
     )
-    if inline:
-        response["Content-Disposition"] = f'inline; filename="{filename}"'
     return response
 
 
