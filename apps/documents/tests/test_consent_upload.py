@@ -9,7 +9,7 @@ from apps.accounts.models import CounselorProfile, User, UserRole, UserStatus
 from apps.counseling.models import ApplicationStatus, CounselingApplication, CounselingMethod
 from apps.counseling.services import assign_counselor
 from apps.documents.models import ConsentDocType, ConsentDocument
-from apps.documents.services.consent_service import upsert_counselor_consent
+from apps.documents.services.consent_service import delete_counselor_consent, upsert_counselor_consent
 
 
 @override_settings(
@@ -127,6 +127,36 @@ class ConsentUploadTests(TestCase):
         self.assertEqual(first.pk, second.pk)
         self.assertEqual(second.signed_at, signed_at)
         self.assertNotEqual(second.file.name, old_name)
+        self.assertGreaterEqual(second.updated_at, first.updated_at)
+
+    def test_reupload_after_delete_uses_new_storage_path_and_updates_timestamp(self):
+        first = upsert_counselor_consent(
+            case=self.case,
+            doc_type=ConsentDocType.PRIVACY,
+            file_obj=self._pdf_file("first.pdf"),
+            uploaded_by=self.counselor,
+        )
+        old_name = first.file.name
+        old_updated = first.updated_at
+
+        delete_counselor_consent(case=self.case, doc_type=ConsentDocType.PRIVACY)
+
+        second = upsert_counselor_consent(
+            case=self.case,
+            doc_type=ConsentDocType.PRIVACY,
+            file_obj=SimpleUploadedFile(
+                "캔바 이용금액.png",
+                b"\x89PNG test",
+                content_type="image/png",
+            ),
+            uploaded_by=self.counselor,
+        )
+        second.refresh_from_db()
+        self.assertEqual(first.pk, second.pk)
+        self.assertTrue(second.file.name)
+        self.assertNotEqual(second.file.name, old_name)
+        self.assertGreaterEqual(second.updated_at, old_updated)
+        self.assertTrue(second.file.name.endswith(".png"))
 
     def test_counselor_can_preview_own_consent_inline(self):
         consent = upsert_counselor_consent(

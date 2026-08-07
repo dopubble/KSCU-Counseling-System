@@ -48,12 +48,14 @@ class ConsentDocumentAdmin(admin.ModelAdmin):
         "counselor_display",
         "doc_type",
         "signed_at",
+        "updated_at",
         "file_view_link",
         "file_download_link",
     )
     list_filter = (
         RequiredDocTypeFilter,
         ("signed_at", admin.DateFieldListFilter),
+        ("updated_at", admin.DateFieldListFilter),
         ("client", RelatedOnlyFieldListFilter),
         ("application", RelatedOnlyFieldListFilter),
     )
@@ -64,8 +66,8 @@ class ConsentDocumentAdmin(admin.ModelAdmin):
         "application__case__counselor__email",
         "application__case__case_number",
     )
-    date_hierarchy = "signed_at"
-    ordering = ("-signed_at", "-updated_at")
+    date_hierarchy = "updated_at"
+    ordering = ("-updated_at", "-signed_at")
     list_select_related = (
         "client",
         "application",

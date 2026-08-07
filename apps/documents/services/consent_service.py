@@ -1,10 +1,24 @@
+import os
+import uuid
+
 from django.db import transaction
+from django.utils import timezone
 
 from apps.documents.models import (
     COUNSELOR_REQUIRED_DOC_TYPES,
     DOC_TYPE_FILENAME_LABEL,
     ConsentDocument,
 )
+
+
+def _consent_storage_path(*, consent, application_id, file_obj) -> str:
+    uploaded_name = getattr(file_obj, "name", "") or "file"
+    ext = (uploaded_name.rsplit(".", 1)[-1] if "." in uploaded_name else "bin").lower()
+    basename = consent.build_storage_basename(ext)
+    name_root, ext_part = os.path.splitext(basename)
+    timestamp = int(timezone.now().timestamp())
+    unique = uuid.uuid4().hex[:8]
+    return f"consents/{application_id}/{name_root}_{timestamp}_{unique}{ext_part}"
 
 
 def get_consents_for_application(application) -> dict[str, ConsentDocument | None]:
@@ -45,12 +59,22 @@ def upsert_counselor_consent(*, case, doc_type: str, file_obj, uploaded_by):
             "uploaded_by": uploaded_by,
         },
     )
-    if not created and consent.file:
+    if consent.file.name:
         consent.file.delete(save=False)
+        consent.file.name = ""
 
+    if hasattr(file_obj, "seek"):
+        file_obj.seek(0)
+
+    storage_path = _consent_storage_path(
+        consent=consent,
+        application_id=application.id,
+        file_obj=file_obj,
+    )
     consent.client = case.client
     consent.uploaded_by = uploaded_by
-    consent.file = file_obj
+    saved_name = consent.file.storage.save(storage_path, file_obj)
+    consent.file.name = saved_name
     consent.save()
     return consent
 

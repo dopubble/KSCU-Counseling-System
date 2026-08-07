@@ -18,7 +18,7 @@
             <div class="consent-file-info{% if not row.doc or not row.doc.file %} d-none{% endif %}">
                 {% if row.doc and row.doc.file %}
                 <p class="small mb-1 consent-file-link">
-                    <a href="{% url 'documents:consent_file' row.doc.pk %}?disposition=inline"
+                    <a href="{% url 'documents:consent_file' row.doc.pk %}?disposition=inline&amp;v={{ row.doc.updated_at|date:'U' }}"
                        target="_blank"
                        rel="noopener noreferrer">{{ row.doc.get_download_filename }}</a>
                 </p>
