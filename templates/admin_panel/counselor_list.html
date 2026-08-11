@@ -25,8 +25,19 @@
                         {% endfor %}
                     </select>
                 </div>
+                <div>
+                    <label for="counselorSearch" class="form-label small fw-semibold mb-1">상담사 이름 검색</label>
+                    <input type="search"
+                           name="search"
+                           id="counselorSearch"
+                           class="form-control form-control-sm"
+                           value="{{ search }}"
+                           placeholder="이름 입력"
+                           autocomplete="off">
+                </div>
+                <button type="submit" class="btn btn-sm btn-primary">검색</button>
             </form>
-            <a href="{% url 'admin_panel:counselor_list' %}?cohort={% if selected_cohort %}{{ selected_cohort }}{% else %}all{% endif %}&export=csv"
+            <a href="{% url 'admin_panel:counselor_list' %}?cohort={% if selected_cohort %}{{ selected_cohort }}{% else %}all{% endif %}{% if search %}&amp;search={{ search|urlencode }}{% endif %}&amp;export=csv"
                class="btn btn-sm btn-outline-success">
                 <i class="bi bi-file-earmark-spreadsheet me-1" aria-hidden="true"></i>CSV 내보내기
             </a>

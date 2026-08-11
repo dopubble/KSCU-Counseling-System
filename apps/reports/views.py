@@ -360,6 +360,7 @@ def counselor_list(request):
     """기수별 상담사 명단."""
     cohorts = get_available_cohorts()
     selected_cohort = _parse_cohort_param(request.GET.get("cohort"))
+    search = (request.GET.get("search") or "").strip()
 
     profiles = (
         CounselorProfile.objects.select_related("user")
@@ -368,6 +369,8 @@ def counselor_list(request):
     )
     if selected_cohort is not None:
         profiles = profiles.filter(cohort=selected_cohort)
+    if search:
+        profiles = profiles.filter(user__name__icontains=search)
 
     profiles = list(profiles)
 
@@ -385,6 +388,8 @@ def counselor_list(request):
             for p in profiles
         ]
         suffix = f"_{selected_cohort}기" if selected_cohort else "_전체"
+        if search:
+            suffix = f"{suffix}_검색"
         return _csv_response(
             f"상담사_명단{suffix}.csv",
             ["이름", "이메일", "휴대폰", "기수", "승인", "계정상태", "가입일"],
@@ -399,6 +404,7 @@ def counselor_list(request):
             "counselors_count": len(profiles),
             "cohorts": cohorts,
             "selected_cohort": selected_cohort,
+            "search": search,
         },
     )
 
