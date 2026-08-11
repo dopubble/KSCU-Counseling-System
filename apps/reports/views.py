@@ -1,4 +1,4 @@
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.conf import settings
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -176,6 +176,7 @@ def counseling_management(request):
     active_tab = request.GET.get("tab", "waiting")
     if active_tab not in _COUNSELING_MGMT_TABS:
         active_tab = "waiting"
+    search = (request.GET.get("search") or "").strip()
 
     default_field, default_dir = TAB_SORT_DEFAULTS[active_tab]
     if active_tab == "waiting":
@@ -193,6 +194,11 @@ def counseling_management(request):
     )
 
     waiting_qs = _waiting_match_queryset()
+    if search:
+        waiting_qs = waiting_qs.filter(
+            Q(client__name__icontains=search)
+            | Q(case__counselor__name__icontains=search)
+        )
     if active_tab == "waiting":
         waiting_applications = sort_queryset(waiting_qs, sort, WAITING_SORT_SPECS)
     else:
@@ -204,6 +210,10 @@ def counseling_management(request):
         status=CaseStatus.ACTIVE,
         counselor__isnull=False,
     ).select_related("client", "counselor", "application")
+    if search:
+        active_qs = active_qs.filter(
+            Q(client__name__icontains=search) | Q(counselor__name__icontains=search)
+        )
     if active_tab == "active":
         active_cases = sort_queryset(active_qs, sort, ACTIVE_CASE_SORT_SPECS)
     else:
@@ -214,6 +224,10 @@ def counseling_management(request):
     closed_qs = Case.objects.filter(status=CaseStatus.CLOSED).select_related(
         "client", "counselor", "application"
     )
+    if search:
+        closed_qs = closed_qs.filter(
+            Q(client__name__icontains=search) | Q(counselor__name__icontains=search)
+        )
     if active_tab == "closed":
         closed_cases = sort_queryset(closed_qs, sort, CLOSED_CASE_SORT_SPECS)
     else:
@@ -234,6 +248,7 @@ def counseling_management(request):
             "closed_count": len(closed_cases),
             "sort_field": sort.field,
             "sort_dir": sort.direction,
+            "search": search,
         },
     )
 

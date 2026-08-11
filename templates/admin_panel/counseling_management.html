@@ -6,11 +6,26 @@
 {% block content %}
 {% page_header title="상담 통합 관리" subtitle="신규 신청·진행 중인 상담·종결 사례를 한 화면에서 관리합니다." c1_label="대시보드" c1_url_name="admin_panel:dashboard" c1_icon="bi-speedometer2" c2_label="상담 통합 관리" %}
 
+<form method="get" class="d-flex flex-wrap align-items-end gap-2 section-spacing mb-0">
+    <input type="hidden" name="tab" value="{{ active_tab }}">
+    <div>
+        <label for="counselorSearch" class="form-label small fw-semibold mb-1">상담사·내담자 이름 검색</label>
+        <input type="search"
+               name="search"
+               id="counselorSearch"
+               class="form-control form-control-sm"
+               value="{{ search }}"
+               placeholder="상담사 또는 내담자 이름"
+               autocomplete="off">
+    </div>
+    <button type="submit" class="btn btn-sm btn-primary">검색</button>
+</form>
+
 <ul class="nav nav-tabs nav-tabs-admin-counseling flex-nowrap overflow-auto section-spacing" id="counselingManagementTabs" role="tablist">
     <li class="nav-item" role="presentation">
         <a class="nav-link {% if active_tab == 'waiting' %}active{% endif %}"
            id="tab-waiting-btn"
-           href="{% url 'admin_panel:counseling_management' %}?tab=waiting"
+           href="{% url 'admin_panel:counseling_management' %}?tab=waiting{% if search %}&amp;search={{ search|urlencode }}{% endif %}"
            role="tab"
            aria-controls="tab-waiting"
            aria-selected="{% if active_tab == 'waiting' %}true{% else %}false{% endif %}">
@@ -21,7 +36,7 @@
     <li class="nav-item" role="presentation">
         <a class="nav-link {% if active_tab == 'active' %}active{% endif %}"
            id="tab-active-btn"
-           href="{% url 'admin_panel:counseling_management' %}?tab=active"
+           href="{% url 'admin_panel:counseling_management' %}?tab=active{% if search %}&amp;search={{ search|urlencode }}{% endif %}"
            role="tab"
            aria-controls="tab-active"
            aria-selected="{% if active_tab == 'active' %}true{% else %}false{% endif %}">
@@ -32,7 +47,7 @@
     <li class="nav-item" role="presentation">
         <a class="nav-link {% if active_tab == 'closed' %}active{% endif %}"
            id="tab-closed-btn"
-           href="{% url 'admin_panel:counseling_management' %}?tab=closed"
+           href="{% url 'admin_panel:counseling_management' %}?tab=closed{% if search %}&amp;search={{ search|urlencode }}{% endif %}"
            role="tab"
            aria-controls="tab-closed"
            aria-selected="{% if active_tab == 'closed' %}true{% else %}false{% endif %}">
@@ -114,7 +129,7 @@
                     </table>
                 </div>
                 {% else %}
-                <p class="text-muted text-center py-5 mb-0 table-container">매칭 대기 중인 신규 신청이 없습니다.</p>
+                <p class="text-muted text-center py-5 mb-0 table-container">{% if search %}조건에 맞는 신규 신청이 없습니다.{% else %}매칭 대기 중인 신규 신청이 없습니다.{% endif %}</p>
                 {% endif %}
             </div>
         </div>
@@ -172,7 +187,7 @@
                     </table>
                 </div>
                 {% else %}
-                <p class="text-muted text-center py-5 mb-0 table-container">진행 중인 상담이 없습니다.</p>
+                <p class="text-muted text-center py-5 mb-0 table-container">{% if search %}조건에 맞는 진행 중인 상담이 없습니다.{% else %}진행 중인 상담이 없습니다.{% endif %}</p>
                 {% endif %}
             </div>
         </div>
@@ -240,7 +255,7 @@
                     </table>
                 </div>
                 {% else %}
-                <p class="text-muted text-center py-5 mb-0 table-container">종결된 사례가 없습니다.</p>
+                <p class="text-muted text-center py-5 mb-0 table-container">{% if search %}조건에 맞는 종결 사례가 없습니다.{% else %}종결된 사례가 없습니다.{% endif %}</p>
                 {% endif %}
             </div>
         </div>
