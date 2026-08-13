@@ -44,6 +44,11 @@ GCAL_IN_PERSON_COLORS = {"bg": "#f1f3f4", "border": "#9aa0a6", "text": "#202124"
 GCAL_REMOTE_NO_ZOOM_COLORS = {"bg": "#e0f2fe", "border": "#0284c7", "text": "#202124"}
 GCAL_EVENT_TEXT = "#202124"
 
+# 캘린더 표시 전용 — Licensed 목록에서 제거된 legacy Zoom 호스트 이메일
+_CALENDAR_LEGACY_EMAIL_HOST_ID = {
+    "sscukscu@gmail.com": "host_01",
+}
+
 
 def calendar_gcal_ui_enabled() -> bool:
     return getattr(settings, "CALENDAR_GCAL_UI", False)
@@ -71,7 +76,10 @@ def resolve_calendar_zoom_host_display(
     if stored_email:
         host_stored_id = email_to_host_id(stored_email)
         if not host_stored_id:
-            host_stored_id = "host_03"
+            host_stored_id = _CALENDAR_LEGACY_EMAIL_HOST_ID.get(
+                stored_email.strip().lower(),
+                "host_03",
+            )
         host_id = host_stored_id
     elif expected_host_id:
         host_id = expected_host_id

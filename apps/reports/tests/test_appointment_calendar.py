@@ -77,6 +77,54 @@ class AppointmentCalendarTests(TestCase):
 
     @override_settings(
         CALENDAR_GCAL_UI=True,
+        ZOOM_LICENSED_USERS="kcuplan@mail.kcu.ac,sedulife@mail.kcu.ac",
+    )
+    def test_legacy_sscukscu_calendar_display_uses_host01_pastel(self):
+        """Licensed에서 제거된 legacy host_01 이메일 — 캘린더만 host_01 색 유지."""
+        host_id, stored, expected, mismatch = resolve_calendar_zoom_host_display(
+            is_remote=True,
+            zoom_host_email="sscukscu@gmail.com",
+            expected_host_id="",
+            email_to_host_id=host_id_for_email,
+        )
+        self.assertEqual(host_id, "host_01")
+        self.assertEqual(stored, "host_01")
+        self.assertFalse(mismatch)
+        colors = _resolve_event_colors(host_id=host_id, is_remote=True)
+        self.assertEqual(colors["bg"], GCAL_HOST_COLORS["host_01"]["bg"])
+
+    @override_settings(
+        CALENDAR_GCAL_UI=True,
+        ZOOM_LICENSED_USERS="kcuplan@mail.kcu.ac,sedulife@mail.kcu.ac",
+    )
+    def test_kcuplan_calendar_display_uses_host01_via_licensed_users(self):
+        host_id, stored, expected, mismatch = resolve_calendar_zoom_host_display(
+            is_remote=True,
+            zoom_host_email="kcuplan@mail.kcu.ac",
+            expected_host_id="host_01",
+            email_to_host_id=host_id_for_email,
+        )
+        self.assertEqual(host_id, "host_01")
+        self.assertEqual(stored, "host_01")
+        colors = _resolve_event_colors(host_id=host_id, is_remote=True)
+        self.assertEqual(colors["bg"], GCAL_HOST_COLORS["host_01"]["bg"])
+
+    @override_settings(
+        CALENDAR_GCAL_UI=True,
+        ZOOM_LICENSED_USERS="kcuplan@mail.kcu.ac,sedulife@mail.kcu.ac",
+    )
+    def test_unlicensed_email_still_uses_host03_fallback(self):
+        host_id, stored, _, _ = resolve_calendar_zoom_host_display(
+            is_remote=True,
+            zoom_host_email="hakyss@mail.kcu.ac",
+            expected_host_id="host_01",
+            email_to_host_id=host_id_for_email,
+        )
+        self.assertEqual(host_id, "host_03")
+        self.assertEqual(stored, "host_03")
+
+    @override_settings(
+        CALENDAR_GCAL_UI=True,
         ZOOM_LICENSED_USERS="sscukscu@gmail.com,sedulife@mail.kcu.ac",
     )
     def test_gcal_ui_uses_pastel_host_colors_not_vivid(self):
