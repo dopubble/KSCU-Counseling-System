@@ -121,13 +121,15 @@
                             {% endif %}
                         </div>
                         <div class="col-md-4">
-                            <label for="id_session_category" class="form-label fw-semibold">
-                                {{ form.session_category.label }} <span class="text-danger">*</span>
-                            </label>
-                            {{ form.session_category }}
-                            {% if form.session_category.errors %}
-                            <div class="text-danger small mt-1">{{ form.session_category.errors.0 }}</div>
-                            {% endif %}
+                            <span class="form-label fw-semibold d-block">상담 구분</span>
+                            <div class="d-flex flex-wrap gap-1 pt-1">
+                                {% for category in session_categories %}
+                                <span class="badge bg-light text-dark border">{{ category }}</span>
+                                {% empty %}
+                                <span class="text-muted">—</span>
+                                {% endfor %}
+                            </div>
+                            <div class="form-text">상담 신청 시 선택한 상담 구분 · 수정 불가</div>
                         </div>
                         <div class="col-md-4">
                             <label for="id_session_datetime" class="form-label fw-semibold">

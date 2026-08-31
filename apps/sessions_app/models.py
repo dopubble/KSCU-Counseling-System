@@ -4,6 +4,26 @@ from django.conf import settings
 from django.db import models
 
 
+def normalize_session_categories(raw) -> list[str]:
+    """상담 구분 목록 정규화 — 공백 제거·중복 제거·순서 유지."""
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        raw = [part for part in raw.replace(";", ",").split(",")]
+    if not isinstance(raw, (list, tuple)):
+        return []
+
+    seen: set[str] = set()
+    values: list[str] = []
+    for item in raw:
+        value = str(item).strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        values.append(value)
+    return values
+
+
 class CounselingJournal(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     case = models.ForeignKey(
@@ -28,6 +48,12 @@ class CounselingJournal(models.Model):
     )
     session_number = models.PositiveIntegerField("회차")
     session_category = models.CharField("상담 구분", max_length=50, blank=True)
+    session_categories = models.JSONField(
+        "상담 구분 목록",
+        default=list,
+        blank=True,
+        help_text="신규 작성 시점의 상담 신청 상담 구분 스냅샷",
+    )
     session_datetime = models.DateTimeField("상담 일시", null=True, blank=True)
     subjective = models.TextField("S (주관적)", blank=True)
     objective = models.TextField("O (객관적)", blank=True)
@@ -50,6 +76,19 @@ class CounselingJournal(models.Model):
             models.Index(fields=["case", "session_number"]),
         ]
         unique_together = [("case", "session_number")]
+
+    @property
+    def session_category_list(self) -> list[str]:
+        """상담 구분 목록 — 목록이 비어 있는 과거 데이터는 단일값으로 대체."""
+        values = normalize_session_categories(self.session_categories)
+        if values:
+            return values
+        return normalize_session_categories(self.session_category)
+
+    @property
+    def session_category_display(self) -> str:
+        """화면·PDF 공통 상담 구분 표시 문자열."""
+        return ", ".join(self.session_category_list)
 
     def __str__(self):
         return f"{self.case.case_number} - {self.session_number}회차"

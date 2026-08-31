@@ -1655,6 +1655,7 @@ def _render_journal_form(request, case, form, *, is_edit=False, journal=None):
         "client_summary": _case_client_summary(case),
         "is_edit": is_edit,
         "journal": journal,
+        "session_categories": form.session_category_values,
         "page_title": "상담일지 수정" if is_edit else "상담일지 작성",
         "breadcrumb_label": "일지 수정" if is_edit else "일지 작성",
         "submit_label": "저장하기" if is_edit else "일지 저장",
@@ -2617,6 +2618,17 @@ def _case_client_summary(case):
     }
 
 
+def _session_appointment_datetime(case, session_number):
+    """해당 회기 슬롯에 매핑된 예약의 일시 (없으면 None)."""
+    if not session_number:
+        return None
+    card = _get_session_card(case, session_number)
+    appointment = card.appointment if card else None
+    if not appointment or appointment.status == AppointmentStatus.NO_SHOW:
+        return None
+    return appointment.scheduled_at
+
+
 @counselor_required
 def journal_create(request, pk):
     """새 상담일지 작성"""
@@ -2644,6 +2656,9 @@ def journal_create(request, pk):
                 initial["session_number"] = int(session_param)
             except (TypeError, ValueError):
                 pass
+        scheduled_at = _session_appointment_datetime(case, initial["session_number"])
+        if scheduled_at:
+            initial["session_datetime"] = timezone.localtime(scheduled_at)
         form = CounselingJournalForm(
             case=case,
             initial=initial,

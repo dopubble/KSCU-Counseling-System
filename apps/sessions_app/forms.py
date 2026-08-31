@@ -1,24 +1,12 @@
 from django import forms
 from django.utils import timezone
 
-from apps.counseling.constants import COUNSELING_TYPE_CHOICES, COUNSELING_TYPE_VALUES
-
-from .models import CounselingJournal
-
-SESSION_CATEGORY_CHOICES = [("", "선택해 주세요")] + list(COUNSELING_TYPE_CHOICES) + [
-    ("위기개입", "위기개입"),
-    ("기타", "기타"),
-]
+from .models import CounselingJournal, normalize_session_categories
 
 
 class CounselingJournalForm(forms.ModelForm):
     """상담사용 상담일지 작성 폼 (SOAP 구조)"""
 
-    session_category = forms.ChoiceField(
-        label="상담 구분",
-        choices=SESSION_CATEGORY_CHOICES,
-        widget=forms.Select(attrs={"class": "form-select"}),
-    )
     session_datetime = forms.DateTimeField(
         label="상담 일시",
         required=True,
@@ -89,18 +77,10 @@ class CounselingJournalForm(forms.ModelForm):
         self.case = case
         super().__init__(*args, **kwargs)
 
-        if case and not self.instance.pk:
-            app_types = case.application.counseling_types or []
-            app_type = app_types[0] if app_types else ""
-            if app_type and app_type in COUNSELING_TYPE_VALUES:
-                self.fields["session_category"].initial = app_type
-            elif app_types:
-                self.fields["session_category"].initial = "기타"
-            if not self.initial.get("session_datetime"):
-                self.fields["session_datetime"].initial = timezone.localtime()
+        # UUID 기본값 때문에 신규 인스턴스도 pk가 채워져 있으므로 _state.adding으로 판별한다.
+        self.is_new = self.instance._state.adding
 
-        if self.instance.pk:
-            self.fields["session_category"].initial = self.instance.session_category
+        if not self.is_new:
             if self.instance.session_datetime:
                 self.fields["session_datetime"].initial = timezone.localtime(
                     self.instance.session_datetime
@@ -116,11 +96,14 @@ class CounselingJournalForm(forms.ModelForm):
                     css = field.widget.attrs.get("class", "")
                     field.widget.attrs["class"] = f"{css} is-invalid".strip()
 
-    def clean_session_category(self):
-        value = self.cleaned_data.get("session_category")
-        if not value:
-            raise forms.ValidationError("상담 구분을 선택해 주세요.")
-        return value
+    @property
+    def session_category_values(self) -> list[str]:
+        """읽기 전용 상담 구분 — 신규는 신청 정보, 수정은 저장된 스냅샷."""
+        if not self.is_new:
+            return self.instance.session_category_list
+        if self.case:
+            return normalize_session_categories(self.case.application.counseling_types)
+        return []
 
     def clean_session_number(self):
         session_number = self.cleaned_data.get("session_number")
@@ -138,7 +121,11 @@ class CounselingJournalForm(forms.ModelForm):
 
     def save(self, commit=True):
         journal = super().save(commit=False)
-        journal.session_category = self.cleaned_data["session_category"]
+        if self.is_new:
+            # 상담 구분은 POST 값이 아니라 신청 정보에서 서버 측으로 스냅샷한다.
+            categories = self.session_category_values
+            journal.session_categories = categories
+            journal.session_category = categories[0] if categories else ""
         journal.session_datetime = self.cleaned_data["session_datetime"]
         journal.subjective = self.cleaned_data["counseling_content"]
         journal.objective = self.cleaned_data["counselor_observation"]

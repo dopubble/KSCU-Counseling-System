@@ -20,7 +20,7 @@
                 </h1>
                 <p class="text-muted mb-0">
                     사례번호 <span class="font-monospace">{{ client_summary.case_number }}</span>
-                    {% if journal.session_category %}· {{ journal.session_category }}{% endif %}
+                    {% if journal.session_category_display %}· {{ journal.session_category_display }}{% endif %}
                     <span class="badge bg-warning-subtle text-warning-emphasis ms-2">상담사 전용 · 내담자 비공개</span>
                 </p>
             </div>
@@ -53,7 +53,7 @@
                     </tr>
                     <tr>
                         <th>상담 구분</th>
-                        <td>{{ journal.session_category|default:"—" }}</td>
+                        <td>{{ journal.session_category_display|default:"—" }}</td>
                         <th>최종 수정</th>
                         <td>{{ journal.updated_at|date:"Y-m-d H:i" }}</td>
                     </tr>

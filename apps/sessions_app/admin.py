@@ -8,7 +8,7 @@ class CounselingJournalAdmin(admin.ModelAdmin):
     list_display = (
         "case",
         "session_number",
-        "session_category",
+        "session_categories_display",
         "session_datetime",
         "counselor",
         "is_draft",
@@ -16,6 +16,10 @@ class CounselingJournalAdmin(admin.ModelAdmin):
     )
     list_filter = ("is_draft",)
     search_fields = ("case__case_number", "counselor__name")
+
+    @admin.display(description="상담 구분")
+    def session_categories_display(self, obj: CounselingJournal) -> str:
+        return obj.session_category_display or "—"
 
 
 @admin.register(InitialCounselingRecord)
