@@ -1,0 +1,13 @@
+<td class="counselor-records-submit-cell text-nowrap" onclick="event.stopPropagation();">
+    {% if case.records_submitted_at %}
+    <span class="badge badge-counselor-closed">최종 제출 완료</span>
+    {% else %}
+    <form method="post" action="{% url 'counselor:case_records_submit' case.pk %}" class="d-inline">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-sm btn-counselor text-white counselor-records-submit-btn"
+                onclick="event.stopPropagation();">
+            최종 제출
+        </button>
+    </form>
+    {% endif %}
+</td>

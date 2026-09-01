@@ -255,3 +255,39 @@ class CounselorDashboardClosedCaseTests(TestCase):
             self.closed_case.pk,
             [case.pk for case in response.context["closed_cases"]],
         )
+        self.assertContains(response, "최종 제출 완료")
+        self.assertNotContains(
+            response,
+            reverse(
+                "counselor:case_records_submit", kwargs={"pk": self.closed_case.pk}
+            ),
+        )
+
+    def test_active_and_closed_rows_show_submit_button(self):
+        response = self.http.get(self.url)
+        active_submit = reverse(
+            "counselor:case_records_submit", kwargs={"pk": self.active_case.pk}
+        )
+        closed_submit = reverse(
+            "counselor:case_records_submit", kwargs={"pk": self.closed_case.pk}
+        )
+
+        self.assertContains(response, active_submit)
+        self.assertContains(response, closed_submit)
+        self.assertContains(response, "최종 제출")
+        self.assertContains(response, "event.stopPropagation()")
+
+    def test_other_counselor_does_not_see_submit_for_this_case(self):
+        other_http = HttpClient()
+        other_http.force_login(self.other_counselor)
+
+        response = other_http.get(self.url)
+
+        self.assertNotContains(response, "CASE-DASH-ACTIVE")
+        self.assertNotContains(response, "CASE-DASH-CLOSED")
+        self.assertNotContains(
+            response,
+            reverse(
+                "counselor:case_records_submit", kwargs={"pk": self.active_case.pk}
+            ),
+        )

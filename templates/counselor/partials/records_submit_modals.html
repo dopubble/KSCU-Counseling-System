@@ -24,7 +24,7 @@
 </div>
 {% endif %}
 
-{% if records_submit_confirm %}
+{% if records_submit_confirm and records_submit_case_pk %}
 <div class="modal fade" id="recordsSubmitConfirmModal" tabindex="-1" aria-labelledby="recordsSubmitConfirmLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow">
@@ -37,7 +37,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
-                <form method="post" action="{% url 'counselor:case_records_submit' case.pk %}">
+                <form method="post" action="{% url 'counselor:case_records_submit' records_submit_case_pk %}">
                     {% csrf_token %}
                     <input type="hidden" name="confirm" value="1">
                     <button type="submit" class="btn btn-counselor text-white">최종 제출</button>

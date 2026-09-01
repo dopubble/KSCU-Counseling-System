@@ -93,6 +93,17 @@
     border-bottom: 1px solid var(--counselor-border);
 }
 
+.counselor-records-submit-col,
+.counselor-records-submit-cell {
+    width: 1%;
+    white-space: nowrap;
+}
+
+.counselor-records-submit-btn {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.6rem;
+}
+
 .counselor-row-link {
     cursor: pointer;
     transition: background-color 0.15s ease;

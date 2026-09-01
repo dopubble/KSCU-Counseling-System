@@ -233,38 +233,48 @@ class ClosedCaseBeforeSubmitTests(TestCase):
 
 
 class RecordsSubmitButtonTests(TestCase):
-    """최종 제출 버튼은 조건과 무관하게 항상 노출."""
+    """최종 제출 버튼은 상담사 대시보드 행에, 조건과 무관하게 항상 노출."""
 
     def setUp(self):
         self.counselor = _create_counselor("버튼상담사")
+        self.other_counselor = _create_counselor("버튼타상담사")
         self.client_user = _create_client("버튼내담자")
         self.case = _create_case(self.counselor, self.client_user, "CASE-BTN-1")
         self.http = HttpClient()
         self.http.force_login(self.counselor)
-        self.url = reverse("counselor:case_detail", kwargs={"pk": self.case.pk})
+        self.dashboard_url = reverse("counselor:dashboard")
+        self.detail_url = reverse("counselor:case_detail", kwargs={"pk": self.case.pk})
+        self.submit_url = reverse(
+            "counselor:case_records_submit", kwargs={"pk": self.case.pk}
+        )
 
-    def test_button_visible_on_active_case(self):
-        response = self.http.get(self.url)
+    def test_button_visible_on_active_case_row(self):
+        response = self.http.get(self.dashboard_url)
 
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.context["can_submit_records"])
-        self.assertFalse(response.context["records_submitted"])
+        self.assertContains(response, "CASE-BTN-1")
+        self.assertContains(response, self.submit_url)
         self.assertContains(response, "최종 제출")
+        self.assertContains(response, "event.stopPropagation()")
 
-    def test_button_visible_without_termination_record(self):
+    def test_button_visible_on_closed_case_row(self):
         self.case.status = CaseStatus.CLOSED
         self.case.save(update_fields=["status"])
 
-        response = self.http.get(self.url)
+        response = self.http.get(self.dashboard_url)
 
         self.assertFalse(TerminationCounselingRecord.objects.filter(case=self.case).exists())
+        self.assertContains(response, "CASE-BTN-1")
+        self.assertContains(response, "종결 사례")
+        self.assertContains(response, self.submit_url)
         self.assertContains(response, "최종 제출")
 
     def test_button_visible_with_draft_journal(self):
         _create_journal(self.case, self.counselor, 1, is_draft=True)
 
-        response = self.http.get(self.url)
+        response = self.http.get(self.dashboard_url)
 
+        self.assertContains(response, self.submit_url)
         self.assertContains(response, "최종 제출")
 
     def test_submitted_case_shows_completed_state_instead_of_button(self):
@@ -272,14 +282,37 @@ class RecordsSubmitButtonTests(TestCase):
         self.case.records_submitted_by = self.counselor
         self.case.save(update_fields=["records_submitted_at", "records_submitted_by"])
 
-        response = self.http.get(self.url)
+        response = self.http.get(self.dashboard_url)
 
-        self.assertTrue(response.context["records_submitted"])
         self.assertContains(response, "최종 제출 완료")
-        self.assertNotContains(
-            response,
-            reverse("counselor:case_records_submit", kwargs={"pk": self.case.pk}),
-        )
+        self.assertNotContains(response, self.submit_url)
+
+    def test_case_detail_has_no_submit_controls(self):
+        self.case.records_submitted_at = timezone.now()
+        self.case.records_submitted_by = self.counselor
+        self.case.save(update_fields=["records_submitted_at", "records_submitted_by"])
+
+        response = self.http.get(self.detail_url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, self.submit_url)
+        self.assertNotContains(response, "최종 제출 완료")
+        self.assertNotContains(response, "제출자 정보 없음")
+        self.assertNotContains(response, "최종 제출")
+
+    def test_submit_post_returns_to_dashboard_not_case_detail(self):
+        response = self.http.post(self.submit_url)
+
+        self.assertRedirects(response, self.dashboard_url)
+
+    def test_other_counselor_dashboard_does_not_show_case(self):
+        other_http = HttpClient()
+        other_http.force_login(self.other_counselor)
+
+        response = other_http.get(self.dashboard_url)
+
+        self.assertNotContains(response, "CASE-BTN-1")
+        self.assertNotContains(response, self.submit_url)
 
 
 class RecordsSubmitValidationTests(TestCase):
@@ -362,6 +395,8 @@ class RecordsSubmitValidationTests(TestCase):
         self.assertIsNotNone(self.case.records_submitted_at)
         self.assertEqual(self.case.records_submitted_by, self.counselor)
         self.assertContains(response, "최종 제출되었습니다.")
+        self.assertContains(response, "최종 제출 완료")
+        self.assertEqual(response.resolver_match.url_name, "dashboard")
 
     def test_duplicate_submit_is_idempotent(self):
         self.case.status = CaseStatus.CLOSED
@@ -1057,6 +1092,8 @@ class AdminRecordsUnsubmitTests(TestCase):
         self.assertIsNotNone(self.case.records_submitted_at)
         self.assertEqual(self.case.records_submitted_by, self.counselor)
         self.assertContains(done, "최종 제출되었습니다.")
+        self.assertContains(done, "최종 제출 완료")
+        self.assertEqual(done.resolver_match.url_name, "dashboard")
 
 
 class ClientDashboardClosedCaseTests(TestCase):

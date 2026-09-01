@@ -119,6 +119,7 @@
                             <th>신청 분야</th>
                             <th>상담 상태</th>
                             <th>개시일</th>
+                            <th class="counselor-records-submit-col"></th>
                             <th></th>
                         </tr>
                     </thead>
@@ -133,6 +134,7 @@
                                 <span class="badge badge-counselor-active">{{ case.get_status_display }}</span>
                             </td>
                             <td class="text-muted small">{{ case.opened_at|date:"Y-m-d" }}</td>
+                            {% include "counselor/partials/records_submit_row_action.html" %}
                             <td class="text-end">
                                 <i class="bi bi-chevron-right text-muted"></i>
                             </td>
@@ -169,6 +171,7 @@
                             <th>신청 분야</th>
                             <th>상담 상태</th>
                             <th>종결일</th>
+                            <th class="counselor-records-submit-col"></th>
                             <th></th>
                         </tr>
                     </thead>
@@ -183,6 +186,7 @@
                                 <span class="badge badge-counselor-closed">{{ case.get_status_display }}</span>
                             </td>
                             <td class="text-muted small">{% if case.closed_at %}{{ case.closed_at|date:"Y-m-d" }}{% else %}—{% endif %}</td>
+                            {% include "counselor/partials/records_submit_row_action.html" %}
                             <td class="text-end">
                                 <i class="bi bi-chevron-right text-muted"></i>
                             </td>
@@ -194,6 +198,8 @@
         </div>
     </div>
     {% endif %}
+
+    {% include "counselor/partials/records_submit_modals.html" %}
     </div>
 </div>
 {% endblock %}

@@ -1584,7 +1584,7 @@ RECORDS_SUBMIT_FEEDBACK_KEY = "records_submit_feedback"
 
 
 def _set_records_submit_feedback(request, case_pk, *, errors=None, confirm=False):
-    """최종 제출 결과를 사례 상세 화면에서 한 번만 표시하도록 세션에 남깁니다."""
+    """최종 제출 결과를 상담사 대시보드에서 한 번만 표시하도록 세션에 남깁니다."""
     request.session[RECORDS_SUBMIT_FEEDBACK_KEY] = {
         "case": str(case_pk),
         "errors": list(errors or []),
@@ -1592,9 +1592,12 @@ def _set_records_submit_feedback(request, case_pk, *, errors=None, confirm=False
     }
 
 
-def _pop_records_submit_feedback(request, case_pk):
+def _pop_records_submit_feedback(request, case_pk=None):
     data = request.session.pop(RECORDS_SUBMIT_FEEDBACK_KEY, None)
-    if not isinstance(data, dict) or data.get("case") != str(case_pk):
+    if not isinstance(data, dict):
+        return None
+    if case_pk is not None and data.get("case") != str(case_pk):
+        request.session[RECORDS_SUBMIT_FEEDBACK_KEY] = data
         return None
     return data
 
@@ -1762,6 +1765,7 @@ def counselor_dashboard(request):
         .select_related("case", "client", "case__application")
         .order_by("scheduled_at")
     )
+    submit_feedback = _pop_records_submit_feedback(request)
     return render(
         request,
         "counselor/dashboard.html",
@@ -1772,6 +1776,15 @@ def counselor_dashboard(request):
             "closed_count": closed_cases.count(),
             "pending_appointments": pending_appointments,
             "pending_count": pending_appointments.count(),
+            "records_submit_errors": (
+                submit_feedback["errors"] if submit_feedback else []
+            ),
+            "records_submit_confirm": bool(
+                submit_feedback and submit_feedback["confirm"]
+            ),
+            "records_submit_case_pk": (
+                submit_feedback["case"] if submit_feedback else None
+            ),
         },
     )
 
@@ -1809,8 +1822,6 @@ def counselor_case_detail(request, pk):
         .first()
     )
 
-    submit_feedback = _pop_records_submit_feedback(request, case.pk)
-
     return render(
         request,
         "counselor/case_detail.html",
@@ -1818,14 +1829,9 @@ def counselor_case_detail(request, pk):
             "case": case,
             "application": application,
             "records_submitted": case.records_submitted_at is not None,
-            "can_submit_records": case.counselor_id == request.user.pk,
             "can_unsubmit_records": (
                 (request.user.is_superuser or request.user.role == UserRole.ADMIN)
                 and case.records_submitted_at is not None
-            ),
-            "records_submit_errors": submit_feedback["errors"] if submit_feedback else [],
-            "records_submit_confirm": bool(
-                submit_feedback and submit_feedback["confirm"]
             ),
             "presenting_complaint_categories": presenting_complaint_categories_for_case(case),
             "presenting_reason": presenting_written_reason_for_case(case),
@@ -1866,7 +1872,7 @@ def case_records_submit(request, pk):
     1차 요청에서 조건을 검사하고, confirm=1인 2차 요청에서 잠금 후 재검증·확정합니다.
     """
     case = _get_board_manage_case(request, pk)
-    redirect_to = redirect("counselor:case_detail", pk=case.pk)
+    redirect_to = redirect("counselor:dashboard")
 
     errors = validate_case_records_submission(request.user, case)
     if errors:
