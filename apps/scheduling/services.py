@@ -47,6 +47,30 @@ class AppointmentServiceError(Exception):
     """예약 처리 오류"""
 
 
+def _assert_case_records_unlocked(case) -> None:
+    if getattr(case, "records_submitted_at", None) is not None:
+        raise AppointmentServiceError("최종 제출된 사례는 예약을 변경할 수 없습니다.")
+
+
+def _assert_case_accepts_new_appointment(case) -> None:
+    """기록 최종 제출된 사례에는 신규 예약을 만들지 않습니다."""
+    if getattr(case, "records_submitted_at", None) is not None:
+        raise AppointmentServiceError("최종 제출된 사례는 새로운 예약을 만들 수 없습니다.")
+
+
+def _assert_appointment_case_unlocked(appointment) -> None:
+    case = getattr(appointment, "case", None)
+    if case is None and getattr(appointment, "case_id", None):
+        from apps.counseling.models import Case
+
+        case = (
+            Case.objects.filter(pk=appointment.case_id)
+            .only("records_submitted_at")
+            .first()
+        )
+    _assert_case_records_unlocked(case)
+
+
 def _counselor_slot_taken(
     counselor_id,
     scheduled_at,
@@ -78,6 +102,7 @@ def create_appointment_request(
     """내담자 예약 신청 (PENDING, Zoom 미생성). 시간(분)은 상담사 확정 시 조정."""
     if not case.counselor_id:
         raise AppointmentServiceError("담당 상담사가 배정되지 않아 예약 신청을 할 수 없습니다.")
+    _assert_case_accepts_new_appointment(case)
 
     duration = duration_minutes or DEFAULT_APPOINTMENT_DURATION_MINUTES
     scheduled_at = normalize_client_preferred_datetime(scheduled_at)
@@ -151,6 +176,7 @@ def ensure_pending_session_appointment(
     notify: bool = True,
 ) -> Appointment:
     """회기별 PENDING Appointment — 없으면 생성, 있으면 일시·요청 내용 갱신."""
+    _assert_case_accepts_new_appointment(case)
     message = (request_message or "").strip()
     pending = Appointment.objects.filter(
         case=case,
@@ -182,6 +208,7 @@ def update_pending_appointment(
     notify_client: bool = True,
 ) -> Appointment:
     """상담사: 대기 중 예약 시간 수정 (확정 전)"""
+    _assert_appointment_case_unlocked(appointment)
     if appointment.status != AppointmentStatus.PENDING:
         raise AppointmentServiceError("대기 중인 예약만 시간을 수정할 수 있습니다.")
     appointment.scheduled_at = scheduled_at
@@ -600,6 +627,7 @@ def create_and_confirm_appointment_by_counselor(
     """상담사가 내담자 신청 없이 회기 예약을 생성하고 바로 확정."""
     if not case.counselor_id:
         raise AppointmentServiceError("담당 상담사가 배정되지 않았습니다.")
+    _assert_case_accepts_new_appointment(case)
 
     duration = duration_minutes or DEFAULT_APPOINTMENT_DURATION_MINUTES
     scheduled_at = normalize_client_preferred_datetime(scheduled_at)
@@ -656,6 +684,7 @@ def confirm_appointment_with_zoom(
     상담사 예약 확정.
     비대면(REMOTE)만 Zoom 회의 생성 및 Case.zoom_meeting_url 저장.
     """
+    _assert_appointment_case_unlocked(appointment)
     if appointment.status != AppointmentStatus.PENDING:
         raise AppointmentServiceError("이미 처리된 예약입니다.")
 
@@ -722,6 +751,7 @@ def reschedule_confirmed_appointment(
     확정 예약 일시 변경 — 슬롯·중복 검사 후 DB 저장.
     Zoom 갱신 실패 시에도 DB 변경은 유지하고 경고 메시지를 반환한다.
     """
+    _assert_appointment_case_unlocked(appointment)
     if appointment.status != AppointmentStatus.CONFIRMED:
         raise AppointmentServiceError("확정된 예약만 일정을 변경할 수 있습니다.")
 
@@ -1104,6 +1134,7 @@ def reject_appointment_request(
     notify_client: bool = True,
 ) -> Appointment:
     """상담사: 대기 중 예약 반려."""
+    _assert_appointment_case_unlocked(appointment)
     if appointment.status != AppointmentStatus.PENDING:
         raise AppointmentServiceError("대기 중인 예약만 반려할 수 있습니다.")
     reason = (reason or "").strip()

@@ -22,6 +22,8 @@
                     사례번호 <span class="font-monospace fw-semibold">{{ case.case_number }}</span>
                     <span class="client-portal-case-meta-sep" aria-hidden="true">·</span>
                     <span class="fw-semibold">{{ case.application.counseling_type }}</span>
+                    <span class="client-portal-case-meta-sep" aria-hidden="true">·</span>
+                    <span class="badge client-active-case-status">상담 상태 {{ case.get_status_display }}</span>
                 </p>
             </div>
             {% if show_header_cancel %}
@@ -215,7 +217,7 @@
 {% url 'client:case_chat_messages' case.pk as chat_messages_url %}
 {% url 'client:case_chat_send' case.pk as chat_send_url %}
 {% url 'client:case_chat_unread' case.pk as chat_unread_url %}
-{% include "includes/case_chat_widget.html" with chat_partner_name=case.counselor.name %}
+{% include "includes/case_chat_widget.html" with chat_partner_name=case.counselor.name chat_locked=case.records_submitted %}
 {% endif %}
 {% endblock %}
 {% endblock %}

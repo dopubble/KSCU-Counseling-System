@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from typing import Any, Optional
 
+from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Count, DateTimeField, Exists, F, OuterRef, Q, QuerySet, Subquery, Window
 from django.db.models.functions import Coalesce, RowNumber
@@ -34,6 +35,55 @@ from .models import (
     CounselingMethod,
     SessionScheduleChangeRequest,
 )
+
+RECORDS_LOCKED_MESSAGE = "최종 제출된 사례입니다. 더 이상 수정할 수 없습니다."
+
+
+def case_records_are_locked(case) -> bool:
+    """기록 최종 제출 여부 — 생성·수정·삭제 잠금 기준."""
+    return case is not None and getattr(case, "records_submitted_at", None) is not None
+
+
+def records_lock_case_for_obj(obj):
+    """Admin·관련 객체에서 잠금 대상 Case를 찾습니다."""
+    if obj is None:
+        return None
+    if isinstance(obj, Case):
+        return obj
+    case = _related_or_none(obj, "case")
+    if case is not None:
+        return case
+    appointment = _related_or_none(obj, "appointment")
+    if appointment is not None:
+        return _related_or_none(appointment, "case")
+    application = _related_or_none(obj, "application")
+    if application is not None:
+        return _related_or_none(application, "case")
+    return None
+
+
+def _related_or_none(obj, attr):
+    try:
+        return getattr(obj, attr, None)
+    except Exception:
+        return None
+
+
+def assert_case_records_unlocked(case) -> None:
+    if case_records_are_locked(case):
+        raise PermissionDenied(RECORDS_LOCKED_MESSAGE)
+
+
+def assert_appointment_case_unlocked(appointment) -> None:
+    case = getattr(appointment, "case", None)
+    if case is None and getattr(appointment, "case_id", None):
+        case = (
+            Case.objects.filter(pk=appointment.case_id)
+            .only("records_submitted_at")
+            .first()
+        )
+    if case_records_are_locked(case):
+        raise AppointmentOperationError("records_locked", RECORDS_LOCKED_MESSAGE)
 
 
 def annotate_application_sequence(queryset: QuerySet) -> QuerySet:
@@ -174,6 +224,7 @@ def close_case_for_early_termination(case: Case) -> None:
 @transaction.atomic
 def request_appointment_cancel(appointment: Appointment, *, cancel_reason: str) -> Appointment:
     """확정 예약에 대한 내담자 취소 요청."""
+    assert_appointment_case_unlocked(appointment)
     if appointment.status != AppointmentStatus.CONFIRMED:
         raise ValueError("not_confirmed")
 
@@ -200,6 +251,7 @@ def request_appointment_cancel(appointment: Appointment, *, cancel_reason: str) 
 @transaction.atomic
 def withdraw_pending_session_appointment(appointment: Appointment) -> None:
     """내담자 PENDING 예약 요청 철회 — 회기를 예약 전 상태로 되돌림."""
+    assert_appointment_case_unlocked(appointment)
     if appointment.status != AppointmentStatus.PENDING:
         raise ValueError("not_pending")
 
@@ -238,6 +290,7 @@ def _restore_cancel_request_effects(case: Case, appointment: Appointment) -> Non
 @transaction.atomic
 def withdraw_appointment_cancel_request(appointment: Appointment) -> Appointment:
     """내담자 취소 요청(CANCEL_PENDING) 철회 — 예약 확정으로 복원."""
+    assert_appointment_case_unlocked(appointment)
     if appointment.status != AppointmentStatus.CANCEL_PENDING:
         raise ValueError("not_cancel_pending")
 
@@ -261,6 +314,7 @@ def withdraw_appointment_cancel_request(appointment: Appointment) -> Appointment
 @transaction.atomic
 def approve_appointment_cancel_request(appointment: Appointment) -> Appointment:
     """상담사: 내담자 취소 요청 승인 — 예약 취소 확정."""
+    assert_appointment_case_unlocked(appointment)
     if appointment.status != AppointmentStatus.CANCEL_PENDING:
         raise ValueError("not_cancel_pending")
 
@@ -278,6 +332,7 @@ def cancel_confirmed_appointment_by_counselor(
     cancel_reason: str,
 ) -> Appointment:
     """상담사: 확정 예약 직접 취소 (내담자 회기 차감·당일 취소 누적 미적용)."""
+    assert_appointment_case_unlocked(appointment)
     if appointment.status != AppointmentStatus.CONFIRMED:
         raise AppointmentOperationError(
             "not_confirmed",
@@ -317,6 +372,7 @@ def cancel_confirmed_appointment_by_counselor(
 @transaction.atomic
 def reject_appointment_cancel_request(appointment: Appointment, *, reason: str) -> Appointment:
     """상담사: 내담자 취소 요청 반려 — 예약 확정 유지."""
+    assert_appointment_case_unlocked(appointment)
     if appointment.status != AppointmentStatus.CANCEL_PENDING:
         raise ValueError("not_cancel_pending")
 
@@ -352,6 +408,8 @@ def approve_session_schedule_change_request(
         reschedule_confirmed_appointment,
     )
 
+    assert_case_records_unlocked(schedule_request.case)
+
     appointment = schedule_request.appointment
     if appointment is None or appointment.status != AppointmentStatus.CONFIRMED:
         raise AppointmentOperationError(
@@ -386,6 +444,7 @@ def reject_session_schedule_change_request(
     reason: str,
 ) -> tuple[Appointment, datetime | None]:
     """상담사: 확정 회기 일정 변경 요청 반려 — 기존 일정 유지."""
+    assert_case_records_unlocked(schedule_request.case)
     appointment = schedule_request.appointment
     if appointment is None or appointment.status != AppointmentStatus.CONFIRMED:
         raise AppointmentOperationError(
@@ -443,6 +502,12 @@ def application_has_confirmed_appointment(application: CounselingApplication) ->
 
 def client_can_edit_application(application: CounselingApplication) -> bool:
     if application.status == ApplicationStatus.CANCELLED:
+        return False
+    try:
+        case = application.case
+    except Case.DoesNotExist:
+        case = None
+    if case_records_are_locked(case):
         return False
     if application_has_confirmed_appointment(application):
         return not confirmed_appointment_blocks_client_change(application)
@@ -710,6 +775,17 @@ def assign_counselor(
     return case
 
 
+def _sync_application_closed(case: Case) -> None:
+    """사례 종결 시 신청서 상태 동기화 (취소·종결 신청서는 그대로 둠)."""
+    application = case.application
+    if application.status not in (
+        ApplicationStatus.CANCELLED,
+        ApplicationStatus.CLOSED,
+    ):
+        application.status = ApplicationStatus.CLOSED
+        application.save(update_fields=["status", "updated_at"])
+
+
 @transaction.atomic
 def close_case_after_sessions_exhausted(case: Case) -> None:
     """남은 회기가 0이 되었을 때 사례·신청을 종결 처리."""
@@ -719,13 +795,29 @@ def close_case_after_sessions_exhausted(case: Case) -> None:
     case.remaining_sessions = 0
     case.save(update_fields=["status", "closed_at", "remaining_sessions"])
 
-    application = case.application
-    if application.status not in (
-        ApplicationStatus.CANCELLED,
-        ApplicationStatus.CLOSED,
-    ):
-        application.status = ApplicationStatus.CLOSED
-        application.save(update_fields=["status", "updated_at"])
+    _sync_application_closed(case)
+
+
+@transaction.atomic
+def close_case_on_termination_record(case: Case) -> bool:
+    """
+    종결기록지 저장에 의한 조기 종결.
+    회기가 남아 있어도 종결하되 remaining_sessions는 실제 잔여 회기 그대로 보존하고,
+    이미 종결된 사례는 closed_at을 덮어쓰지 않습니다.
+    """
+    locked = Case.objects.select_for_update().select_related("application").get(pk=case.pk)
+    if locked.status == CaseStatus.CLOSED:
+        return False
+
+    locked.status = CaseStatus.CLOSED
+    locked.closed_at = locked.closed_at or timezone.now()
+    locked.save(update_fields=["status", "closed_at"])
+
+    _sync_application_closed(locked)
+
+    case.status = locked.status
+    case.closed_at = locked.closed_at
+    return True
 
 
 @transaction.atomic
@@ -757,8 +849,82 @@ def finalize_completed_journal(journal) -> None:
     journal.save(update_fields=["session_consumed"])
 
 
+SUBMIT_ERROR_NOT_OWNER = "이 사례를 제출할 권한이 없습니다."
+SUBMIT_ERROR_ALREADY_SUBMITTED = "이미 최종 제출된 사례입니다."
+SUBMIT_ERROR_NOT_CLOSED = (
+    "상담이 아직 종결되지 않았습니다. "
+    "회기 차감 완료 또는 종결기록지 작성 후 제출해 주세요."
+)
+SUBMIT_ERROR_NO_TERMINATION_RECORD = "종결기록지가 작성되지 않았습니다."
+
+
+def validate_case_records_submission(user, case: Case) -> list[str]:
+    """최종 제출 조건 검사 — 충족하지 못한 사유를 모두 반환합니다."""
+    errors: list[str] = []
+
+    if not getattr(user, "is_authenticated", False) or case.counselor_id != user.pk:
+        errors.append(SUBMIT_ERROR_NOT_OWNER)
+
+    if case.records_submitted_at is not None:
+        errors.append(SUBMIT_ERROR_ALREADY_SUBMITTED)
+
+    if case.status != CaseStatus.CLOSED:
+        errors.append(SUBMIT_ERROR_NOT_CLOSED)
+
+    if not TerminationCounselingRecord.objects.filter(case=case, is_draft=False).exists():
+        errors.append(SUBMIT_ERROR_NO_TERMINATION_RECORD)
+
+    draft_count = CounselingJournal.objects.filter(case=case, is_draft=True).count()
+    if draft_count:
+        errors.append(
+            f"임시저장 상태의 상담일지가 {draft_count}건 있습니다. 모두 최종 저장해 주세요."
+        )
+
+    return errors
+
+
+@transaction.atomic
+def submit_case_records(case: Case, user) -> tuple[bool, list[str]]:
+    """
+    상담일지·종결기록지 최종 제출.
+    잠금 후 조건을 재검증하므로 중복 클릭·중복 요청은 한 번만 반영됩니다.
+    """
+    locked = Case.objects.select_for_update().select_related("application").get(pk=case.pk)
+    errors = validate_case_records_submission(user, locked)
+    if errors:
+        return False, errors
+
+    locked.records_submitted_at = timezone.now()
+    locked.records_submitted_by = user
+    locked.save(update_fields=["records_submitted_at", "records_submitted_by"])
+
+    case.records_submitted_at = locked.records_submitted_at
+    case.records_submitted_by = locked.records_submitted_by
+    return True, []
+
+
+@transaction.atomic
+def unsubmit_case_records(case: Case) -> bool:
+    """
+    관리자 최종 제출 취소.
+    사례 상태(CLOSED)와 기존 기록은 유지하고 제출 필드만 비웁니다.
+    """
+    locked = Case.objects.select_for_update().get(pk=case.pk)
+    if locked.records_submitted_at is None:
+        return False
+
+    locked.records_submitted_at = None
+    locked.records_submitted_by = None
+    locked.save(update_fields=["records_submitted_at", "records_submitted_by"])
+
+    case.records_submitted_at = None
+    case.records_submitted_by = None
+    return True
+
+
 def reassign_counselor(case: Case, counselor: User) -> Case:
     """기존 사례의 담당 상담사 변경"""
+    assert_case_records_unlocked(case)
     if counselor.role != UserRole.COUNSELOR:
         raise ValueError("선택한 사용자는 상담사가 아닙니다.")
     case.counselor = counselor
@@ -872,6 +1038,8 @@ class CaseSessionCard:
     counselor_assigned: bool = False
     total_sessions: int = 0
     counseling_method: str = CounselingMethod.IN_PERSON
+    case_closed: bool = False
+    records_submitted: bool = False
 
     @property
     def has_materials(self) -> bool:
@@ -905,6 +1073,8 @@ class CaseSessionCard:
     @property
     def show_counselor_review_buttons(self) -> bool:
         """예약 요청중(REQUESTED) 회기 — 확정/반려 버튼 표시."""
+        if self.records_submitted:
+            return False
         if self.status_code == "REQUESTED":
             return True
         if self.appointment is None:
@@ -915,6 +1085,8 @@ class CaseSessionCard:
     def show_counselor_direct_booking(self) -> bool:
         """상담사 — 내담자 신청 없이 일정 입력·확정."""
         if not self.counselor_assigned:
+            return False
+        if self.records_submitted:
             return False
         if self.status_code in (
             "COMPLETED",
@@ -1029,6 +1201,8 @@ class CaseSessionCard:
     @property
     def show_session_actions(self) -> bool:
         """자료 첨부 — 완료·취소·노쇼 회기 제외."""
+        if self.records_submitted:
+            return False
         if self.status_code in ("COMPLETED", "CANCELLED", "NO_SHOW"):
             return False
         if self.appointment and self.appointment.status in (
@@ -1082,6 +1256,8 @@ class CaseSessionCard:
     @property
     def show_schedule_change(self) -> bool:
         """일정 변경·예약 요청 — 예정·확정·대기·취소 완료·반려 후 재예약."""
+        if self.records_submitted:
+            return False
         if self.status_code in ("COMPLETED", "NO_SHOW"):
             return False
         if (
@@ -1135,11 +1311,15 @@ class CaseSessionCard:
     @property
     def show_counselor_cancel_review_actions(self) -> bool:
         """상담사 — 취소 요청 승인/반려."""
+        if self.records_submitted:
+            return False
         return self.has_session_cancel_pending
 
     @property
     def show_counselor_direct_cancel(self) -> bool:
         """상담사 — 확정 예약 직접 취소 (과거 일정 포함)."""
+        if self.records_submitted:
+            return False
         if not self.counselor_assigned or not self.is_confirmed:
             return False
         if self.has_session_cancel_pending:
@@ -1150,6 +1330,8 @@ class CaseSessionCard:
     def show_counselor_direct_reschedule(self) -> bool:
         """상담사 — 확정 회기 일정 변경 (과거 일정 포함)."""
         if not self.counselor_assigned or not self.is_confirmed:
+            return False
+        if self.records_submitted:
             return False
         if self.has_session_cancel_pending:
             return False
@@ -1165,6 +1347,8 @@ class CaseSessionCard:
     @property
     def show_counselor_schedule_change_review_actions(self) -> bool:
         """상담사 — 확정 회기 일정 변경 요청 승인/반려."""
+        if self.records_submitted:
+            return False
         return (
             self.status_code == "CHANGE_REQUESTED"
             and self.schedule_change_request is not None
@@ -1205,6 +1389,8 @@ class CaseSessionCard:
     @property
     def show_pending_session_actions(self) -> bool:
         """예약 요청 중 회기 — 일정 수정·요청 철회."""
+        if self.records_submitted:
+            return False
         if self.has_session_cancel_pending:
             return False
         if self.status_code != "REQUESTED":
@@ -1216,6 +1402,8 @@ class CaseSessionCard:
     @property
     def show_confirmed_session_actions(self) -> bool:
         """예약 확정 회기 — 일정 변경·취소 요청 버튼."""
+        if self.records_submitted:
+            return False
         if not self.is_confirmed:
             return False
         if self.has_session_cancel_pending:
@@ -1263,8 +1451,15 @@ class CaseSessionCard:
 
     @property
     def show_counselor_journal(self) -> bool:
-        """상담사: 내담자 매칭(담당 배정) 후 일지 작성·열람."""
-        return self.counselor_assigned
+        """
+        상담사: 내담자 매칭(담당 배정) 후 일지 작성·열람.
+        최종 제출 후에는 열람만 가능합니다.
+        """
+        if not self.counselor_assigned:
+            return False
+        if self.records_submitted:
+            return bool(self.journal and not self.journal.is_draft)
+        return True
 
     @property
     def counselor_journal_label(self) -> str:
@@ -1274,8 +1469,12 @@ class CaseSessionCard:
 
     @property
     def show_initial_record(self) -> bool:
-        """상담사: 1회기에서 초기상담 기록지 작성·열람 (매칭 후)."""
-        return self.session_number == 1 and self.counselor_assigned
+        """상담사: 1회기에서 초기상담 기록지 작성·열람 (매칭 후, 최종 제출 후에는 열람만)."""
+        if self.session_number != 1 or not self.counselor_assigned:
+            return False
+        if self.records_submitted:
+            return bool(self.initial_record and not self.initial_record.is_draft)
+        return True
 
     @property
     def initial_record_label(self) -> str:
@@ -1290,7 +1489,11 @@ class CaseSessionCard:
         """상담사: 마지막 회기에서 종결기록지 작성·열람 (매칭 후)."""
         if not self.counselor_assigned or self.total_sessions < 1:
             return False
-        return self.session_number == self.total_sessions
+        if self.session_number != self.total_sessions:
+            return False
+        if self.records_submitted:
+            return bool(self.termination_record and not self.termination_record.is_draft)
+        return True
 
     @property
     def termination_record_label(self) -> str:
@@ -1302,6 +1505,8 @@ class CaseSessionCard:
 
     @property
     def counselor_can_update_status(self) -> bool:
+        if self.records_submitted:
+            return False
         if self.appointment is None:
             return False
         return self.appointment.status in (
@@ -1550,6 +1755,8 @@ def build_case_session_cards(case: Case) -> list[CaseSessionCard]:
                 counselor_assigned=counselor_assigned,
                 total_sessions=total,
                 counseling_method=case.counseling_method,
+                case_closed=case.status == CaseStatus.CLOSED,
+                records_submitted=case.records_submitted_at is not None,
                 zoom_url=_resolve_appointment_zoom_url(appointment, case)
                 if appointment
                 else "",

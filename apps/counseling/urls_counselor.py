@@ -66,6 +66,11 @@ urlpatterns = [
     ),
     path("case/<uuid:pk>/", views.counselor_case_detail, name="case_detail"),
     path(
+        "case/<uuid:pk>/records/submit/",
+        views.case_records_submit,
+        name="case_records_submit",
+    ),
+    path(
         "case/<uuid:pk>/chat/unread/",
         chat_views.counselor_case_chat_unread,
         name="case_chat_unread",

@@ -1,0 +1,62 @@
+{% if records_submit_errors %}
+<div class="modal fade" id="recordsSubmitBlockedModal" tabindex="-1" aria-labelledby="recordsSubmitBlockedLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header">
+                <h5 class="modal-title" id="recordsSubmitBlockedLabel">
+                    <i class="bi bi-exclamation-triangle text-warning me-2" aria-hidden="true"></i>최종 제출할 수 없습니다.
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-2">아래 항목을 먼저 처리해 주세요.</p>
+                <ul class="mb-0 ps-3">
+                    {% for error in records_submit_errors %}
+                    <li class="mb-1">{{ error }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">확인</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if records_submit_confirm %}
+<div class="modal fade" id="recordsSubmitConfirmModal" tabindex="-1" aria-labelledby="recordsSubmitConfirmLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header">
+                <h5 class="modal-title" id="recordsSubmitConfirmLabel">최종 제출 확인</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-0">최종 제출 후에는 초기상담 기록지, 상담일지, 종결기록지 및 해당 사례의 모든 정보를 수정할 수 없습니다. 최종 제출하시겠습니까?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+                <form method="post" action="{% url 'counselor:case_records_submit' case.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="confirm" value="1">
+                    <button type="submit" class="btn btn-counselor text-white">최종 제출</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if records_submit_errors or records_submit_confirm %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        var target = document.getElementById(
+            {% if records_submit_errors %}'recordsSubmitBlockedModal'{% else %}'recordsSubmitConfirmModal'{% endif %}
+        );
+        if (target && window.bootstrap) {
+            new window.bootstrap.Modal(target).show();
+        }
+    });
+</script>
+{% endif %}

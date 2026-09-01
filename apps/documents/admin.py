@@ -10,6 +10,7 @@ from django.utils import timezone
 from django.utils.html import format_html
 from django.utils.http import content_disposition_header
 
+from apps.counseling.admin_lock import RecordsSubmittedLockMixin
 from apps.documents.views import _consent_file_response
 
 from .models import (
@@ -42,7 +43,7 @@ class RequiredDocTypeFilter(admin.SimpleListFilter):
 
 
 @admin.register(ConsentDocument)
-class ConsentDocumentAdmin(admin.ModelAdmin):
+class ConsentDocumentAdmin(RecordsSubmittedLockMixin, admin.ModelAdmin):
     list_display = (
         "client",
         "counselor_display",
@@ -216,13 +217,13 @@ class ConsentDocumentAdmin(admin.ModelAdmin):
 
 
 @admin.register(ClosureReport)
-class ClosureReportAdmin(admin.ModelAdmin):
+class ClosureReportAdmin(RecordsSubmittedLockMixin, admin.ModelAdmin):
     list_display = ("case", "counselor", "closure_reason", "approved_by", "created_at")
     search_fields = ("case__case_number", "counselor__name")
 
 
 @admin.register(SessionMaterial)
-class SessionMaterialAdmin(admin.ModelAdmin):
+class SessionMaterialAdmin(RecordsSubmittedLockMixin, admin.ModelAdmin):
     list_display = (
         "case",
         "session_number",

@@ -150,6 +150,50 @@
             {% endif %}
         </div>
     </div>
+
+    {% if closed_cases %}
+    <div class="card border-0 shadow-sm counselor-table-card section-spacing" id="counselor-closed-cases">
+        <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center py-3">
+            <h2 class="h6 fw-semibold mb-0">
+                <i class="bi bi-archive me-2 text-muted"></i>종결 사례
+            </h2>
+            <span class="small text-muted">{{ closed_count }}건</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive table-container">
+                <table class="table table-hover align-middle mb-0 counselor-table">
+                    <thead>
+                        <tr>
+                            <th>사례번호</th>
+                            <th>학생 이름</th>
+                            <th>신청 분야</th>
+                            <th>상담 상태</th>
+                            <th>종결일</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for case in closed_cases %}
+                        <tr class="counselor-row-link"
+                            onclick="window.location='{% url 'counselor:case_detail' case.pk %}'">
+                            <td class="text-muted small">{{ case.case_number }}</td>
+                            <td class="fw-semibold text-counselor">{{ case.client.name }}</td>
+                            <td>{{ case.application.counseling_type }}</td>
+                            <td>
+                                <span class="badge badge-counselor-closed">{{ case.get_status_display }}</span>
+                            </td>
+                            <td class="text-muted small">{% if case.closed_at %}{{ case.closed_at|date:"Y-m-d" }}{% else %}—{% endif %}</td>
+                            <td class="text-end">
+                                <i class="bi bi-chevron-right text-muted"></i>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
     </div>
 </div>
 {% endblock %}

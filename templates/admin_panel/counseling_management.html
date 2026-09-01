@@ -246,8 +246,19 @@
                                     {% if case.closed_at %}{{ case.closed_at|date:"Y-m-d H:i" }}{% else %}—{% endif %}
                                 </td>
                                 <td class="text-end">
+                                    <div class="d-flex flex-wrap gap-1 justify-content-end">
                                     <a href="{% url 'counseling:application_detail' case.application_id %}"
                                        class="btn btn-sm btn-outline-secondary">보기</a>
+                                    {% if case.records_submitted_at %}
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-warning"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#recordsUnsubmitConfirmModal"
+                                            data-unsubmit-url="{% url 'counseling:case_records_unsubmit' case.pk %}">
+                                        최종 제출 취소
+                                    </button>
+                                    {% endif %}
+                                    </div>
                                 </td>
                             </tr>
                             {% endfor %}
@@ -270,6 +281,42 @@
         <i class="bi bi-arrow-left me-1"></i>대시보드로
     </a>
 </p>
+
+<div class="modal fade" id="recordsUnsubmitConfirmModal" tabindex="-1" aria-labelledby="recordsUnsubmitConfirmLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header">
+                <h5 class="modal-title" id="recordsUnsubmitConfirmLabel">최종 제출 취소</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-0">최종 제출을 취소하면 상담사가 해당 사례의 기록과 예약 정보를 다시 수정할 수 있습니다. 최종 제출을 취소하시겠습니까?</p>
+            </div>
+            <div class="modal-footer">
+                <form method="post" action="" id="recordsUnsubmitForm">
+                    {% csrf_token %}
+                    <input type="hidden" name="confirm" value="1">
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-warning">최종 제출 취소</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById("recordsUnsubmitConfirmModal")?.addEventListener("show.bs.modal", function (event) {
+    const button = event.relatedTarget;
+    const url = button && button.getAttribute("data-unsubmit-url");
+    const form = document.getElementById("recordsUnsubmitForm");
+    if (form && url) {
+        form.setAttribute("action", url);
+    }
+});
+</script>
 {% endblock %}
 
 {% block extra_css %}

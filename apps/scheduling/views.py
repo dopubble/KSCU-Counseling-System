@@ -160,6 +160,8 @@ def appointment_manage(request, pk):
     """대기 중 예약 — 시간 수정 또는 확정(+Zoom)"""
     appointment = _get_counselor_pending_appointment(request, pk)
     case = appointment.case
+    if getattr(case, "records_submitted_at", None) is not None:
+        raise PermissionDenied("최종 제출된 사례입니다. 더 이상 수정할 수 없습니다.")
 
     if request.method == "POST":
         form = AppointmentScheduleForm(

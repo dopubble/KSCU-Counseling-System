@@ -1,10 +1,11 @@
 from django.contrib import admin
 
+from .admin_lock import RecordsSubmittedLockMixin
 from .models import Case, ChatMessage, CounselingApplication, SessionScheduleChangeRequest
 
 
 @admin.register(CounselingApplication)
-class CounselingApplicationAdmin(admin.ModelAdmin):
+class CounselingApplicationAdmin(RecordsSubmittedLockMixin, admin.ModelAdmin):
     list_display = (
         "client",
         "display_counseling_types",
@@ -29,7 +30,7 @@ class CounselingApplicationAdmin(admin.ModelAdmin):
 
 
 @admin.register(Case)
-class CaseAdmin(admin.ModelAdmin):
+class CaseAdmin(RecordsSubmittedLockMixin, admin.ModelAdmin):
     list_display = (
         "case_number",
         "client",
@@ -49,7 +50,7 @@ class CaseAdmin(admin.ModelAdmin):
 
 
 @admin.register(ChatMessage)
-class ChatMessageAdmin(admin.ModelAdmin):
+class ChatMessageAdmin(RecordsSubmittedLockMixin, admin.ModelAdmin):
     list_display = ("case", "sender", "recipient", "body_preview", "created_at")
     list_filter = ("created_at",)
     search_fields = ("case__case_number", "sender__name", "recipient__name", "body")
@@ -61,7 +62,7 @@ class ChatMessageAdmin(admin.ModelAdmin):
 
 
 @admin.register(SessionScheduleChangeRequest)
-class SessionScheduleChangeRequestAdmin(admin.ModelAdmin):
+class SessionScheduleChangeRequestAdmin(RecordsSubmittedLockMixin, admin.ModelAdmin):
     list_display = ("case", "session_number", "client", "preferred_datetime", "created_at")
     list_filter = ("created_at",)
     search_fields = ("case__case_number", "client__name", "message")

@@ -3,7 +3,13 @@ from django.db import transaction
 from django.http import HttpResponseRedirect
 from django.urls import reverse
 
+from apps.counseling.admin_lock import RecordsSubmittedLockMixin
 from apps.counseling.models import Case, CounselingMethod
+from apps.counseling.services import (
+    RECORDS_LOCKED_MESSAGE,
+    case_records_are_locked,
+    records_lock_case_for_obj,
+)
 from apps.scheduling.zoom_links import appointment_zoom_link_is_locked
 from apps.sessions_app.models import ZoomMeeting
 
@@ -134,7 +140,7 @@ class AvailabilityExceptionAdmin(admin.ModelAdmin):
 
 
 @admin.register(Appointment)
-class AppointmentAdmin(admin.ModelAdmin):
+class AppointmentAdmin(RecordsSubmittedLockMixin, admin.ModelAdmin):
     list_display = (
         "case",
         "session_number",
@@ -155,6 +161,10 @@ class AppointmentAdmin(admin.ModelAdmin):
 
     @transaction.atomic
     def save_model(self, request, obj, form, change):
+        if case_records_are_locked(records_lock_case_for_obj(obj)):
+            from django.core.exceptions import PermissionDenied
+
+            raise PermissionDenied(RECORDS_LOCKED_MESSAGE)
         if not _admin_intends_remote_confirm(obj, change=change, form=form):
             super().save_model(request, obj, form, change)
             return
