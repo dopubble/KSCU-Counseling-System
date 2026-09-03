@@ -44,7 +44,8 @@
                         <form method="post"
                               action="{% url 'counseling:apply' %}"
                               novalidate
-                              onsubmit="return confirm('{% if is_edit %}저장을 완료하시겠습니까?{% else %}상담 신청을 완료하시겠습니까?{% endif %}');">
+                              id="counseling-apply-form"
+                              onsubmit="return validateCounselingApplyBirthDate(this) && confirm('{% if is_edit %}저장을 완료하시겠습니까?{% else %}상담 신청을 완료하시겠습니까?{% endif %}');">
                             {% csrf_token %}
 
                             {% if form.errors %}
@@ -68,7 +69,8 @@
 
                             <h2 class="h6 text-kscu fw-bold mb-3 pb-2 border-bottom">기본 정보</h2>
                             <p class="small text-muted mb-3">
-                                이름·학번·생년월일·소속 학과는 회원가입 정보에서 자동으로 불러오며 수정할 수 없습니다.
+                                이름·학번·소속 학과는 회원가입 정보에서 자동으로 불러오며 수정할 수 없습니다.
+                                생년월일은 필수 항목입니다.
                             </p>
                             <div class="row g-3 mb-4">
                                 <div class="col-md-6">
@@ -84,7 +86,7 @@
                                     {% if form.student_id.errors %}<div class="text-danger small mt-1">{{ form.student_id.errors.0 }}</div>{% endif %}
                                 </div>
                                 <div class="col-md-6">
-                                    <label for="id_birth_date" class="form-label fw-semibold">{{ form.birth_date.label }}</label>
+                                    <label for="id_birth_date" class="form-label fw-semibold">{{ form.birth_date.label }} <span class="text-danger">*</span></label>
                                     {{ form.birth_date }}
                                     {% if form.birth_date.help_text %}<div class="form-text">{{ form.birth_date.help_text }}</div>{% endif %}
                                     {% if form.birth_date.errors %}<div class="text-danger small mt-1">{{ form.birth_date.errors.0 }}</div>{% endif %}
@@ -210,4 +212,28 @@
     </div>
 </section>
 {% endblock %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function validateCounselingApplyBirthDate(form) {
+    var field = form.querySelector("#id_birth_date");
+    if (!field) {
+        return true;
+    }
+    var value = (field.value || "").trim();
+    if (!value) {
+        field.setCustomValidity("생년월일을 입력해주세요.");
+        if (typeof field.reportValidity === "function") {
+            field.reportValidity();
+        } else {
+            alert("생년월일을 입력해주세요.");
+        }
+        field.focus();
+        return false;
+    }
+    field.setCustomValidity("");
+    return true;
+}
+</script>
 {% endblock %}

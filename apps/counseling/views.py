@@ -197,7 +197,7 @@ def _apply_identity_tampered(request, user) -> bool:
     for field_name, expected_value in post_checks.items():
         if field_name in request.POST and request.POST.get(field_name, "") != expected_value:
             return True
-    if "birth_date" in request.POST:
+    if expected["birth_date"] and "birth_date" in request.POST:
         posted = request.POST.get("birth_date", "")
         if posted != _format_birth_date_for_compare(expected["birth_date"]):
             return True
@@ -205,11 +205,30 @@ def _apply_identity_tampered(request, user) -> bool:
 
 
 def _enforce_apply_identity(user, data: dict) -> dict:
-    """저장 직전 고정 필드를 로그인 계정 값으로 강제."""
+    """저장 직전 고정 필드를 로그인 계정 값으로 강제. 생년월일은 프로필에 있을 때만 덮어씁니다."""
     snapshot = _get_apply_profile_snapshot(user)
     enforced = dict(data)
-    enforced.update(snapshot)
+    enforced["name"] = snapshot["name"]
+    enforced["student_id"] = snapshot["student_id"]
+    enforced["department"] = snapshot["department"]
+    if snapshot["birth_date"]:
+        enforced["birth_date"] = snapshot["birth_date"]
     return enforced
+
+
+def _application_has_birth_date(data: dict) -> bool:
+    return bool(data.get("birth_date"))
+
+
+def _persist_client_birth_date_if_empty(user, birth_date) -> None:
+    """신규 신청에서 입력한 생년월일을 빈 프로필에만 저장합니다. 기존 값은 바꾸지 않습니다."""
+    if not birth_date:
+        return
+    profile, _ = ClientProfile.objects.get_or_create(user=user)
+    if profile.birth_date:
+        return
+    profile.birth_date = birth_date
+    profile.save(update_fields=["birth_date", "updated_at"])
 
 
 def _prefill_apply_form(request):
@@ -244,10 +263,13 @@ def _save_counseling_application(user, data):
         update_fields.append("updated_at")
         user.save(update_fields=update_fields)
 
-    birth_date = snapshot["birth_date"]
+    birth_date = data.get("birth_date") or snapshot["birth_date"]
+    if not birth_date:
+        raise ValueError("birth_date_required")
+    _persist_client_birth_date_if_empty(user, birth_date)
     preferred_schedule = {
         "student_id": snapshot["student_id"],
-        "birth_date": birth_date.isoformat() if birth_date else "",
+        "birth_date": birth_date.isoformat() if hasattr(birth_date, "isoformat") else str(birth_date),
         "department": snapshot["department"],
         "preferred_date": data["preferred_date"].isoformat(),
         "preferred_time": data["preferred_time"].strftime("%H:%M"),
@@ -282,12 +304,15 @@ def _update_counseling_application(user, application, data):
         update_fields.append("updated_at")
         user.save(update_fields=update_fields)
 
-    birth_date = snapshot["birth_date"]
+    birth_date = data.get("birth_date") or snapshot["birth_date"]
+    if not birth_date:
+        raise ValueError("birth_date_required")
+    _persist_client_birth_date_if_empty(user, birth_date)
     preferred_schedule = dict(application.preferred_schedule or {})
     preferred_schedule.update(
         {
             "student_id": snapshot["student_id"],
-            "birth_date": birth_date.isoformat() if birth_date else "",
+            "birth_date": birth_date.isoformat() if hasattr(birth_date, "isoformat") else str(birth_date),
             "department": snapshot["department"],
             "preferred_date": data["preferred_date"].isoformat(),
             "preferred_time": data["preferred_time"].strftime("%H:%M"),
@@ -355,53 +380,55 @@ def apply(request):
                     "이름·학번·생년월일·소속 학과는 회원가입 정보로만 저장됩니다. 다른 값은 반영되지 않았습니다.",
                 )
             data = _enforce_apply_identity(request.user, form.cleaned_data)
-
-            if is_edit and edit_id:
-                application = get_object_or_404(
-                    CounselingApplication.objects.select_related("case"),
-                    pk=edit_id,
-                    client=request.user,
-                )
-                if not client_can_edit_application(application):
-                    messages.error(
-                        request,
-                        "현재 상태에서는 신청 내용을 수정할 수 없습니다.",
-                    )
-                    request.session.pop(SESSION_APPLY_EDIT_ID, None)
-                    return redirect("client:application_list")
-                _update_counseling_application(request.user, application, data)
-                request.session.pop(SESSION_APPLY_EDIT_ID, None)
-                messages.success(request, "상담 신청 내용이 저장되었습니다.")
+            if not _application_has_birth_date(data):
+                form.add_error("birth_date", "생년월일을 입력해주세요.")
             else:
-                if client_has_open_pending_application(request.user):
-                    messages.warning(
+                if is_edit and edit_id:
+                    application = get_object_or_404(
+                        CounselingApplication.objects.select_related("case"),
+                        pk=edit_id,
+                        client=request.user,
+                    )
+                    if not client_can_edit_application(application):
+                        messages.error(
+                            request,
+                            "현재 상태에서는 신청 내용을 수정할 수 없습니다.",
+                        )
+                        request.session.pop(SESSION_APPLY_EDIT_ID, None)
+                        return redirect("client:application_list")
+                    _update_counseling_application(request.user, application, data)
+                    request.session.pop(SESSION_APPLY_EDIT_ID, None)
+                    messages.success(request, "상담 신청 내용이 저장되었습니다.")
+                else:
+                    if client_has_open_pending_application(request.user):
+                        messages.warning(
+                            request,
+                            "이미 매칭 대기 중인 상담 신청이 있습니다. "
+                            "신청 목록에서 확인하거나 기존 신청을 수정해 주세요.",
+                        )
+                        return redirect("client:application_list")
+                    application = _save_counseling_application(request.user, data)
+                    messages.success(
                         request,
-                        "이미 매칭 대기 중인 상담 신청이 있습니다. "
-                        "신청 목록에서 확인하거나 기존 신청을 수정해 주세요.",
+                        "상담 신청이 접수되었습니다. 담당자가 확인 후 연락드립니다.",
                     )
-                    return redirect("client:application_list")
-                application = _save_counseling_application(request.user, data)
-                messages.success(
-                    request,
-                    "상담 신청이 접수되었습니다. 담당자가 확인 후 연락드립니다.",
-                )
-                try:
-                    notified = send_new_application_notification(application)
-                except Exception:
-                    logger.exception(
-                        "상담 신청 알림 메일 발송 중 오류 (application_id=%s)",
-                        application.pk,
-                    )
-                    notified = False
-                if not notified:
-                    messages.warning(
-                        request,
-                        "운영 알림 메일 발송에 실패했습니다. 이메일 설정을 확인해 주세요.",
-                    )
+                    try:
+                        notified = send_new_application_notification(application)
+                    except Exception:
+                        logger.exception(
+                            "상담 신청 알림 메일 발송 중 오류 (application_id=%s)",
+                            application.pk,
+                        )
+                        notified = False
+                    if not notified:
+                        messages.warning(
+                            request,
+                            "운영 알림 메일 발송에 실패했습니다. 이메일 설정을 확인해 주세요.",
+                        )
 
-            if request.user.role == UserRole.CLIENT:
-                return redirect("client:application_list")
-            return redirect("admin_panel:dashboard")
+                if request.user.role == UserRole.CLIENT:
+                    return redirect("client:application_list")
+                return redirect("admin_panel:dashboard")
 
         messages.error(
             request,

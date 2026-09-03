@@ -28,6 +28,7 @@ class CounselingMethodApplyTests(TestCase):
         form = CounselingApplyForm(
             data={
                 "name": "신청자",
+                "birth_date": "1990-01-01",
                 "residence_region": "서울",
                 "clinical_diagnosis": "없음",
                 "current_medication": "없음",

@@ -42,12 +42,16 @@ class CounselingApplyForm(forms.Form):
     )
     birth_date = forms.DateField(
         label="생년월일",
-        required=False,
+        required=True,
         input_formats=["%Y-%m-%d"],
         widget=forms.DateInput(
-            attrs={"class": "form-control", "type": "date"},
+            attrs={"class": "form-control", "type": "date", "required": "required"},
             format="%Y-%m-%d",
         ),
+        error_messages={
+            "required": "생년월일을 입력해주세요.",
+            "invalid": "올바른 생년월일을 입력해주세요.",
+        },
     )
     department = forms.CharField(
         label="소속 학과",
@@ -176,27 +180,36 @@ class CounselingApplyForm(forms.Form):
                     field.widget.attrs["class"] = f"{css} is-invalid".strip()
 
     def _lock_identity_fields(self, user):
-        """로그인 사용자 — 이름·학번·생년월일·학과는 회원 정보에서 고정."""
+        """로그인 사용자 — 이름·학번·학과는 회원 정보에서 고정. 생년월일은 필수."""
         snapshot = self._profile_snapshot(user)
         readonly_attrs = {
             "name": {"readonly": "readonly", "autocomplete": "name"},
             "student_id": {"readonly": "readonly"},
-            "birth_date": {"readonly": "readonly"},
             "department": {"readonly": "readonly"},
         }
-        for field_name in self.IDENTITY_FIELD_NAMES:
+        for field_name in ("name", "student_id", "department"):
             field = self.fields[field_name]
             field.disabled = True
             field.required = False
             field.help_text = self.IDENTITY_HELP
             field.widget.attrs.update(readonly_attrs.get(field_name, {}))
             field.widget.attrs.setdefault("class", "form-control")
-            if field_name == "birth_date":
-                field.widget.attrs.setdefault("type", "date")
+
+        birth_field = self.fields["birth_date"]
+        birth_field.required = True
+        birth_field.initial = snapshot["birth_date"]
+        birth_field.widget.attrs.setdefault("class", "form-control")
+        birth_field.widget.attrs.setdefault("type", "date")
+        birth_field.widget.attrs["required"] = "required"
+        if snapshot["birth_date"]:
+            birth_field.disabled = True
+            birth_field.required = False
+            birth_field.help_text = self.IDENTITY_HELP
+            birth_field.widget.attrs.update({"readonly": "readonly"})
+            birth_field.widget.attrs.pop("required", None)
 
         self.fields["name"].initial = snapshot["name"]
         self.fields["student_id"].initial = snapshot["student_id"]
-        self.fields["birth_date"].initial = snapshot["birth_date"]
         self.fields["department"].initial = snapshot["department"]
 
     @staticmethod
@@ -215,12 +228,17 @@ class CounselingApplyForm(forms.Form):
     def clean(self):
         cleaned = super().clean()
         if self.user is None or not self.user.is_authenticated:
+            if not cleaned.get("birth_date"):
+                self.add_error("birth_date", "생년월일을 입력해주세요.")
             return cleaned
         snapshot = self._profile_snapshot(self.user)
         cleaned["name"] = snapshot["name"]
         cleaned["student_id"] = snapshot["student_id"]
-        cleaned["birth_date"] = snapshot["birth_date"]
         cleaned["department"] = snapshot["department"]
+        if snapshot["birth_date"]:
+            cleaned["birth_date"] = snapshot["birth_date"]
+        if not cleaned.get("birth_date") and "birth_date" not in self.errors:
+            self.add_error("birth_date", "생년월일을 입력해주세요.")
         return cleaned
 
     def clean_counseling_types(self):
