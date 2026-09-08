@@ -15,11 +15,13 @@ from apps.counseling.models import (
 )
 from apps.reports.appointment_calendar import (
     GCAL_HOST_COLORS,
+    GCAL_HOST_COLORS_CURRENT,
     HOST_COLORS,
     REMOTE_NO_ZOOM_COLORS,
     assign_zoom_hosts,
     appointment_overlaps_range,
     build_calendar_events,
+    calendar_legend_hosts,
     get_mock_calendar_events,
     CalendarInterval,
     parse_calendar_bound,
@@ -27,6 +29,12 @@ from apps.reports.appointment_calendar import (
     zoom_host_label,
     _resolve_event_colors,
 )
+from apps.scheduling.zoom_account import (
+    ZOOM_ACCOUNT_KIND_CURRENT,
+    ZOOM_ACCOUNT_KIND_LEGACY,
+    zoom_meeting_account_kind,
+)
+from apps.sessions_app.models import ZoomMeeting
 from apps.scheduling.zoom_hosts import host_id_for_email
 from apps.scheduling.models import Appointment, AppointmentStatus
 
@@ -422,3 +430,192 @@ class AppointmentCalendarTests(TestCase):
             event["extendedProps"]["client_name"] for event in response.json()["events"]
         ]
         self.assertIn("이현옥", names)
+
+
+@override_settings(
+    CALENDAR_GCAL_UI=True,
+    ZOOM_ACCOUNT_ID="current-account-id",
+    ZOOM_LICENSED_USERS="sedulife@mail.kcu.ac,newhost2@example.com",
+)
+class ZoomAccountCalendarColorTests(TestCase):
+    def _make_remote_event(self, *, host_email: str, zoom_account_id: str, name: str):
+        client_user = User.objects.create_user(
+            email=f"{name}@example.com",
+            password="pass",
+            name=name,
+            role=UserRole.CLIENT,
+            status=UserStatus.ACTIVE,
+        )
+        counselor = User.objects.create_user(
+            email=f"{name}-c@example.com",
+            password="pass",
+            name=f"{name}상담",
+            role=UserRole.COUNSELOR,
+            status=UserStatus.ACTIVE,
+        )
+        application = CounselingApplication.objects.create(
+            client=client_user,
+            counseling_types=["개인상담"],
+            reason="color",
+            counseling_method=CounselingMethod.REMOTE,
+            status=ApplicationStatus.IN_PROGRESS,
+        )
+        case = Case.objects.create(
+            application=application,
+            client=client_user,
+            counselor=counselor,
+            case_number=f"CASE-{name}",
+            status=CaseStatus.ACTIVE,
+            counseling_method=CounselingMethod.REMOTE,
+        )
+        start = timezone.now().replace(minute=0, second=0, microsecond=0) + timedelta(days=3)
+        apt = Appointment.objects.create(
+            case=case,
+            client=client_user,
+            counselor=counselor,
+            scheduled_at=start,
+            duration_minutes=50,
+            status=AppointmentStatus.CONFIRMED,
+            confirmed_at=timezone.now(),
+            session_number=1,
+        )
+        ZoomMeeting.objects.create(
+            appointment=apt,
+            zoom_meeting_id=f"mid-{name}",
+            join_url=f"https://zoom.us/j/{name}",
+            zoom_host_email=host_email,
+            zoom_account_id=zoom_account_id,
+        )
+        return apt
+
+    def _event_for(self, appointment):
+        start = appointment.scheduled_at - timedelta(hours=1)
+        end = appointment.scheduled_at + timedelta(hours=2)
+        events = build_calendar_events(start=start, end=end)
+        return next(item for item in events if item["id"] == str(appointment.pk))
+
+    def test_legacy_host1_keeps_lavender(self):
+        apt = self._make_remote_event(
+            host_email="kcuplan@mail.kcu.ac",
+            zoom_account_id="",
+            name="legacy1",
+        )
+        event = self._event_for(apt)
+        self.assertEqual(event["backgroundColor"], GCAL_HOST_COLORS["host_01"]["bg"])
+        self.assertEqual(event["extendedProps"]["zoom_account_kind"], "legacy")
+
+    def test_legacy_host2_keeps_mint(self):
+        apt = self._make_remote_event(
+            host_email="sedulife@mail.kcu.ac",
+            zoom_account_id="",
+            name="legacy2",
+        )
+        event = self._event_for(apt)
+        self.assertEqual(event["backgroundColor"], GCAL_HOST_COLORS["host_02"]["bg"])
+
+    def test_current_host1_uses_peach(self):
+        apt = self._make_remote_event(
+            host_email="sedulife@mail.kcu.ac",
+            zoom_account_id="current-account-id",
+            name="current1",
+        )
+        event = self._event_for(apt)
+        self.assertEqual(
+            event["backgroundColor"], GCAL_HOST_COLORS_CURRENT["host_01"]["bg"]
+        )
+        self.assertEqual(event["extendedProps"]["zoom_account_kind"], "current")
+
+    def test_stale_zoom_account_id_is_legacy_color(self):
+        apt = self._make_remote_event(
+            host_email="kcuplan@mail.kcu.ac",
+            zoom_account_id="old-kcuplan-account-id",
+            name="stalesnap",
+        )
+        self.assertEqual(
+            zoom_meeting_account_kind(apt.zoom_meeting),
+            ZOOM_ACCOUNT_KIND_LEGACY,
+        )
+        event = self._event_for(apt)
+        self.assertEqual(event["extendedProps"]["zoom_account_kind"], "legacy")
+        self.assertEqual(event["backgroundColor"], GCAL_HOST_COLORS["host_01"]["bg"])
+        self.assertNotEqual(
+            event["backgroundColor"], GCAL_HOST_COLORS_CURRENT["host_01"]["bg"]
+        )
+
+    def test_current_host2_uses_sky(self):
+        apt = self._make_remote_event(
+            host_email="newhost2@example.com",
+            zoom_account_id="current-account-id",
+            name="current2",
+        )
+        event = self._event_for(apt)
+        self.assertEqual(
+            event["backgroundColor"], GCAL_HOST_COLORS_CURRENT["host_02"]["bg"]
+        )
+
+    def test_same_sedulife_email_differs_by_account_snapshot(self):
+        host_id, *_ = resolve_calendar_zoom_host_display(
+            is_remote=True,
+            zoom_host_email="sedulife@mail.kcu.ac",
+            expected_host_id="",
+            email_to_host_id=host_id_for_email,
+            zoom_account_kind=ZOOM_ACCOUNT_KIND_LEGACY,
+        )
+        current_id, *_ = resolve_calendar_zoom_host_display(
+            is_remote=True,
+            zoom_host_email="sedulife@mail.kcu.ac",
+            expected_host_id="",
+            email_to_host_id=host_id_for_email,
+            zoom_account_kind=ZOOM_ACCOUNT_KIND_CURRENT,
+        )
+        self.assertEqual(host_id, "host_02")
+        self.assertEqual(current_id, "host_01")
+        legacy_color = _resolve_event_colors(
+            host_id="host_02",
+            is_remote=True,
+            account_kind=ZOOM_ACCOUNT_KIND_LEGACY,
+        )
+        current_color = _resolve_event_colors(
+            host_id="host_01",
+            is_remote=True,
+            account_kind=ZOOM_ACCOUNT_KIND_CURRENT,
+        )
+        self.assertNotEqual(legacy_color["bg"], current_color["bg"])
+
+    def test_in_person_color_unchanged(self):
+        from apps.reports.appointment_calendar import GCAL_IN_PERSON_COLORS
+
+        colors = _resolve_event_colors(host_id="", is_remote=False)
+        self.assertEqual(colors["bg"], GCAL_IN_PERSON_COLORS["bg"])
+
+    def test_legend_matches_event_palettes(self):
+        legend = calendar_legend_hosts()
+        labels = [item["label"] for item in legend]
+        self.assertEqual(
+            labels,
+            ["Zoom 1 (기존)", "Zoom 2 (기존)", "Zoom 1 (신규)", "Zoom 2 (신규)"],
+        )
+        self.assertEqual(legend[0]["color"], GCAL_HOST_COLORS["host_01"]["bg"])
+        self.assertEqual(legend[1]["color"], GCAL_HOST_COLORS["host_02"]["bg"])
+        self.assertEqual(legend[2]["color"], GCAL_HOST_COLORS_CURRENT["host_01"]["bg"])
+        self.assertEqual(legend[3]["color"], GCAL_HOST_COLORS_CURRENT["host_02"]["bg"])
+
+    def test_host_admin_change_does_not_recolor_legacy_meeting(self):
+        apt = self._make_remote_event(
+            host_email="kcuplan@mail.kcu.ac",
+            zoom_account_id="",
+            name="noshift",
+        )
+        from apps.scheduling.models import RemoteZoomSchedulingSettings
+
+        row, _ = RemoteZoomSchedulingSettings.objects.get_or_create(
+            pk=RemoteZoomSchedulingSettings.SETTINGS_PK,
+            defaults={"simultaneous_session_capacity": 2},
+        )
+        row.licensed_user_emails = "sedulife@mail.kcu.ac\nnewhost2@example.com"
+        row.save()
+        event = self._event_for(apt)
+        self.assertEqual(event["backgroundColor"], GCAL_HOST_COLORS["host_01"]["bg"])
+        apt.zoom_meeting.refresh_from_db()
+        self.assertEqual(apt.zoom_meeting.zoom_account_id, "")
+        self.assertEqual(apt.zoom_meeting.zoom_meeting_id, "mid-noshift")

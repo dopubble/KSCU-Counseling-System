@@ -18,6 +18,11 @@ from apps.scheduling.constants import (
     DEFAULT_ZOOM_HOST_BUFFER_MINUTES,
 )
 from apps.scheduling.models import Appointment, AppointmentStatus
+from apps.scheduling.zoom_account import (
+    ZOOM_ACCOUNT_KIND_CURRENT,
+    ZOOM_ACCOUNT_KIND_LEGACY,
+    zoom_meeting_account_kind,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +31,12 @@ DEFAULT_ZOOM_HOST_POOL = ("host_01", "host_02")
 HOST_COLORS: dict[str, dict[str, str]] = {
     "host_01": {"bg": "#4f46e5", "border": "#3730a3"},
     "host_02": {"bg": "#059669", "border": "#047857"},
+    "host_03": {"bg": "#d97706", "border": "#b45309"},
+    "host_04": {"bg": "#db2777", "border": "#be185d"},
+}
+HOST_COLORS_CURRENT: dict[str, dict[str, str]] = {
+    "host_01": {"bg": "#fdba74", "border": "#ea580c"},
+    "host_02": {"bg": "#7dd3fc", "border": "#0284c7"},
     "host_03": {"bg": "#d97706", "border": "#b45309"},
     "host_04": {"bg": "#db2777", "border": "#be185d"},
 }
@@ -40,13 +51,21 @@ GCAL_HOST_COLORS: dict[str, dict[str, str]] = {
     "host_03": {"bg": "#ffedd5", "border": "#d97706", "text": "#202124"},
     "host_04": {"bg": "#fce7f3", "border": "#db2777", "text": "#202124"},
 }
+GCAL_HOST_COLORS_CURRENT: dict[str, dict[str, str]] = {
+    "host_01": {"bg": "#fde6d8", "border": "#e8a07c", "text": "#202124"},
+    "host_02": {"bg": "#dbeafe", "border": "#60a5fa", "text": "#202124"},
+    "host_03": {"bg": "#ffedd5", "border": "#d97706", "text": "#202124"},
+    "host_04": {"bg": "#fce7f3", "border": "#db2777", "text": "#202124"},
+}
 GCAL_IN_PERSON_COLORS = {"bg": "#f1f3f4", "border": "#9aa0a6", "text": "#202124"}
 GCAL_REMOTE_NO_ZOOM_COLORS = {"bg": "#e0f2fe", "border": "#0284c7", "text": "#202124"}
 GCAL_EVENT_TEXT = "#202124"
 
-# 캘린더 표시 전용 — Licensed 목록에서 제거된 legacy Zoom 호스트 이메일
+# 캘린더 표시 전용 — 기존(legacy) Zoom Account Host 이메일
 _CALENDAR_LEGACY_EMAIL_HOST_ID = {
     "sscukscu@gmail.com": "host_01",
+    "kcuplan@mail.kcu.ac": "host_01",
+    "sedulife@mail.kcu.ac": "host_02",
 }
 
 
@@ -60,11 +79,12 @@ def resolve_calendar_zoom_host_display(
     zoom_host_email: str | None,
     expected_host_id: str,
     email_to_host_id,
+    zoom_account_kind: str = ZOOM_ACCOUNT_KIND_LEGACY,
 ) -> tuple[str, str, str, bool]:
     """
     캘린더 이벤트 색상·라벨용 호스트 ID.
 
-    색상은 DB zoom_host_email 기준(운영 규칙). Licensed 풀 외(hakyss 등) → host_03.
+    색상은 DB zoom_host_email + 생성 계정 스냅샷 기준.
     expected_host_id(알고리즘)는 불일치 툴팁용만 쓰고 색상을 바꾸지 않는다.
     """
     if not is_remote:
@@ -74,8 +94,9 @@ def resolve_calendar_zoom_host_display(
     host_stored_id = ""
     host_id = ""
     if stored_email:
-        host_stored_id = email_to_host_id(stored_email)
-        if not host_stored_id:
+        if zoom_account_kind == ZOOM_ACCOUNT_KIND_CURRENT:
+            host_stored_id = email_to_host_id(stored_email) or "host_03"
+        else:
             host_stored_id = _CALENDAR_LEGACY_EMAIL_HOST_ID.get(
                 stored_email.strip().lower(),
                 "host_03",
@@ -90,16 +111,33 @@ def resolve_calendar_zoom_host_display(
     return host_id, host_stored_id, expected_host_id, mismatch
 
 
+def _host_palette(*, host_id: str, account_kind: str, gcal: bool) -> dict[str, str] | None:
+    if gcal:
+        table = (
+            GCAL_HOST_COLORS_CURRENT
+            if account_kind == ZOOM_ACCOUNT_KIND_CURRENT
+            else GCAL_HOST_COLORS
+        )
+        return table.get(host_id)
+    table = (
+        HOST_COLORS_CURRENT
+        if account_kind == ZOOM_ACCOUNT_KIND_CURRENT
+        else HOST_COLORS
+    )
+    return table.get(host_id)
+
+
 def _resolve_event_colors(
     *,
     host_id: str,
     is_remote: bool,
+    account_kind: str = ZOOM_ACCOUNT_KIND_LEGACY,
 ) -> dict[str, str]:
     if calendar_gcal_ui_enabled():
         if not is_remote:
             return dict(GCAL_IN_PERSON_COLORS)
         if host_id:
-            palette = GCAL_HOST_COLORS.get(host_id)
+            palette = _host_palette(host_id=host_id, account_kind=account_kind, gcal=True)
             if palette:
                 return dict(palette)
             idx = hash(host_id) % len(GCAL_HOST_COLORS)
@@ -109,6 +147,9 @@ def _resolve_event_colors(
     if not is_remote:
         return dict(IN_PERSON_COLORS)
     if host_id:
+        palette = _host_palette(host_id=host_id, account_kind=account_kind, gcal=False)
+        if palette:
+            return dict(palette)
         return dict(_host_colors(host_id))
     return dict(REMOTE_NO_ZOOM_COLORS)
 
@@ -140,14 +181,46 @@ def get_zoom_host_pool() -> tuple[str, ...]:
     return licensed_host_pool()
 
 
-def zoom_host_label(host_id: str) -> str:
+def zoom_host_label(host_id: str, *, account_kind: str = "") -> str:
     if host_id.startswith("host_"):
         suffix = host_id.removeprefix("host_").lstrip("0") or "0"
         try:
-            return f"Zoom 호스트 {int(suffix)}번"
+            base = f"Zoom 호스트 {int(suffix)}번"
         except ValueError:
-            pass
-    return host_id
+            base = host_id
+    else:
+        base = host_id
+    if account_kind == ZOOM_ACCOUNT_KIND_CURRENT:
+        return f"{base} (신규)"
+    if account_kind == ZOOM_ACCOUNT_KIND_LEGACY:
+        return f"{base} (기존)"
+    return base
+
+
+def calendar_legend_hosts() -> list[dict[str, str]]:
+    """관리자 캘린더 범례 — 기존/신규 Account Host 1·2 + 대면은 템플릿에서 추가."""
+    entries: list[dict[str, str]] = []
+    specs = (
+        (ZOOM_ACCOUNT_KIND_LEGACY, "기존", "host_01"),
+        (ZOOM_ACCOUNT_KIND_LEGACY, "기존", "host_02"),
+        (ZOOM_ACCOUNT_KIND_CURRENT, "신규", "host_01"),
+        (ZOOM_ACCOUNT_KIND_CURRENT, "신규", "host_02"),
+    )
+    for kind, kind_label, host_id in specs:
+        number = "1" if host_id.endswith("01") else "2"
+        colors = _resolve_event_colors(
+            host_id=host_id,
+            is_remote=True,
+            account_kind=kind,
+        )
+        entries.append(
+            {
+                "id": f"{kind}:{host_id}",
+                "label": f"Zoom {number} ({kind_label})",
+                "color": colors["bg"],
+            }
+        )
+    return entries
 
 
 def _host_colors(host_id: str) -> dict[str, str]:
@@ -373,8 +446,15 @@ def _serialize_event_row(row: dict[str, Any]) -> dict[str, Any]:
     method = row.get("counseling_method") or CounselingMethod.REMOTE
     zoom_url = (row.get("zoom_url") or "").strip()
     is_remote = method == CounselingMethod.REMOTE
+    account_kind = (row.get("zoom_account_kind") or "").strip()
+    if is_remote and not account_kind:
+        account_kind = ZOOM_ACCOUNT_KIND_LEGACY
 
-    colors = _resolve_event_colors(host_id=host_id, is_remote=is_remote)
+    colors = _resolve_event_colors(
+        host_id=host_id,
+        is_remote=is_remote,
+        account_kind=account_kind or ZOOM_ACCOUNT_KIND_LEGACY,
+    )
 
     status = row.get("status") or AppointmentStatus.CONFIRMED
     status_label = dict(AppointmentStatus.choices).get(status, status)
@@ -393,9 +473,12 @@ def _serialize_event_row(row: dict[str, Any]) -> dict[str, Any]:
             "counselor_phone": (row.get("counselor_phone") or "").strip(),
             "session_number": row.get("session_number"),
             "zoom_host_id": host_id,
-            "zoom_host_label": zoom_host_label(host_id) if host_id else "",
+            "zoom_host_label": zoom_host_label(host_id, account_kind=account_kind)
+            if host_id
+            else "",
             "zoom_host_stored_id": (row.get("zoom_host_stored_id") or "").strip(),
             "zoom_host_mismatch": bool(row.get("zoom_host_mismatch")),
+            "zoom_account_kind": account_kind,
             "zoom_url": zoom_url,
             "case_number": row.get("case_number") or "",
             "counseling_method": method,
@@ -493,10 +576,12 @@ def build_calendar_events(
             host_stored_id = ""
             host_expected_id = ""
             host_mismatch = False
+            account_kind = ""
             if is_remote:
                 stored_email = ""
                 if zoom_meeting and getattr(zoom_meeting, "zoom_host_email", ""):
                     stored_email = zoom_meeting.zoom_host_email
+                account_kind = zoom_meeting_account_kind(zoom_meeting)
                 host_expected_id = host_assignments.get(str(apt.id), "") or ""
                 (
                     host_id,
@@ -508,6 +593,7 @@ def build_calendar_events(
                     zoom_host_email=stored_email,
                     expected_host_id=host_expected_id,
                     email_to_host_id=host_id_for_email,
+                    zoom_account_kind=account_kind,
                 )
 
             row = {
@@ -523,6 +609,7 @@ def build_calendar_events(
                 "zoom_host_id": host_id,
                 "zoom_host_stored_id": host_stored_id,
                 "zoom_host_mismatch": host_mismatch,
+                "zoom_account_kind": account_kind,
                 "zoom_url": zoom_url,
                 "counseling_method": apt.case.counseling_method,
                 "status": apt.status,

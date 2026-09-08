@@ -377,14 +377,23 @@ def list_zoom_users(*, page_size: int = 100) -> list[dict[str, Any]]:
     return users
 
 
-def verify_zoom_licensed_users() -> tuple[list[str], list[str]]:
+ZOOM_USER_TYPE_LICENSED = 2
+
+
+def verify_zoom_licensed_users(
+    emails: list[str] | tuple[str, ...] | None = None,
+) -> tuple[list[str], list[str]]:
     """
-    ZOOM_LICENSED_USERS 이메일이 현재 API 계정에 존재하는지 확인.
+    Host 이메일이 현재 API 계정에 존재하는지 확인.
+    emails 미지정 시 현재 Licensed 풀.
     반환: (matched_emails, missing_emails)
     """
     from apps.scheduling.zoom_hosts import get_zoom_licensed_user_emails
 
-    licensed = [email.strip().lower() for email in get_zoom_licensed_user_emails()]
+    if emails is None:
+        licensed = [email.strip().lower() for email in get_zoom_licensed_user_emails()]
+    else:
+        licensed = [email.strip().lower() for email in emails if (email or "").strip()]
     if not licensed:
         return [], []
 
@@ -396,6 +405,63 @@ def verify_zoom_licensed_users() -> tuple[list[str], list[str]]:
     matched = [email for email in licensed if email in account_emails]
     missing = [email for email in licensed if email not in account_emails]
     return matched, missing
+
+
+def verify_zoom_host_emails(
+    emails: list[str] | tuple[str, ...],
+) -> tuple[bool, list[str]]:
+    """
+    Form에 입력된 Host 목록을 S2S 토큰 + GET /users 로 검증.
+    Meeting은 생성하지 않는다. 반환: (ok, messages)
+    """
+    messages: list[str] = []
+    ordered = [(email or "").strip() for email in emails if (email or "").strip()]
+    if not ordered:
+        messages.append("Host 이메일이 없습니다.")
+        return False, messages
+
+    try:
+        get_zoom_access_token()
+    except ZoomNotConfiguredError:
+        messages.append(
+            "Zoom API 인증에 실패했습니다. Railway의 Account ID / Client ID / Client Secret을 확인해 주세요."
+        )
+        return False, messages
+    except ZoomAPIError:
+        messages.append("Zoom API 인증에 실패했습니다.")
+        return False, messages
+
+    try:
+        users = list_zoom_users()
+    except ZoomAPIError as exc:
+        detail = str(exc)
+        if "scope" in detail.lower():
+            messages.append("필요한 Zoom API Scope가 부족합니다.")
+        else:
+            messages.append(detail)
+        return False, messages
+
+    by_email: dict[str, dict[str, Any]] = {}
+    for user in users:
+        email = (user.get("email") or "").strip().lower()
+        if email:
+            by_email[email] = user
+
+    for email in ordered:
+        user = by_email.get(email.lower())
+        if user is None:
+            messages.append(f"{email} 사용자를 찾을 수 없습니다.")
+            continue
+        try:
+            user_type = int(user.get("type") or 0)
+        except (TypeError, ValueError):
+            user_type = 0
+        if user_type != ZOOM_USER_TYPE_LICENSED:
+            messages.append(f"{email} 사용자는 Licensed 사용자가 아닙니다.")
+
+    if messages:
+        return False, messages
+    return True, [f"Zoom 연결 테스트 성공 — Licensed 사용자 {len(ordered)}명"]
 
 
 def delete_zoom_meeting(meeting_id: str) -> None:

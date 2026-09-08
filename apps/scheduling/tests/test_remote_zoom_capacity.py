@@ -286,10 +286,104 @@ class RemoteZoomCapacityTests(TestCase):
 
         self.assertEqual(updated.scheduled_at, self.start)
         self.assertIsNone(warning)
-        create_mock.assert_called_once()
         self.assertEqual(create_mock.call_args.kwargs["host_user_email"], "host2@example.com")
         delete_mock.assert_called_once_with("22222222222")
         update_mock.assert_not_called()
+
+    def test_reschedule_keeps_legacy_host_meeting_without_recreate(self):
+        client1 = _create_client("레거시내담")
+        case1 = _create_remote_case(client1, self.counselor_a, "LEG")
+        moving = _create_confirmed_remote_appointment(case1, scheduled_at=self.start)
+        from apps.sessions_app.models import ZoomMeeting
+
+        ZoomMeeting.objects.create(
+            appointment=moving,
+            zoom_meeting_id="legacy-keep-1",
+            join_url="https://zoom.us/j/legacykeep",
+            zoom_host_email="kcuplan@mail.kcu.ac",
+        )
+
+        from apps.scheduling import services as scheduling_services
+
+        with (
+            patch.object(
+                scheduling_services,
+                "resolve_zoom_host_email_for_appointment",
+                return_value="host1@example.com",
+            ),
+            patch.object(
+                scheduling_services,
+                "_create_zoom_meeting_for_appointment",
+            ) as create_mock,
+            patch.object(scheduling_services, "delete_zoom_meeting") as delete_mock,
+            patch.object(
+                scheduling_services, "update_zoom_meeting", return_value={}
+            ) as update_mock,
+        ):
+            updated, warning = reschedule_confirmed_appointment(
+                moving,
+                new_scheduled_at=self.start + timedelta(hours=3),
+                skip_availability=True,
+                notify_zoom_link_change=False,
+            )
+
+        self.assertIsNone(warning)
+        create_mock.assert_not_called()
+        delete_mock.assert_not_called()
+        update_mock.assert_called_once()
+        moving.refresh_from_db()
+        zoom = ZoomMeeting.objects.get(appointment=moving)
+        self.assertEqual(zoom.zoom_meeting_id, "legacy-keep-1")
+        self.assertEqual(zoom.zoom_host_email, "kcuplan@mail.kcu.ac")
+        self.assertEqual(zoom.join_url, "https://zoom.us/j/legacykeep")
+
+    def test_reschedule_does_not_recreate_for_expected_host_mismatch_without_conflict(
+        self,
+    ):
+        client1 = _create_client("풀내담")
+        case1 = _create_remote_case(client1, self.counselor_a, "POOL")
+        moving = _create_confirmed_remote_appointment(
+            case1,
+            scheduled_at=self.start,
+        )
+        from apps.sessions_app.models import ZoomMeeting
+
+        ZoomMeeting.objects.create(
+            appointment=moving,
+            zoom_meeting_id="pool-keep-1",
+            join_url="https://zoom.us/j/poolkeep",
+            zoom_host_email="host1@example.com",
+        )
+
+        from apps.scheduling import services as scheduling_services
+
+        with (
+            patch.object(
+                scheduling_services,
+                "resolve_zoom_host_email_for_appointment",
+                return_value="host2@example.com",
+            ),
+            patch.object(
+                scheduling_services,
+                "_create_zoom_meeting_for_appointment",
+            ) as create_mock,
+            patch.object(scheduling_services, "delete_zoom_meeting") as delete_mock,
+            patch.object(
+                scheduling_services, "update_zoom_meeting", return_value={}
+            ) as update_mock,
+        ):
+            reschedule_confirmed_appointment(
+                moving,
+                new_scheduled_at=self.start + timedelta(hours=4),
+                skip_availability=True,
+                notify_zoom_link_change=False,
+            )
+
+        create_mock.assert_not_called()
+        delete_mock.assert_not_called()
+        update_mock.assert_called_once()
+        zoom = ZoomMeeting.objects.get(appointment=moving)
+        self.assertEqual(zoom.zoom_meeting_id, "pool-keep-1")
 
 
 @override_settings(
