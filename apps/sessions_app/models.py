@@ -220,6 +220,16 @@ class ZoomMeeting(models.Model):
         default="",
         help_text="해당 예약 1건 전용 Claim Host 6자리(외부 Zoom 등). 비우면 ZOOM_HOST_KEY.",
     )
+    zoom_account_id = models.CharField(
+        "생성 시 Zoom Account ID",
+        max_length=128,
+        blank=True,
+        default="",
+        help_text=(
+            "회의 생성 시점의 ZOOM_ACCOUNT_ID 스냅샷. "
+            "비어 있으면 기존(legacy) Zoom 계정에서 만든 회의로 표시합니다."
+        ),
+    )
     recording_url = models.URLField("녹화 URL", max_length=2000, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

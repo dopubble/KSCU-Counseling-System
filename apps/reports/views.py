@@ -32,15 +32,11 @@ from apps.reports.table_sort import (
     sort_queryset,
 )
 from apps.reports.appointment_calendar import (
-    GCAL_HOST_COLORS,
-    HOST_COLORS,
     build_calendar_events,
-    calendar_gcal_ui_enabled,
+    calendar_legend_hosts,
     get_calendar_timezone_name,
     get_mock_calendar_events,
-    get_zoom_host_pool,
     parse_calendar_bound,
-    zoom_host_label,
 )
 from apps.scheduling.models import Appointment, AppointmentStatus
 
@@ -425,19 +421,7 @@ def counselor_list(request):
 
 
 def _calendar_legend_hosts() -> list[dict[str, str]]:
-    use_gcal = calendar_gcal_ui_enabled()
-    return [
-        {
-            "id": host_id,
-            "label": zoom_host_label(host_id),
-            "color": (
-                GCAL_HOST_COLORS.get(host_id, {}).get("bg", "#ede9fe")
-                if use_gcal
-                else HOST_COLORS.get(host_id, {}).get("bg", "#4f46e5")
-            ),
-        }
-        for host_id in get_zoom_host_pool()
-    ]
+    return calendar_legend_hosts()
 
 
 def _parse_calendar_range(request):

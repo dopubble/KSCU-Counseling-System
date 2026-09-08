@@ -5,6 +5,9 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone as dt_timezone
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
+from django.db.utils import OperationalError, ProgrammingError
 from django.utils import timezone
 
 from apps.counseling.models import CounselingMethod
@@ -26,14 +29,62 @@ DEFAULT_ZOOM_LICENSED_USERS = (
 _SORT_LAST = datetime(9999, 12, 31, tzinfo=dt_timezone.utc)
 
 
-def get_zoom_licensed_user_emails() -> tuple[str, ...]:
-    """Railway ZOOM_LICENSED_USERS 또는 기본 2명."""
+def parse_licensed_user_email_lines(raw: str | None) -> tuple[tuple[str, ...], list[str]]:
+    """한 줄에 이메일 하나. 순서 유지. 반환: (emails, error_messages)."""
+    errors: list[str] = []
+    emails: list[str] = []
+    seen: set[str] = set()
+    text = (raw or "").replace("\r\n", "\n").replace("\r", "\n")
+    for line_no, line in enumerate(text.split("\n"), start=1):
+        value = line.strip()
+        if not value:
+            continue
+        try:
+            validate_email(value)
+        except ValidationError:
+            errors.append(f"{line_no}행: '{value}'은(는) 올바른 이메일이 아닙니다.")
+            continue
+        key = value.lower()
+        if key in seen:
+            errors.append(f"{line_no}행: '{value}'이(가) 중복되었습니다.")
+            continue
+        seen.add(key)
+        emails.append(value)
+    return tuple(emails), errors
+
+
+def normalize_licensed_user_emails_text(emails: tuple[str, ...] | list[str]) -> str:
+    return "\n".join(email.strip() for email in emails if (email or "").strip())
+
+
+def licensed_emails_from_env_or_default() -> tuple[str, ...]:
     raw = (getattr(settings, "ZOOM_LICENSED_USERS", None) or "").strip()
     if raw:
         emails = tuple(e.strip() for e in raw.split(",") if e.strip())
         if emails:
             return emails
     return DEFAULT_ZOOM_LICENSED_USERS
+
+
+def get_zoom_licensed_user_emails() -> tuple[str, ...]:
+    """Admin DB → Railway ZOOM_LICENSED_USERS → 코드 기본값."""
+    try:
+        from apps.scheduling.models import RemoteZoomSchedulingSettings
+
+        row = (
+            RemoteZoomSchedulingSettings.objects.filter(
+                pk=RemoteZoomSchedulingSettings.SETTINGS_PK
+            )
+            .only("licensed_user_emails")
+            .first()
+        )
+    except (ProgrammingError, OperationalError):
+        row = None
+    if row is not None:
+        emails, _errors = parse_licensed_user_email_lines(row.licensed_user_emails)
+        if emails:
+            return emails
+    return licensed_emails_from_env_or_default()
 
 
 def get_zoom_host_pool() -> tuple[str, ...]:
@@ -211,6 +262,49 @@ def remote_slot_candidate(
         case=SimpleNamespace(counseling_method=CounselingMethod.REMOTE),
         zoom_meeting=None,
     )
+
+
+def stored_zoom_host_email(appointment: Appointment) -> str:
+    zoom = getattr(appointment, "zoom_meeting", None)
+    return (zoom.zoom_host_email or "").strip().lower() if zoom else ""
+
+
+def zoom_host_has_same_email_buffer_conflict(
+    appointment: Appointment,
+    *,
+    stored_email: str,
+    scheduled_at: datetime | None = None,
+    duration_minutes: int | None = None,
+    exclude_appointment_id=None,
+    peers: list[Appointment] | None = None,
+) -> bool:
+    """같은 zoom_host_email 이 30분 버퍼 윈도우에서 겹치면 True."""
+    email = (stored_email or "").strip().lower()
+    if not email:
+        return False
+    when = scheduled_at if scheduled_at is not None else appointment.scheduled_at
+    duration = (
+        duration_minutes
+        if duration_minutes is not None
+        else (appointment.duration_minutes or DEFAULT_APPOINTMENT_DURATION_MINUTES)
+    )
+    exclude_id = (
+        exclude_appointment_id
+        if exclude_appointment_id is not None
+        else appointment.pk
+    )
+    if peers is None:
+        peers = buffer_overlapping_confirmed_remote_peers(
+            scheduled_at=when,
+            duration_minutes=duration,
+            exclude_appointment_id=exclude_id,
+        )
+    for peer in peers:
+        if exclude_id and peer.pk == exclude_id:
+            continue
+        if stored_zoom_host_email(peer) == email:
+            return True
+    return False
 
 
 def resolve_zoom_host_email_for_appointment(appointment: Appointment) -> str:

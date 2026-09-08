@@ -32,6 +32,7 @@ from .zoom_hosts import (
     get_zoom_licensed_user_emails,
     confirmed_remote_appointments_queryset,
     resolve_zoom_host_email_for_appointment,
+    zoom_host_has_same_email_buffer_conflict,
 )
 from .zoom_links import (
     appointment_zoom_link_is_locked,
@@ -258,6 +259,8 @@ def _create_zoom_meeting_for_appointment(
     if not join_url and not start_url:
         raise ZoomAPIError("Zoom 회의 참여 링크(Join URL)를 받지 못했습니다.")
 
+    from apps.scheduling.zoom_account import current_zoom_account_id
+
     zoom_meeting, _created = ZoomMeeting.objects.update_or_create(
         appointment=appointment,
         defaults={
@@ -266,6 +269,7 @@ def _create_zoom_meeting_for_appointment(
             "start_url": start_url,
             "password": meeting_data.get("password", "") or "",
             "zoom_host_email": host_email,
+            "zoom_account_id": current_zoom_account_id(),
         },
     )
 
@@ -432,8 +436,8 @@ def fix_mismatched_zoom_host_assignments(
     stop_on_rate_limit: bool = True,
 ) -> tuple[int, int, list[str]]:
     """
-    zoom_host_email이 호스트 배정 알고리즘(30분 버퍼 포함)과 다르면 재생성.
-    join_url이 잠겨 있어도 호스트 불일치면 재생성한다.
+    같은 Licensed 호스트가 30분 버퍼로 겹칠 때만 재생성.
+    풀 순서·기대 Host mismatch·legacy Host만으로는 재생성하지 않는다.
     반환: (fixed, skipped, errors)
     """
     if not is_zoom_configured():
@@ -474,6 +478,12 @@ def fix_mismatched_zoom_host_assignments(
         stored = stored_host
         exp = (expected.get(str(appointment.pk), "") or "").strip().lower()
         if not exp or stored == exp:
+            skipped += 1
+            continue
+        if not zoom_host_has_same_email_buffer_conflict(
+            appointment,
+            stored_email=stored,
+        ):
             skipped += 1
             continue
 
@@ -822,8 +832,29 @@ def reschedule_confirmed_appointment(
         expected_host = resolve_zoom_host_email_for_appointment(appointment).strip()
         current_host = (zoom_meeting.zoom_host_email or "").strip()
         old_meeting_id = (zoom_meeting.zoom_meeting_id or "").strip()
+        licensed_set = {
+            email.strip().lower()
+            for email in get_zoom_licensed_user_emails()
+            if email.strip()
+        }
+        current_host_l = current_host.lower()
+        host_conflict = bool(
+            current_host_l
+            and current_host_l in licensed_set
+            and zoom_host_has_same_email_buffer_conflict(
+                appointment,
+                stored_email=current_host_l,
+                scheduled_at=new_scheduled_at,
+                duration_minutes=appointment.duration_minutes,
+            )
+        )
+        reassign = bool(
+            host_conflict
+            and expected_host
+            and expected_host.lower() != current_host_l
+        )
 
-        if expected_host and current_host.lower() != expected_host.lower():
+        if reassign:
             try:
                 _create_zoom_meeting_for_appointment(
                     appointment,
@@ -833,7 +864,7 @@ def reschedule_confirmed_appointment(
                 new_meeting_id = (
                     (refreshed.zoom_meeting_id or "").strip() if refreshed else ""
                 )
-                if old_meeting_id and old_meeting_id != new_meeting_id:
+                if old_meeting_id and new_meeting_id and old_meeting_id != new_meeting_id:
                     delete_zoom_meeting(old_meeting_id)
             except ZoomAPIError as exc:
                 clear_zoom_token_cache()
@@ -863,11 +894,6 @@ def reschedule_confirmed_appointment(
                     zoom_meeting.zoom_meeting_id,
                     exc,
                 )
-
-    if notify_zoom_link_change and _appointment_uses_zoom(appointment):
-        fix_mismatched_zoom_host_assignments(
-            notify_link_change=True,
-        )
 
     refreshed_zoom = ZoomMeeting.objects.filter(appointment_id=appointment.pk).first()
     final_url = (refreshed_zoom.join_url or "").strip() if refreshed_zoom else ""

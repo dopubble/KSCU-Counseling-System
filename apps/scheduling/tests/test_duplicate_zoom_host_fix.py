@@ -86,6 +86,10 @@ class DuplicateZoomHostFixTests(TestCase):
         self.assertEqual(fixes[0][2], HOST2)
 
     @patch(
+        "apps.scheduling.duplicate_zoom_host_fix.get_zoom_licensed_user_emails",
+        return_value=(HOST1, HOST2),
+    )
+    @patch(
         "apps.scheduling.duplicate_zoom_host_fix.reassign_appointment_zoom_host",
         return_value="[fixed]",
     )
@@ -106,6 +110,7 @@ class DuplicateZoomHostFixTests(TestCase):
         mock_qs,
         _mock_assign,
         mock_reassign,
+        _mock_licensed,
     ):
         from apps.scheduling.duplicate_zoom_host_fix import (
             rebalance_zoom_hosts_after_confirm,
@@ -123,6 +128,10 @@ class DuplicateZoomHostFixTests(TestCase):
         )
 
     @patch(
+        "apps.scheduling.duplicate_zoom_host_fix.get_zoom_licensed_user_emails",
+        return_value=(HOST1, HOST2),
+    )
+    @patch(
         "apps.scheduling.duplicate_zoom_host_fix.reassign_appointment_zoom_host",
         return_value="[fixed]",
     )
@@ -137,12 +146,13 @@ class DuplicateZoomHostFixTests(TestCase):
         "apps.scheduling.duplicate_zoom_host_fix.is_zoom_configured",
         return_value=True,
     )
-    def test_rebalance_after_confirm_fixes_same_day_stored_mismatch(
+    def test_rebalance_after_confirm_skips_same_day_mismatch_without_overlap(
         self,
         _mock_configured,
         mock_qs,
         _mock_assign,
         mock_reassign,
+        _mock_licensed,
     ):
         from apps.scheduling.duplicate_zoom_host_fix import (
             rebalance_zoom_hosts_after_confirm,
@@ -156,6 +166,4 @@ class DuplicateZoomHostFixTests(TestCase):
         mock_qs.return_value = [a1, a2, a3]
 
         rebalance_zoom_hosts_after_confirm(a2)
-        mock_reassign.assert_called_once_with(
-            a1, HOST2, dry_run=False, notify_link_change=False
-        )
+        mock_reassign.assert_not_called()

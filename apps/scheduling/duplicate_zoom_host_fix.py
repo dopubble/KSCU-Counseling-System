@@ -318,54 +318,53 @@ def rebalance_zoom_hosts_after_confirm(
     notify_link_change: bool = False,
 ) -> list[str]:
     """
-    확정 직후 — 같은 날(트리거 예약 일자) 확정 비대면 중
-    stored zoom_host_email ≠ 알고리즘 기대값이면 Zoom 재생성 (locked 무시).
+    확정 직후 — 신규 예약이 같은 Licensed Host와 버퍼 충돌할 때만
+    그 신규 예약을 재배정한다. 기대 Host mismatch나 legacy Host는 건드리지 않는다.
     """
     if not is_zoom_configured():
         return []
 
-    appointments = list(confirmed_remote_appointments_queryset())
-    if not appointments:
+    stored = _stored_host_email(trigger)
+    if not stored:
         return []
 
-    trigger_day = timezone.localtime(trigger.scheduled_at).date()
+    licensed = {
+        email.strip().lower()
+        for email in get_zoom_licensed_user_emails()
+        if email.strip()
+    }
+    if stored not in licensed:
+        return []
+
+    appointments = list(confirmed_remote_appointments_queryset())
+    overlapping_same_host = [
+        apt
+        for apt in appointments
+        if apt.pk != trigger.pk
+        and _stored_host_email(apt) == stored
+        and _intervals_conflict(trigger, apt)
+    ]
+    if not overlapping_same_host:
+        return []
+
     expected = assign_host_emails_for_appointments(appointments)
-    licensed = get_zoom_licensed_user_emails()
-    primary = licensed[0].strip().lower() if licensed else ""
+    target = (expected.get(str(trigger.pk), "") or "").strip()
+    if not target or target.lower() == stored:
+        return []
 
-    candidates: list[tuple[Appointment, str]] = []
-    for apt in appointments:
-        if timezone.localtime(apt.scheduled_at).date() != trigger_day:
-            continue
-        exp = (expected.get(str(apt.pk), "") or "").strip().lower()
-        stored = _stored_host_email(apt)
-        if not exp or stored == exp:
-            continue
-        zoom = getattr(apt, "zoom_meeting", None)
-        if not zoom or not (zoom.zoom_meeting_id or "").strip():
-            continue
-        candidates.append((apt, exp))
-
-    candidates.sort(
-        key=lambda item: (item[1] == primary, item[0].scheduled_at, str(item[0].pk))
-    )
-
-    messages: list[str] = []
-    for apt, exp in candidates:
-        try:
-            messages.append(
-                reassign_appointment_zoom_host(
-                    apt,
-                    exp,
-                    dry_run=False,
-                    notify_link_change=notify_link_change,
-                )
+    try:
+        return [
+            reassign_appointment_zoom_host(
+                trigger,
+                target,
+                dry_run=False,
+                notify_link_change=notify_link_change,
             )
-        except (ZoomAPIError, ZoomNotConfiguredError, ValueError) as exc:
-            clear_zoom_token_cache()
-            label = (
-                f"{apt.client.name} "
-                f"{timezone.localtime(apt.scheduled_at):%Y-%m-%d %H:%M}"
-            )
-            messages.append(f"[error] {label}: {exc}")
-    return messages
+        ]
+    except (ZoomAPIError, ZoomNotConfiguredError, ValueError) as exc:
+        clear_zoom_token_cache()
+        label = (
+            f"{trigger.client.name} "
+            f"{timezone.localtime(trigger.scheduled_at):%Y-%m-%d %H:%M}"
+        )
+        return [f"[error] {label}: {exc}"]

@@ -99,6 +99,28 @@ class RemoteZoomSchedulingSettings(models.Model):
             "실제 예약 차단은 상담 50분+버퍼 30분(80분) 겹침 기준으로 적용됩니다."
         ),
     )
+    licensed_user_emails = models.TextField(
+        "Zoom 상담 호스트",
+        blank=True,
+        default="",
+        help_text=(
+            "한 줄에 이메일 하나. 위부터 host_01, host_02, … 순서입니다. "
+            "비우면 Railway ZOOM_LICENSED_USERS(없으면 코드 기본값)를 사용합니다."
+        ),
+    )
+    last_verified_at = models.DateTimeField(
+        "최근 Zoom 연결 테스트",
+        null=True,
+        blank=True,
+    )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="수정자",
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -111,13 +133,24 @@ class RemoteZoomSchedulingSettings(models.Model):
         super().save(*args, **kwargs)
 
     def clean(self):
-        from apps.scheduling.zoom_hosts import get_zoom_licensed_user_emails
+        from apps.scheduling.zoom_hosts import (
+            get_zoom_licensed_user_emails,
+            normalize_licensed_user_emails_text,
+            parse_licensed_user_email_lines,
+        )
+
+        emails, parse_errors = parse_licensed_user_email_lines(self.licensed_user_emails)
+        if parse_errors:
+            raise ValidationError({"licensed_user_emails": parse_errors})
+        self.licensed_user_emails = normalize_licensed_user_emails_text(emails)
 
         if self.simultaneous_session_capacity < 1:
             raise ValidationError(
                 {"simultaneous_session_capacity": "1건 이상이어야 합니다."}
             )
-        pool_size = len(get_zoom_licensed_user_emails())
+        pool_size = (
+            len(emails) if emails else len(get_zoom_licensed_user_emails())
+        )
         if pool_size and self.simultaneous_session_capacity > pool_size:
             raise ValidationError(
                 {

@@ -1,7 +1,10 @@
+from django import forms
 from django.contrib import admin, messages
 from django.db import transaction
-from django.http import HttpResponseRedirect
-from django.urls import reverse
+from django.http import HttpResponseRedirect, JsonResponse
+from django.urls import path, reverse
+from django.utils import timezone
+from django.utils.html import format_html
 
 from apps.counseling.admin_lock import RecordsSubmittedLockMixin
 from apps.counseling.models import Case, CounselingMethod
@@ -9,6 +12,10 @@ from apps.counseling.services import (
     RECORDS_LOCKED_MESSAGE,
     case_records_are_locked,
     records_lock_case_for_obj,
+)
+from apps.scheduling.zoom_hosts import (
+    normalize_licensed_user_emails_text,
+    parse_licensed_user_email_lines,
 )
 from apps.scheduling.zoom_links import appointment_zoom_link_is_locked
 from apps.sessions_app.models import ZoomMeeting
@@ -21,7 +28,7 @@ from .models import (
     RemoteZoomSchedulingSettings,
 )
 from .services import AppointmentServiceError, confirm_appointment_with_zoom
-from .utils import ZoomAPIError, ZoomNotConfiguredError
+from .utils import ZoomAPIError, ZoomNotConfiguredError, verify_zoom_host_emails
 
 
 def _case_is_remote(case_id) -> bool:
@@ -101,21 +108,128 @@ def _admin_intends_remote_confirm(
     return _appointment_lacks_zoom(obj)
 
 
+class RemoteZoomSchedulingSettingsForm(forms.ModelForm):
+    class Meta:
+        model = RemoteZoomSchedulingSettings
+        fields = (
+            "licensed_user_emails",
+            "simultaneous_session_capacity",
+        )
+        widgets = {
+            "licensed_user_emails": forms.Textarea(
+                attrs={
+                    "rows": 6,
+                    "cols": 48,
+                    "placeholder": "host1@example.com\nhost2@example.com",
+                }
+            ),
+        }
+
+    def clean_licensed_user_emails(self):
+        raw = self.cleaned_data.get("licensed_user_emails") or ""
+        emails, parse_errors = parse_licensed_user_email_lines(raw)
+        if parse_errors:
+            raise forms.ValidationError(parse_errors)
+        if not emails:
+            return ""
+        try:
+            ok, messages_out = verify_zoom_host_emails(emails)
+        except (ZoomAPIError, ZoomNotConfiguredError) as exc:
+            raise forms.ValidationError(str(exc)) from exc
+        if not ok:
+            raise forms.ValidationError(messages_out)
+        return normalize_licensed_user_emails_text(emails)
+
+
 @admin.register(RemoteZoomSchedulingSettings)
 class RemoteZoomSchedulingSettingsAdmin(admin.ModelAdmin):
-    list_display = ("simultaneous_session_capacity", "updated_at")
-    fields = ("simultaneous_session_capacity", "updated_at")
-    readonly_fields = ("updated_at",)
+    form = RemoteZoomSchedulingSettingsForm
+    change_form_template = "admin/scheduling/remotezoomschedulingsettings/change_form.html"
+    list_display = ("simultaneous_session_capacity", "host_preview", "last_verified_at", "updated_at")
+    fields = (
+        "licensed_user_emails",
+        "simultaneous_session_capacity",
+        "last_verified_at",
+        "updated_by",
+        "updated_at",
+    )
+    readonly_fields = ("last_verified_at", "updated_by", "updated_at")
+
+    def host_preview(self, obj):
+        emails, _errors = parse_licensed_user_email_lines(obj.licensed_user_emails)
+        if not emails:
+            return "환경변수/기본값"
+        return format_html("<br>".join(emails))
+
+    host_preview.short_description = "Zoom 상담 호스트"
+
+    def has_module_permission(self, request):
+        return bool(request.user.is_staff)
+
+    def has_view_permission(self, request, obj=None):
+        return bool(request.user.is_staff)
 
     def has_add_permission(self, request):
+        if not request.user.is_superuser:
+            return False
         if RemoteZoomSchedulingSettings.objects.filter(
             pk=RemoteZoomSchedulingSettings.SETTINGS_PK
         ).exists():
             return False
         return super().has_add_permission(request)
 
+    def has_change_permission(self, request, obj=None):
+        return bool(request.user.is_superuser)
+
     def has_delete_permission(self, request, obj=None):
         return False
+
+    def get_urls(self):
+        urls = super().get_urls()
+        extra = [
+            path(
+                "zoom-connection-test/",
+                self.admin_site.admin_view(self.zoom_connection_test_view),
+                name="scheduling_remotezoomschedulingsettings_zoom_test",
+            ),
+        ]
+        return extra + urls
+
+    def zoom_connection_test_view(self, request):
+        if request.method != "POST":
+            return JsonResponse({"ok": False, "messages": ["POST만 허용됩니다."]}, status=405)
+        if not request.user.is_superuser:
+            return JsonResponse(
+                {"ok": False, "messages": ["최고 관리자만 Zoom 연결 테스트를 할 수 있습니다."]},
+                status=403,
+            )
+        raw = request.POST.get("licensed_user_emails", "")
+        emails, parse_errors = parse_licensed_user_email_lines(raw)
+        if parse_errors:
+            return JsonResponse({"ok": False, "messages": parse_errors})
+        if not emails:
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "messages": [
+                        "Host 이메일을 한 줄에 하나씩 입력한 뒤 연결 테스트를 실행해 주세요."
+                    ],
+                }
+            )
+        try:
+            ok, messages_out = verify_zoom_host_emails(emails)
+        except (ZoomAPIError, ZoomNotConfiguredError) as exc:
+            return JsonResponse({"ok": False, "messages": [str(exc)]})
+        return JsonResponse({"ok": ok, "messages": messages_out})
+
+    def save_model(self, request, obj, form, change):
+        emails, _errors = parse_licensed_user_email_lines(obj.licensed_user_emails)
+        if emails:
+            obj.last_verified_at = timezone.now()
+        else:
+            obj.last_verified_at = None
+        obj.updated_by = request.user
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(CounselorAvailability)
@@ -172,7 +286,11 @@ class AppointmentAdmin(RecordsSubmittedLockMixin, admin.ModelAdmin):
         try:
             obj.status = AppointmentStatus.PENDING
             super().save_model(request, obj, form, change)
-            obj.refresh_from_db(fields=["status", "case_id", "scheduled_at", "duration_minutes"])
+            obj.refresh_from_db(
+                fields=["status", "case_id", "scheduled_at", "duration_minutes"]
+            )
+            # 게이트(_case_is_remote)는 DB를 보지만 confirm은 obj.case 캐시를 본다.
+            obj.case = Case.objects.get(pk=obj.case_id)
             confirm_appointment_with_zoom(obj, notify=True)
         except (
             AppointmentServiceError,
