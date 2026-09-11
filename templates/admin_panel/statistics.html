@@ -51,4 +51,45 @@
         </div>
     </div>
 </div>
+<div class="row g-3 section-spacing">
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-header">기수별 대면/비대면 상담 확정 건수</div>
+            <div class="card-body">
+                {% if cohort_confirmed_counts %}
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>기수</th>
+                            <th>대면상담 확정</th>
+                            <th>비대면상담 확정</th>
+                            <th>합계</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in cohort_confirmed_counts %}
+                        <tr>
+                            <td>{% if item.cohort %}{{ item.cohort }}기{% else %}기수 미정{% endif %}</td>
+                            <td>{{ item.in_person_count }}건</td>
+                            <td>{{ item.remote_count }}건</td>
+                            <td>{{ item.total_count }}건</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <th>전체</th>
+                            <th>{{ cohort_confirmed_totals.in_person_count }}건</th>
+                            <th>{{ cohort_confirmed_totals.remote_count }}건</th>
+                            <th>{{ cohort_confirmed_totals.total_count }}건</th>
+                        </tr>
+                    </tfoot>
+                </table>
+                {% else %}
+                <p class="text-muted mb-0">데이터가 없습니다.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}

@@ -11,7 +11,13 @@ from apps.counseling.application_queries import (
     annotate_pending_application_flags,
     waiting_match_for_admin,
 )
-from apps.counseling.models import ApplicationStatus, Case, CaseStatus, CounselingApplication
+from apps.counseling.models import (
+    ApplicationStatus,
+    Case,
+    CaseStatus,
+    CounselingApplication,
+    CounselingMethod,
+)
 from apps.counseling.services import (
     count_cancel_pending_appointments,
     get_available_counselors,
@@ -454,6 +460,52 @@ def appointment_calendar_events(request):
     return JsonResponse({"events": events})
 
 
+def build_cohort_confirmed_method_stats():
+    """기수별 CONFIRMED 예약의 대면/비대면 건수.
+
+    건수 기준은 Appointment 1건. 기수는 상담사 CounselorProfile.cohort,
+    상담방식은 Case.counseling_method (IN_PERSON / REMOTE).
+    """
+    grouped = (
+        Appointment.objects.filter(status=AppointmentStatus.CONFIRMED)
+        .values("counselor__counselor_profile__cohort")
+        .annotate(
+            in_person_count=Count(
+                "pk",
+                distinct=True,
+                filter=Q(case__counseling_method=CounselingMethod.IN_PERSON),
+            ),
+            remote_count=Count(
+                "pk",
+                distinct=True,
+                filter=Q(case__counseling_method=CounselingMethod.REMOTE),
+            ),
+        )
+    )
+    rows = []
+    for item in grouped:
+        in_person_count = item["in_person_count"]
+        remote_count = item["remote_count"]
+        total_count = in_person_count + remote_count
+        if total_count == 0:
+            continue
+        rows.append(
+            {
+                "cohort": item["counselor__counselor_profile__cohort"],
+                "in_person_count": in_person_count,
+                "remote_count": remote_count,
+                "total_count": total_count,
+            }
+        )
+    rows.sort(key=lambda row: (row["cohort"] is None, row["cohort"] or 0))
+    totals = {
+        "in_person_count": sum(row["in_person_count"] for row in rows),
+        "remote_count": sum(row["remote_count"] for row in rows),
+        "total_count": sum(row["total_count"] for row in rows),
+    }
+    return rows, totals
+
+
 @role_required(UserRole.ADMIN)
 def statistics(request):
     type_counts: dict[str, int] = {}
@@ -469,12 +521,17 @@ def statistics(request):
         .annotate(count=Count("id"))
         .order_by("-count")
     )
+    cohort_confirmed_counts, cohort_confirmed_totals = (
+        build_cohort_confirmed_method_stats()
+    )
     return render(
         request,
         "admin_panel/statistics.html",
         {
             "type_distribution": type_distribution,
             "status_distribution": status_distribution,
+            "cohort_confirmed_counts": cohort_confirmed_counts,
+            "cohort_confirmed_totals": cohort_confirmed_totals,
         },
     )
 
