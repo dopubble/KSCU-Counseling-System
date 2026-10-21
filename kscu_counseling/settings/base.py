@@ -92,6 +92,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "crispy_forms",
     "crispy_bootstrap5",
+    "anymail",
     "apps.accounts.apps.AccountsConfig",
     "apps.counseling",
     "apps.scheduling",

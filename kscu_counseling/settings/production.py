@@ -1,6 +1,8 @@
+import os
+
 from .base import *  # noqa: F401, F403
 from .base import _env_int, _env_str  # star import는 _ 접두 private 이름 제외
-import os
+from .email_backend import RESEND_EMAIL_BACKEND, select_production_email_backend
 
 # env DEBUG=True 여부와 무관 — 운영은 항상 False
 DEBUG = False
@@ -25,17 +27,47 @@ CSRF_COOKIE_SAMESITE = "Lax"
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 USE_X_FORWARDED_HOST = False
 
-# base._configure_email_backend() — 자격 증명 없으면 console(신청 저장은 계속 가능)
-# SMTP는 타임아웃을 두어 Gunicorn worker timeout(120s)으로 500 나는 것을 방지
-if EMAIL_HOST_USER and EMAIL_HOST_PASSWORD:  # noqa: F405
-    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
-else:
-    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+# base._configure_email_backend()가 SMTP/console을 고른 뒤, 여기서 최종 backend를 정한다.
+# RESEND_API_KEY가 있으면 Gmail SMTP 자격 증명이 있어도 HTTPS API backend를 사용한다.
+# smtp.resend.com 은 사용하지 않는다. SMTP 환경 변수는 키가 없을 때의 대기로 남겨 둔다.
+_resend_api_key = _env_str("RESEND_API_KEY")
+EMAIL_BACKEND = select_production_email_backend(
+    resend_api_key=_resend_api_key,
+    email_host_user=EMAIL_HOST_USER,  # noqa: F405
+    email_host_password=EMAIL_HOST_PASSWORD,  # noqa: F405
+)
+if EMAIL_BACKEND == RESEND_EMAIL_BACKEND:
+    ANYMAIL = {"RESEND_API_KEY": _resend_api_key}
 
 EMAIL_TIMEOUT = _env_int("EMAIL_TIMEOUT", 5)
 
 # 알림 메일은 HTTP 요청을 막지 않도록 백그라운드 발송 (Gunicorn worker 고갈 방지)
 EMAIL_ASYNC = _env_str("EMAIL_ASYNC", "True").lower() in ("true", "1", "yes")
+
+# 비밀번호 재설정만 stderr로 남긴다.
+# DEBUG=False이면 Django 기본 console 핸들러가 꺼져 django.contrib.auth ERROR가 사라진다.
+# disable_existing_loggers=False 로 기존 Django 로거 정책은 유지한다.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "auth_stderr": {
+            "class": "logging.StreamHandler",
+        },
+    },
+    "loggers": {
+        "django.contrib.auth": {
+            "handlers": ["auth_stderr"],
+            "level": "ERROR",
+            "propagate": True,
+        },
+        "apps.accounts.password_reset": {
+            "handlers": ["auth_stderr"],
+            "level": "INFO",
+            "propagate": True,
+        },
+    },
+}
 
 
 def _sanitize_allowed_host(value: str) -> str:
