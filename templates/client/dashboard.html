@@ -126,6 +126,68 @@
         </section>
         {% endif %}
 
+        {% if closed_cases %}
+        <section class="section-spacing" id="closed-cases">
+            <div class="d-flex align-items-center gap-2 mb-3">
+                <i class="bi bi-archive text-muted" aria-hidden="true"></i>
+                <h2 class="h6 mb-0 fw-semibold">종결 사례</h2>
+            </div>
+            <div class="client-active-cases-stack">
+                {% for case in closed_cases %}
+                <article class="card client-dashboard-card client-active-case-card border-0 shadow-sm">
+                    <div class="card-body client-active-case-card-body">
+                        <div class="row align-items-center g-3 gy-3">
+                            <div class="col-12 col-md-6 col-lg-3">
+                                <div class="client-active-case-field">
+                                    <span class="client-active-case-label">상담 유형</span>
+                                    <span class="client-active-case-value text-truncate d-block"
+                                          title="{{ case.application.counseling_type }}">{{ case.application.counseling_type }}</span>
+                                    <span class="client-active-case-meta font-monospace text-truncate d-block"
+                                          title="{{ case.case_number }}">{{ case.case_number }}</span>
+                                </div>
+                            </div>
+                            <div class="col-6 col-md-3 col-lg-2">
+                                <div class="client-active-case-field">
+                                    <span class="client-active-case-label">담당 상담사</span>
+                                    <span class="client-active-case-value text-truncate d-block"
+                                          title="{% if case.counselor %}{{ case.counselor.name }}{% else %}배정 대기{% endif %}">
+                                        {% if case.counselor %}
+                                            {{ case.counselor.name }}
+                                        {% else %}
+                                            <span class="text-muted fw-normal">배정 대기</span>
+                                        {% endif %}
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="col-6 col-md-3 col-lg-2">
+                                <div class="client-active-case-field">
+                                    <span class="client-active-case-label">상담 상태</span>
+                                    <span class="badge bg-secondary">{{ case.get_status_display }}</span>
+                                </div>
+                            </div>
+                            <div class="col-12 col-md-6 col-lg-3">
+                                <div class="client-active-case-field">
+                                    <span class="client-active-case-label">종결일</span>
+                                    <span class="client-active-case-value">
+                                        {% if case.closed_at %}{{ case.closed_at|date:"Y-m-d" }}{% else %}—{% endif %}
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="col-12 col-lg-2 text-lg-end">
+                                <a href="{% url 'client:case_detail' case.pk %}"
+                                   class="btn btn-sm client-dashboard-action-btn w-100 w-lg-auto">
+                                    상담 상세보기
+                                    <i class="bi bi-arrow-right ms-1" aria-hidden="true"></i>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
         <div class="card client-dashboard-card border-0 shadow-sm section-spacing">
             <div class="card-header client-portal-card-header border-0 bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
                 <span class="d-flex align-items-center gap-2">

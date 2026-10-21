@@ -15,6 +15,7 @@ from apps.accounts.decorators import role_required
 from apps.accounts.models import UserRole
 
 from .models import Case, ChatMessage
+from .services import RECORDS_LOCKED_MESSAGE, case_records_are_locked
 
 MAX_CHAT_BODY = 2000
 CHAT_FETCH_LIMIT = 200
@@ -117,6 +118,8 @@ def _chat_messages_response(request, pk):
 
 def _chat_send_response(request, pk):
     case = _get_chat_case(request, pk)
+    if case_records_are_locked(case):
+        return JsonResponse({"error": RECORDS_LOCKED_MESSAGE}, status=403)
     try:
         payload = json.loads(request.body.decode() or "{}")
     except (json.JSONDecodeError, UnicodeDecodeError):

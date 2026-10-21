@@ -1,0 +1,24 @@
+{% if can_unsubmit_records and unsubmit_case %}
+<div class="modal fade" id="recordsUnsubmitConfirmModal" tabindex="-1" aria-labelledby="recordsUnsubmitConfirmLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header">
+                <h5 class="modal-title" id="recordsUnsubmitConfirmLabel">최종 제출 취소</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-0">최종 제출을 취소하면 상담사가 해당 사례의 기록과 예약 정보를 다시 수정할 수 있습니다. 최종 제출을 취소하시겠습니까?</p>
+            </div>
+            <div class="modal-footer">
+                <form method="post" action="{% url 'counseling:case_records_unsubmit' unsubmit_case.pk %}" id="recordsUnsubmitForm">
+                    {% csrf_token %}
+                    <input type="hidden" name="confirm" value="1">
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-warning">최종 제출 취소</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}

@@ -121,6 +121,14 @@
             담당 상담사: <strong>{{ existing_case.counselor.name }}</strong>
             · 사례번호: <strong>{{ existing_case.case_number }}</strong>
             · 남은 회기: <strong>{{ existing_case.remaining_sessions }} / {{ existing_case.total_sessions }}</strong>
+            {% if can_unsubmit_records %}
+            <div class="mt-2">
+                <button type="button" class="btn btn-sm btn-outline-warning"
+                        data-bs-toggle="modal" data-bs-target="#recordsUnsubmitConfirmModal">
+                    최종 제출 취소
+                </button>
+            </div>
+            {% endif %}
         </div>
         {% elif existing_case %}
         <div class="alert alert-warning border-0 shadow-sm">
@@ -200,6 +208,7 @@
         </div>
     </div>
 </div>
+{% include "counselor/partials/records_unsubmit_modal.html" with unsubmit_case=existing_case %}
 {% endblock %}
 
 {% block extra_css %}

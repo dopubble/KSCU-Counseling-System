@@ -19,7 +19,7 @@
                     aria-label="채팅 닫기"></button>
         </div>
         <div id="caseChatMessages" class="case-chat-messages" role="log" aria-live="polite"></div>
-        <form id="caseChatForm" class="case-chat-form">
+        <form id="caseChatForm" class="case-chat-form{% if chat_locked %} d-none{% endif %}">
             {% csrf_token %}
             <input type="text"
                    id="caseChatInput"

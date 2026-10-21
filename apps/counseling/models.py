@@ -186,6 +186,20 @@ class Case(models.Model):
     )
     opened_at = models.DateTimeField("개시일", default=timezone.now)
     closed_at = models.DateTimeField("종결일", null=True, blank=True)
+    records_submitted_at = models.DateTimeField(
+        "기록 최종 제출일",
+        null=True,
+        blank=True,
+        help_text="상담사가 상담일지·종결기록지를 최종 제출한 시각. 값이 있으면 기록이 잠깁니다.",
+    )
+    records_submitted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="submitted_cases",
+        verbose_name="기록 최종 제출자",
+    )
 
     class Meta:
         verbose_name = "사례"
@@ -201,6 +215,11 @@ class Case(models.Model):
     @property
     def sessions_label(self) -> str:
         return f"{self.remaining_sessions} / {self.total_sessions}"
+
+    @property
+    def records_submitted(self) -> bool:
+        """기록 최종 제출 완료 여부 — 상담일지·종결기록지 잠금 기준."""
+        return self.records_submitted_at is not None
 
     def save(self, *args, **kwargs):
         from django.db import IntegrityError

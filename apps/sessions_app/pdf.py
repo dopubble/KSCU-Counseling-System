@@ -166,7 +166,7 @@ def build_journal_pdf(
         ["내담자", client_name, "학번", student_id or "—"],
         ["성별", summary.get("gender") or "—", "생년월일", summary.get("birth_date") or "—"],
         ["직업", summary.get("occupation") or "—", "연락처", summary.get("phone") or "—"],
-        ["이메일", summary.get("email") or "—", "상담 구분", journal.session_category or "—"],
+        ["이메일", summary.get("email") or "—", "상담 구분", journal.session_category_display or "—"],
         ["상담 일시", _fmt_datetime(journal.session_datetime), "담당 상담사", counselor_name],
         ["작성일", _fmt_datetime(journal.created_at), "", ""],
     ]

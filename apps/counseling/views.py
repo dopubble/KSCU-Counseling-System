@@ -8,6 +8,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError
+from django.db.models import F
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
@@ -125,6 +126,12 @@ from .services import (
     build_case_session_cards,
     build_case_session_cards_cached,
     build_counselor_session_views,
+    close_case_on_termination_record,
+    submit_case_records,
+    unsubmit_case_records,
+    validate_case_records_submission,
+    case_records_are_locked,
+    RECORDS_LOCKED_MESSAGE,
     sync_orphan_session_requests,
     client_can_edit_application,
     get_case_shared_materials,
@@ -480,10 +487,14 @@ def application_detail(request, pk):
     )
     other_active_cases = list(get_client_other_active_cases(application))
     has_other_active_case = bool(other_active_cases)
-    can_change_counselor = existing_case is not None
+    can_change_counselor = (
+        existing_case is not None and not case_records_are_locked(existing_case)
+    )
     show_match_form = can_assign_new or can_change_counselor
 
     if request.method == "POST":
+        if existing_case is not None:
+            _ensure_records_unlocked(existing_case)
         if not show_match_form:
             messages.warning(request, "현재 상태에서는 상담사를 배정·변경할 수 없습니다.")
             return redirect("counseling:application_detail", pk=pk)
@@ -502,6 +513,7 @@ def application_detail(request, pk):
             )
             try:
                 if existing_case:
+                    _ensure_records_unlocked(existing_case)
                     case = reassign_counselor(existing_case, counselor)
                     messages.success(
                         request,
@@ -583,6 +595,9 @@ def application_detail(request, pk):
             "department": department,
             "schedule": schedule,
             "existing_case": existing_case,
+            "can_unsubmit_records": bool(
+                existing_case and existing_case.records_submitted_at is not None
+            ),
             "match_form": match_form,
             "can_assign_new": can_assign_new,
             "can_change_counselor": can_change_counselor,
@@ -610,6 +625,11 @@ def client_dashboard(request):
         .select_related("counselor", "application")
         .order_by("-opened_at")
     )
+    closed_cases = list(
+        Case.objects.filter(client=request.user, status=CaseStatus.CLOSED)
+        .select_related("counselor", "application")
+        .order_by(F("closed_at").desc(nulls_last=True), "-opened_at")
+    )
     primary_case = active_cases[0] if active_cases else None
     session_summary = None
     if primary_case:
@@ -625,6 +645,7 @@ def client_dashboard(request):
             "applications": applications,
             "application_count": application_qs.count(),
             "active_cases": active_cases,
+            "closed_cases": closed_cases,
             "session_summary": session_summary,
         },
     )
@@ -717,6 +738,10 @@ def edit_application(request, pk):
     )
 
     if not client_can_edit_application(application):
+        try:
+            _ensure_records_unlocked(application.case)
+        except Case.DoesNotExist:
+            pass
         confirmed = get_confirmed_appointment_for_application(application)
         if confirmed and client_change_blocked(confirmed):
             messages.error(request, policy_messages(confirmed)["change"])
@@ -748,6 +773,10 @@ def request_cancel_application(request, pk):
         pk=pk,
         client=request.user,
     )
+    try:
+        _ensure_records_unlocked(application.case)
+    except Case.DoesNotExist:
+        pass
 
     redirect_to = request.POST.get("next") or reverse("client:application_list")
 
@@ -859,6 +888,7 @@ def _session_material_file_response(material):
 
 
 def _delete_session_material(request, case, session_number, material_pk, *, redirect_to):
+    _ensure_records_unlocked(case)
     material = _get_session_material_for_case(case, session_number, material_pk)
     if material.uploaded_by_id != request.user.id:
         messages.error(request, "본인이 업로드한 파일만 삭제할 수 있습니다.")
@@ -885,7 +915,7 @@ def client_case_detail(request, pk):
     )
     change_blocked = confirmed_appointment_blocks_client_change(application)
     can_request = (
-        case.status == CaseStatus.ACTIVE
+        not case_records_are_locked(case)
         and case.counselor_id is not None
         and not pending_appointments.exists()
         and not change_blocked
@@ -902,7 +932,7 @@ def client_case_detail(request, pk):
         bool(confirmed_appointment)
         and not has_cancel_pending
         and not client_cancel_blocked(confirmed_appointment)
-        and case.status == CaseStatus.ACTIVE
+        and not case_records_are_locked(case)
     )
     cancel_within_penalty = bool(
         confirmed_appointment and cancel_triggers_session_penalty(confirmed_appointment)
@@ -1041,6 +1071,7 @@ def client_session_material_delete(request, case_pk, session_number, material_pk
 def client_session_booking_calendar(request, case_pk, session_number):
     """회기별 예약·일정 변경 — 전체 화면 예약 캘린더."""
     case = _get_client_case(request, case_pk)
+    _ensure_records_unlocked(case)
     card = _get_session_card(case, session_number)
     if not card or not card.show_schedule_change:
         messages.error(request, "이 회기에는 일정을 예약하거나 변경할 수 없습니다.")
@@ -1173,6 +1204,7 @@ def client_session_booking_calendar(request, case_pk, session_number):
 def client_session_schedule_change(request, case_pk, session_number):
     """회기별 일정 변경 요청"""
     case = _get_client_case(request, case_pk)
+    _ensure_records_unlocked(case)
     card = _get_session_card(case, session_number)
     if not card or not card.show_schedule_change:
         messages.error(request, "이 회기에는 일정 변경을 요청할 수 없습니다.")
@@ -1264,6 +1296,7 @@ def client_session_schedule_change(request, case_pk, session_number):
 def client_session_pending_withdraw(request, case_pk, appointment_pk):
     """내담자 PENDING 예약 요청 철회."""
     case = _get_client_case(request, case_pk)
+    _ensure_records_unlocked(case)
     appointment = get_object_or_404(
         Appointment.objects.select_related("case"),
         pk=appointment_pk,
@@ -1301,6 +1334,7 @@ def client_session_pending_withdraw(request, case_pk, appointment_pk):
 def client_session_appointment_cancel(request, case_pk, appointment_pk):
     """확정 회기별 내담자 예약 취소 요청."""
     case = _get_client_case(request, case_pk)
+    _ensure_records_unlocked(case)
     appointment = get_object_or_404(
         Appointment.objects.select_related("case", "case__application"),
         pk=appointment_pk,
@@ -1370,6 +1404,7 @@ def client_session_appointment_cancel(request, case_pk, appointment_pk):
 def client_session_cancel_withdraw(request, case_pk, appointment_pk):
     """내담자 취소 요청 철회 — 예약 확정 상태로 복원."""
     case = _get_client_case(request, case_pk)
+    _ensure_records_unlocked(case)
     appointment = get_object_or_404(
         Appointment.objects.select_related("case", "case__application"),
         pk=appointment_pk,
@@ -1464,6 +1499,7 @@ def _counselor_session_card_response(request, case, session_number: int):
 def client_session_material_upload(request, case_pk, session_number):
     """회기별 자료 첨부"""
     case = _get_client_case(request, case_pk)
+    _ensure_records_unlocked(case)
     card = _get_session_card(case, session_number)
     if not card or not card.show_session_actions:
         messages.error(request, "이 회기에는 자료를 첨부할 수 없습니다.")
@@ -1498,7 +1534,8 @@ def client_session_material_upload(request, case_pk, session_number):
 @role_required(UserRole.CLIENT)
 def client_request_appointment(request, pk):
     """내담자 예약 신청 (PENDING)"""
-    case = _get_client_case(request, pk, active_only=True)
+    case = _get_client_case(request, pk)
+    _ensure_records_unlocked(case)
 
     if request.method != "POST":
         return redirect("client:case_detail", pk=case.pk)
@@ -1546,6 +1583,15 @@ def _counselor_active_cases(user):
     )
 
 
+def _counselor_closed_cases(user):
+    """상담사 대시보드용 종결 사례 — 본인에게 배정된 사례만 (기록 열람용)"""
+    return (
+        Case.objects.filter(status=CaseStatus.CLOSED, counselor=user)
+        .select_related("client", "application", "counselor")
+        .order_by(F("closed_at").desc(nulls_last=True), "-opened_at")
+    )
+
+
 def _get_counselor_case(request, pk):
     """배정된 담당 사례만 조회"""
     return get_object_or_404(
@@ -1553,6 +1599,34 @@ def _get_counselor_case(request, pk):
         pk=pk,
         counselor=request.user,
     )
+
+
+def _ensure_records_unlocked(case):
+    """최종 제출된 사례는 생성·수정·삭제 불가 (조회는 계속 허용)."""
+    if case_records_are_locked(case):
+        raise PermissionDenied(RECORDS_LOCKED_MESSAGE)
+
+
+RECORDS_SUBMIT_FEEDBACK_KEY = "records_submit_feedback"
+
+
+def _set_records_submit_feedback(request, case_pk, *, errors=None, confirm=False):
+    """최종 제출 결과를 상담사 대시보드에서 한 번만 표시하도록 세션에 남깁니다."""
+    request.session[RECORDS_SUBMIT_FEEDBACK_KEY] = {
+        "case": str(case_pk),
+        "errors": list(errors or []),
+        "confirm": bool(confirm),
+    }
+
+
+def _pop_records_submit_feedback(request, case_pk=None):
+    data = request.session.pop(RECORDS_SUBMIT_FEEDBACK_KEY, None)
+    if not isinstance(data, dict):
+        return None
+    if case_pk is not None and data.get("case") != str(case_pk):
+        request.session[RECORDS_SUBMIT_FEEDBACK_KEY] = data
+        return None
+    return data
 
 
 def _journal_counselor_for_save(request, case):
@@ -1682,6 +1756,7 @@ def _render_journal_form(request, case, form, *, is_edit=False, journal=None):
         "client_summary": _case_client_summary(case),
         "is_edit": is_edit,
         "journal": journal,
+        "session_categories": form.session_category_values,
         "page_title": "상담일지 수정" if is_edit else "상담일지 작성",
         "breadcrumb_label": "일지 수정" if is_edit else "일지 작성",
         "submit_label": "저장하기" if is_edit else "일지 저장",
@@ -1706,8 +1781,9 @@ def _render_journal_form(request, case, form, *, is_edit=False, journal=None):
 
 @counselor_required
 def counselor_dashboard(request):
-    """상담사 전용 대시보드 — 활성 사례 목록"""
+    """상담사 전용 대시보드 — 활성 사례 목록 + 종결 사례 열람"""
     cases = _counselor_active_cases(request.user)
+    closed_cases = _counselor_closed_cases(request.user)
     pending_appointments = (
         Appointment.objects.filter(
             counselor=request.user,
@@ -1716,14 +1792,26 @@ def counselor_dashboard(request):
         .select_related("case", "client", "case__application")
         .order_by("scheduled_at")
     )
+    submit_feedback = _pop_records_submit_feedback(request)
     return render(
         request,
         "counselor/dashboard.html",
         {
             "cases": cases,
             "active_count": cases.count(),
+            "closed_cases": closed_cases,
+            "closed_count": closed_cases.count(),
             "pending_appointments": pending_appointments,
             "pending_count": pending_appointments.count(),
+            "records_submit_errors": (
+                submit_feedback["errors"] if submit_feedback else []
+            ),
+            "records_submit_confirm": bool(
+                submit_feedback and submit_feedback["confirm"]
+            ),
+            "records_submit_case_pk": (
+                submit_feedback["case"] if submit_feedback else None
+            ),
         },
     )
 
@@ -1767,6 +1855,11 @@ def counselor_case_detail(request, pk):
         {
             "case": case,
             "application": application,
+            "records_submitted": case.records_submitted_at is not None,
+            "can_unsubmit_records": (
+                (request.user.is_superuser or request.user.role == UserRole.ADMIN)
+                and case.records_submitted_at is not None
+            ),
             "presenting_complaint_categories": presenting_complaint_categories_for_case(case),
             "presenting_reason": presenting_written_reason_for_case(case),
             "student_id": student_id,
@@ -1800,28 +1893,75 @@ def counselor_case_detail(request, pk):
 
 @counselor_required
 @require_POST
+def case_records_submit(request, pk):
+    """
+    상담일지·종결기록지 최종 제출.
+    1차 요청에서 조건을 검사하고, confirm=1인 2차 요청에서 잠금 후 재검증·확정합니다.
+    """
+    case = _get_board_manage_case(request, pk)
+    redirect_to = redirect("counselor:dashboard")
+
+    errors = validate_case_records_submission(request.user, case)
+    if errors:
+        _set_records_submit_feedback(request, case.pk, errors=errors)
+        return redirect_to
+
+    if request.POST.get("confirm") != "1":
+        _set_records_submit_feedback(request, case.pk, confirm=True)
+        return redirect_to
+
+    submitted, errors = submit_case_records(case, request.user)
+    if not submitted:
+        _set_records_submit_feedback(request, case.pk, errors=errors)
+        return redirect_to
+
+    messages.success(
+        request,
+        "최종 제출되었습니다. 제출된 사례의 모든 정보는 더 이상 수정할 수 없습니다.",
+    )
+    return redirect_to
+
+
+@role_required(UserRole.ADMIN)
+@require_POST
+def case_records_unsubmit(request, pk):
+    """관리자 — 최종 제출 취소. 사례 상태와 기존 기록은 유지하고 제출 필드만 해제합니다."""
+    case = get_object_or_404(
+        Case.objects.select_related("client", "application", "counselor"),
+        pk=pk,
+    )
+    redirect_to = request.POST.get("next") or reverse(
+        "counselor:case_detail", kwargs={"pk": case.pk}
+    )
+
+    if case.records_submitted_at is None:
+        messages.error(request, "최종 제출되지 않은 사례입니다.")
+        return redirect(redirect_to)
+
+    if request.POST.get("confirm") != "1":
+        messages.error(request, "최종 제출 취소가 확인되지 않았습니다.")
+        return redirect(redirect_to)
+
+    unsubmit_case_records(case)
+    messages.success(
+        request,
+        "최종 제출이 취소되었습니다. 상담사가 사례 정보를 다시 수정할 수 있습니다.",
+    )
+    return redirect(redirect_to)
+
+
+@counselor_required
+@require_POST
 def counselor_session_appointment_confirm(request, case_pk, appointment_pk):
     """회기별 예약 확정 (+ Zoom) — 모델: scheduling.Appointment."""
-    print(
-        "[DEBUG confirm]",
-        "case_pk=", case_pk,
-        "appointment_pk(URL)=", appointment_pk,
-        "POST=", dict(request.POST),
-        "body=", request.body[:500],
-    )
     posted_appointment_id = request.POST.get("appointment_id")
     if posted_appointment_id and str(posted_appointment_id) != str(appointment_pk):
-        print(
-            "[DEBUG confirm] POST appointment_id mismatch:",
-            posted_appointment_id,
-            "vs URL",
-            appointment_pk,
-        )
         appointment_pk = posted_appointment_id
 
     case, appointment = _get_counselor_case_appointment(
         request, case_pk, appointment_pk
     )
+    _ensure_records_unlocked(case)
     session_number = appointment.session_number or 1
     posted_session_id = request.POST.get("session_id")
     print(
@@ -1916,6 +2056,7 @@ def counselor_session_appointment_reject(request, case_pk, appointment_pk):
     case, appointment = _get_counselor_case_appointment(
         request, case_pk, appointment_pk
     )
+    _ensure_records_unlocked(case)
     session_number = appointment.session_number or 1
 
     if appointment.status != AppointmentStatus.PENDING:
@@ -1961,6 +2102,7 @@ def counselor_session_cancel_approve(request, case_pk, appointment_pk):
     case, appointment = _get_counselor_case_appointment(
         request, case_pk, appointment_pk
     )
+    _ensure_records_unlocked(case)
     session_number = appointment.session_number or 1
 
     if appointment.status != AppointmentStatus.CANCEL_PENDING:
@@ -1999,6 +2141,7 @@ def counselor_session_cancel_reject(request, case_pk, appointment_pk):
     case, appointment = _get_counselor_case_appointment(
         request, case_pk, appointment_pk
     )
+    _ensure_records_unlocked(case)
     session_number = appointment.session_number or 1
 
     if appointment.status != AppointmentStatus.CANCEL_PENDING:
@@ -2050,6 +2193,7 @@ def counselor_session_appointment_cancel(request, case_pk, appointment_pk):
     case, appointment = _get_counselor_case_appointment(
         request, case_pk, appointment_pk
     )
+    _ensure_records_unlocked(case)
     session_number = appointment.session_number or 1
 
     form = CancelRequestForm(request.POST)
@@ -2098,6 +2242,7 @@ def counselor_session_schedule_change_approve(request, case_pk, request_pk):
     case, schedule_request = _get_counselor_schedule_change_request(
         request, case_pk, request_pk
     )
+    _ensure_records_unlocked(case)
     session_number = schedule_request.session_number
 
     try:
@@ -2141,6 +2286,7 @@ def counselor_session_schedule_change_reject(request, case_pk, request_pk):
     case, schedule_request = _get_counselor_schedule_change_request(
         request, case_pk, request_pk
     )
+    _ensure_records_unlocked(case)
     session_number = schedule_request.session_number
 
     form = AppointmentRejectForm(request.POST)
@@ -2182,6 +2328,7 @@ def counselor_session_schedule_change_reject(request, case_pk, request_pk):
 def counselor_board_post_create(request, case_pk):
     """게시판 게시글 작성 (상담사·관리자)"""
     case = _get_board_manage_case(request, case_pk)
+    _ensure_records_unlocked(case)
     if not user_can_manage_board(request.user, case):
         raise PermissionDenied("게시판 작성 권한이 없습니다.")
 
@@ -2213,6 +2360,7 @@ def counselor_board_post_create(request, case_pk):
 def counselor_board_post_edit(request, case_pk, material_pk):
     """게시판 게시글 수정 (상담사·관리자)"""
     case = _get_board_manage_case(request, case_pk)
+    _ensure_records_unlocked(case)
     if not user_can_manage_board(request.user, case):
         raise PermissionDenied("게시판 수정 권한이 없습니다.")
 
@@ -2256,6 +2404,7 @@ def counselor_shared_material_file(request, case_pk, material_pk):
 def counselor_shared_material_delete(request, case_pk, material_pk):
     """게시판 게시글 삭제 (상담사·관리자)"""
     case = _get_board_manage_case(request, case_pk)
+    _ensure_records_unlocked(case)
     if not user_can_manage_board(request.user, case):
         raise PermissionDenied("게시판 삭제 권한이 없습니다.")
 
@@ -2281,6 +2430,7 @@ def counselor_cohort_journal_pdf(request, journal_pk):
 def counselor_update_session_status(request, case_pk, appointment_pk):
     """상담사 회기 상태 변경 (진행중 ↔ 완료)."""
     case = _get_counselor_case(request, case_pk)
+    _ensure_records_unlocked(case)
     appointment = get_object_or_404(
         Appointment.objects.select_related("case"),
         pk=appointment_pk,
@@ -2318,6 +2468,7 @@ def counselor_update_session_status(request, case_pk, appointment_pk):
 def counselor_consent_upload(request, case_pk, doc_type):
     """필수 동의서(오프라인 스캔) 업로드·재업로드."""
     case = _get_counselor_case(request, case_pk)
+    _ensure_records_unlocked(case)
     form = ConsentUploadForm(request.POST, request.FILES)
     if not form.is_valid():
         file_errors = form.errors.get("file")
@@ -2346,6 +2497,7 @@ def counselor_consent_upload(request, case_pk, doc_type):
 def counselor_consent_delete(request, case_pk, doc_type):
     """필수 동의서(오프라인 스캔) 파일 삭제."""
     case = _get_counselor_case(request, case_pk)
+    _ensure_records_unlocked(case)
     try:
         deleted = delete_counselor_consent(case=case, doc_type=doc_type)
     except ValueError:
@@ -2371,6 +2523,7 @@ def counselor_consent_delete(request, case_pk, doc_type):
 def counselor_session_material_upload(request, case_pk, session_number):
     """회기별 자료 첨부 (상담사)."""
     case = _get_counselor_case(request, case_pk)
+    _ensure_records_unlocked(case)
     card = _get_session_card(case, session_number)
     if not card or not card.show_session_actions:
         messages.error(request, "이 회기에는 자료를 첨부할 수 없습니다.")
@@ -2450,6 +2603,7 @@ def case_book_appointment(request, pk):
 def counselor_session_appointment_book(request, case_pk, session_number):
     """상담사 — 내담자 신청 없이 회기 일정 입력·확정."""
     case = _get_counselor_case(request, case_pk)
+    _ensure_records_unlocked(case)
     card = _get_session_card(case, session_number)
     if not card or not card.show_counselor_direct_booking:
         messages.error(request, "이 회기는 일정을 직접 확정할 수 없습니다.")
@@ -2539,6 +2693,7 @@ def counselor_session_appointment_book(request, case_pk, session_number):
 def counselor_session_appointment_reschedule(request, case_pk, session_number):
     """상담사 — 확정 회기 일정 변경 (과거 일정 포함)."""
     case = _get_counselor_case(request, case_pk)
+    _ensure_records_unlocked(case)
     card = _get_session_card(case, session_number)
     if not card or not card.show_counselor_direct_reschedule:
         messages.error(request, "이 회기는 일정을 변경할 수 없습니다.")
@@ -2644,10 +2799,22 @@ def _case_client_summary(case):
     }
 
 
+def _session_appointment_datetime(case, session_number):
+    """해당 회기 슬롯에 매핑된 예약의 일시 (없으면 None)."""
+    if not session_number:
+        return None
+    card = _get_session_card(case, session_number)
+    appointment = card.appointment if card else None
+    if not appointment or appointment.status == AppointmentStatus.NO_SHOW:
+        return None
+    return appointment.scheduled_at
+
+
 @counselor_required
 def journal_create(request, pk):
     """새 상담일지 작성"""
     case = _get_counselor_case(request, pk)
+    _ensure_records_unlocked(case)
 
     if request.method == "POST":
         form = CounselingJournalForm(request.POST, case=case)
@@ -2671,6 +2838,9 @@ def journal_create(request, pk):
                 initial["session_number"] = int(session_param)
             except (TypeError, ValueError):
                 pass
+        scheduled_at = _session_appointment_datetime(case, initial["session_number"])
+        if scheduled_at:
+            initial["session_datetime"] = timezone.localtime(scheduled_at)
         form = CounselingJournalForm(
             case=case,
             initial=initial,
@@ -2693,7 +2863,8 @@ def journal_detail(request, pk, session_number):
             "case": case,
             "client_summary": _case_client_summary(case),
             "journal_breadcrumb_label": f"{journal.session_number}회기 상담일지",
-            "can_edit": user_can_edit_journal(request.user, journal),
+            "can_edit": case.records_submitted_at is None
+            and user_can_edit_journal(request.user, journal),
             **_record_pdf_context(
                 _can_download_journal_pdf(request, journal),
                 reverse(
@@ -2741,6 +2912,7 @@ def journal_edit(request, pk, session_number):
     case, journal = _get_case_journal(request, pk, session_number)
     if not user_can_edit_journal(request.user, journal):
         raise PermissionDenied("이 상담일지를 수정할 권한이 없습니다.")
+    _ensure_records_unlocked(case)
 
     if request.method == "POST":
         form = CounselingJournalForm(request.POST, instance=journal, case=case)
@@ -2871,13 +3043,15 @@ def _ensure_case_counselor_assigned(case):
 
 
 def _ensure_initial_record_allowed(case):
-    """1회기 초기상담 기록지 — 매칭 후 작성 허용."""
+    """1회기 초기상담 기록지 — 매칭 후 작성 허용 (최종 제출 전까지)."""
     _ensure_case_counselor_assigned(case)
+    _ensure_records_unlocked(case)
 
 
 def _ensure_termination_record_allowed(case):
-    """마지막 회기 종결기록지 — 매칭 후 작성 허용."""
+    """마지막 회기 종결기록지 — 매칭 후 작성 허용 (최종 제출 전까지)."""
     _ensure_case_counselor_assigned(case)
+    _ensure_records_unlocked(case)
     if not case.total_sessions or case.total_sessions < 1:
         raise PermissionDenied("설정된 회기 정보가 없어 종결기록지를 작성할 수 없습니다.")
 
@@ -2955,8 +3129,11 @@ def initial_record_detail(request, pk):
             "case": case,
             "record": record,
             "client_summary": _initial_record_client_summary(case),
-            "can_edit": record.counselor_id == request.user.pk
-            or case.counselor_id == request.user.pk,
+            "can_edit": case.records_submitted_at is None
+            and (
+                record.counselor_id == request.user.pk
+                or case.counselor_id == request.user.pk
+            ),
             **_record_pdf_context(
                 _can_download_initial_record_pdf(request, record),
                 reverse("counselor:initial_record_pdf", kwargs={"pk": case.pk}),
@@ -3090,7 +3267,13 @@ def termination_record_create(request, pk):
             record.case = case
             record.counselor = request.user
             record.save()
-            messages.success(request, "종결기록지가 저장되었습니다.")
+            if close_case_on_termination_record(case):
+                messages.success(
+                    request,
+                    "종결기록지가 저장되어 상담이 종결 처리되었습니다.",
+                )
+            else:
+                messages.success(request, "종결기록지가 저장되었습니다.")
             return redirect("counselor:case_detail", pk=case.pk)
         messages.error(request, "입력 내용을 확인해 주세요.")
     else:
@@ -3120,8 +3303,11 @@ def termination_record_detail(request, pk):
             "record": record,
             "client_summary": _termination_record_client_summary(case),
             "total_sessions": case.total_sessions,
-            "can_edit": record.counselor_id == request.user.pk
-            or case.counselor_id == request.user.pk,
+            "can_edit": case.records_submitted_at is None
+            and (
+                record.counselor_id == request.user.pk
+                or case.counselor_id == request.user.pk
+            ),
             **_record_pdf_context(
                 _can_download_termination_record_pdf(request, record),
                 reverse("counselor:termination_record_pdf", kwargs={"pk": case.pk}),
@@ -3173,7 +3359,13 @@ def termination_record_edit(request, pk):
             if not updated.counselor_id:
                 updated.counselor = request.user
             updated.save()
-            messages.success(request, "종결기록지가 저장되었습니다.")
+            if close_case_on_termination_record(case):
+                messages.success(
+                    request,
+                    "종결기록지가 저장되어 상담이 종결 처리되었습니다.",
+                )
+            else:
+                messages.success(request, "종결기록지가 저장되었습니다.")
             return redirect("counselor:case_detail", pk=case.pk)
         messages.error(request, "입력 내용을 확인해 주세요.")
     else:

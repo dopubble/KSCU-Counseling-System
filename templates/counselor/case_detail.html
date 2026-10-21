@@ -26,12 +26,20 @@
                         </p>
                     </div>
                     <div class="d-flex flex-wrap gap-2 align-items-center">
-                        <span class="badge badge-counselor-active fs-6">{{ case.get_status_display }}</span>
+                        <span class="badge {% if case.status == 'ACTIVE' %}badge-counselor-active{% else %}badge-counselor-closed{% endif %} fs-6">{{ case.get_status_display }}</span>
                         <span class="client-session-inline">
                             남은 회기 <strong>{{ case.remaining_sessions }}</strong> / {{ case.total_sessions }}
                         </span>
                     </div>
                 </div>
+                {% if can_unsubmit_records %}
+                <div class="d-flex flex-wrap gap-2 align-items-center justify-content-md-end mt-3">
+                    <button type="button" class="btn btn-outline-warning"
+                            data-bs-toggle="modal" data-bs-target="#recordsUnsubmitConfirmModal">
+                        최종 제출 취소
+                    </button>
+                </div>
+                {% endif %}
             </div>
         </header>
 
@@ -213,6 +221,7 @@
             </a>
         </div>
 
+        {% include "counselor/partials/records_unsubmit_modal.html" with unsubmit_case=case %}
         {% include "counselor/partials/board_post_create_modal.html" %}
         {% include "counselor/partials/appointment_reject_modal.html" %}
         {% include "counselor/partials/cancel_reject_modal.html" %}
@@ -225,7 +234,7 @@
         {% url 'counselor:case_chat_messages' case.pk as chat_messages_url %}
         {% url 'counselor:case_chat_send' case.pk as chat_send_url %}
         {% url 'counselor:case_chat_unread' case.pk as chat_unread_url %}
-        {% include "includes/case_chat_widget.html" with chat_partner_name=case.client.name %}
+        {% include "includes/case_chat_widget.html" with chat_partner_name=case.client.name chat_locked=records_submitted %}
         {% endif %}
         </div>
     </div>
