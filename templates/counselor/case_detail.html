@@ -110,6 +110,7 @@
         </div>
         {% endif %}
 
+        {% include "counselor/partials/case_records_submit_button.html" with placement="above" %}
         <div class="row g-4 section-spacing case-detail-row">
             <div class="col-lg-5 case-detail-sidebar-col">
                 <div class="card client-dashboard-card border-0 mb-4">
@@ -193,7 +194,6 @@
             </div>
 
             <div class="col-lg-7">
-                {% include "counselor/partials/case_records_submit_button.html" with placement="above" %}
                 <div class="card client-dashboard-card border-0">
                     <div class="card-header client-portal-card-header border-0 d-flex flex-wrap justify-content-between align-items-center gap-2">
                         <span><i class="bi bi-calendar2-week me-1"></i>회기별 상담</span>

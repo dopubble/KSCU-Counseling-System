@@ -269,12 +269,20 @@ class RecordsSubmitButtonTests(TestCase):
 
     def test_detail_shows_submit_above_first_session_and_beside_dashboard(self):
         body = self._detail_body()
-        above_card = body[body.index("col-lg-7"):body.index("회기별 상담")]
-        self.assertIn("justify-content-end", above_card)
-        self.assertEqual(above_card.count("최종 제출하기"), 1)
+        row = body.index("case-detail-row")
+        first_button = body.index("최종 제출하기")
+        wrapper = body.rfind("<div", 0, first_button)
+        self.assertLess(wrapper, first_button)
+        self.assertLess(first_button, row)
+        self.assertIn("d-flex justify-content-end mb-2", body[wrapper:first_button])
+        right_col = body[body.index("col-lg-7"):body.index("회기별 상담")]
+        self.assertNotIn("최종 제출하기", right_col)
+        self.assertNotIn("justify-content-end", right_col)
         session_header = body[body.index("회기별 상담"):body.index("client-session-list")]
         self.assertNotIn("최종 제출하기", session_header)
-        self.assertLess(body.index("최종 제출하기"), body.index("회기별 상담"))
+        self.assertLess(row, body.index("내담자 · 신청 정보"))
+        self.assertLess(body.index("내담자 · 신청 정보"), body.index("col-lg-7"))
+        self.assertLess(body.index("col-lg-7"), body.index("회기별 상담"))
         self.assertLess(body.index("최종 제출하기"), body.index("1회기"))
         self.assertLess(body.index("bi-arrow-left"), body.rindex("최종 제출하기"))
         self.assertEqual(body.count("최종 제출하기"), 2)
