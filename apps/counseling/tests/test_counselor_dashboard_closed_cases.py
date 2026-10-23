@@ -272,10 +272,10 @@ class CounselorDashboardClosedCaseTests(TestCase):
             "counselor:case_records_submit", kwargs={"pk": self.closed_case.pk}
         )
 
-        self.assertContains(response, active_submit)
-        self.assertContains(response, closed_submit)
-        self.assertContains(response, "최종 제출")
-        self.assertContains(response, "event.stopPropagation()")
+        self.assertNotContains(response, active_submit)
+        self.assertNotContains(response, closed_submit)
+        self.assertNotContains(response, "최종 제출하기")
+        self.assertNotContains(response, "사례기록 최종 제출")
 
     def test_other_counselor_does_not_see_submit_for_this_case(self):
         other_http = HttpClient()

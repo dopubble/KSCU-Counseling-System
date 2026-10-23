@@ -218,8 +218,9 @@ class LastSessionStaysActiveTests(TestCase):
             reverse("counselor:case_detail", kwargs={"pk": case.pk})
         )
         self.assertContains(dashboard, "종결준비")
-        self.assertContains(dashboard, "사례기록 최종 제출")
+        self.assertNotContains(dashboard, "최종 제출하기")
         self.assertContains(detail, "종결준비")
+        self.assertContains(detail, "최종 제출하기")
 
         supervisor = _supervisor("sv-last@example.com", "막회기수퍼", [1])
         supervisor_http = HttpClient()
@@ -358,7 +359,7 @@ class ReadyAndEarlySubmissionTests(TestCase):
         counselor_http.force_login(counselor)
         dashboard = counselor_http.get(reverse("counselor:dashboard"))
         self.assertContains(dashboard, "종결준비")
-        self.assertContains(dashboard, "사례기록 최종 제출")
+        self.assertNotContains(dashboard, "최종 제출하기")
 
     def test_early_case_submit_keeps_early_type_and_closed_at(self):
         counselor = _create_counselor("조기제출상담")
@@ -378,11 +379,14 @@ class ReadyAndEarlySubmissionTests(TestCase):
         http.force_login(counselor)
 
         before = http.get(reverse("counselor:dashboard"))
+        detail = http.get(reverse("counselor:case_detail", kwargs={"pk": case.pk}))
         self.assertContains(before, "조기종결")
-        self.assertContains(
+        self.assertNotContains(
             before,
             reverse("counselor:case_records_submit", kwargs={"pk": case.pk}),
         )
+        self.assertContains(detail, "조기종결")
+        self.assertEqual(detail.content.decode().count("최종 제출하기"), 2)
         self.assertEqual(
             http.get(
                 reverse("counselor:termination_record_create", kwargs={"pk": case.pk})

@@ -237,7 +237,7 @@ class ClosedCaseBeforeSubmitTests(TestCase):
 
 
 class RecordsSubmitButtonTests(TestCase):
-    """최종 제출 버튼은 상담사 대시보드 행에, 조건과 무관하게 항상 노출."""
+    """최종 제출 버튼은 사례 상세의 회기 목록 위와 하단에만 표시한다."""
 
     def setUp(self):
         self.counselor = _create_counselor("버튼상담사")
@@ -252,34 +252,91 @@ class RecordsSubmitButtonTests(TestCase):
             "counselor:case_records_submit", kwargs={"pk": self.case.pk}
         )
 
-    def test_button_visible_on_active_case_row(self):
+    def _detail_body(self):
+        response = self.http.get(self.detail_url)
+        self.assertEqual(response.status_code, 200)
+        return response.content.decode()
+
+    def test_dashboard_row_has_no_submit_button(self):
         response = self.http.get(self.dashboard_url)
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "CASE-BTN-1")
-        self.assertContains(response, self.submit_url)
-        self.assertContains(response, "최종 제출")
-        self.assertContains(response, "event.stopPropagation()")
+        self.assertNotContains(response, self.submit_url)
+        self.assertNotContains(response, "사례기록 최종 제출")
+        self.assertNotContains(response, "최종 제출하기")
+        self.assertNotContains(response, 'id="recordsSubmitConfirmModal"')
 
-    def test_button_visible_on_closed_case_row(self):
+    def test_detail_shows_submit_above_first_session_and_beside_dashboard(self):
+        body = self._detail_body()
+        first_button = body.index("최종 제출하기")
+        self.assertLess(first_button, body.index("1회기"))
+        self.assertLess(body.index("bi-arrow-left"), body.rindex("최종 제출하기"))
+        self.assertEqual(body.count("최종 제출하기"), 2)
+        self.assertEqual(body.count('data-bs-target="#recordsSubmitConfirmModal"'), 2)
+        self.assertEqual(body.count('id="recordsSubmitConfirmModal"'), 1)
+        self.assertIn(
+            "최종 제출 후에는 초기상담 기록지, 상담일지, 종결기록지 및 해당 사례의 모든 정보를 수정할 수 없습니다. 최종 제출하시겠습니까?",
+            body,
+        )
+        start = 0
+        for _ in range(2):
+            pos = body.index("최종 제출하기", start)
+            trigger = body[max(0, pos - 350):pos]
+            self.assertIn('type="button"', trigger)
+            self.assertIn('data-bs-target="#recordsSubmitConfirmModal"', trigger)
+            self.assertNotIn('type="submit"', trigger)
+            start = pos + len("최종 제출하기")
+        self.assertEqual(body.count(self.submit_url), 1)
+        self.assertNotIn(f'href="{self.submit_url}"', body)
+        pos = body.index(self.submit_url)
+        chunk = body[body.rfind("<form", 0, pos):body.index("</form>", pos)]
+        self.assertIn('method="post"', chunk)
+        self.assertIn("csrfmiddlewaretoken", chunk)
+        self.assertIn('name="confirm" value="1"', chunk)
+
+    def test_hold_and_transferred_details_hide_submit_buttons(self):
+        for status in (CaseStatus.ON_HOLD, CaseStatus.TRANSFERRED):
+            self.case.status = status
+            self.case.records_submitted_at = None
+            self.case.save(update_fields=["status", "records_submitted_at"])
+            body = self._detail_body()
+            self.assertNotIn("최종 제출하기", body)
+            self.assertNotIn(self.submit_url, body)
+
+    def test_ready_without_termination_record_is_still_rejected(self):
+        self.case.remaining_sessions = 0
+        self.case.save(update_fields=["remaining_sessions"])
+        self.assertIn("최종 제출하기", self._detail_body())
+
+        response = self.http.post(self.submit_url, {"confirm": "1"}, follow=True)
+        self.assertIn(
+            "종결기록지가 작성되지 않았습니다.",
+            response.context["records_submit_errors"],
+        )
+        self.case.refresh_from_db()
+        self.assertEqual(self.case.status, CaseStatus.ACTIVE)
+        self.assertIsNone(self.case.records_submitted_at)
+
+    def test_closed_unsubmitted_detail_shows_submit_buttons(self):
         self.case.status = CaseStatus.CLOSED
         self.case.save(update_fields=["status"])
 
-        response = self.http.get(self.dashboard_url)
+        dashboard = self.http.get(self.dashboard_url)
+        body = self._detail_body()
 
-        self.assertFalse(TerminationCounselingRecord.objects.filter(case=self.case).exists())
-        self.assertContains(response, "CASE-BTN-1")
-        self.assertContains(response, "종결 사례")
-        self.assertContains(response, self.submit_url)
-        self.assertContains(response, "최종 제출")
+        self.assertContains(dashboard, "종결 사례")
+        self.assertNotContains(dashboard, self.submit_url)
+        self.assertEqual(body.count("최종 제출하기"), 2)
 
-    def test_button_visible_with_draft_journal(self):
+    def test_draft_journal_still_shows_detail_submit_buttons(self):
         _create_journal(self.case, self.counselor, 1, is_draft=True)
 
-        response = self.http.get(self.dashboard_url)
+        dashboard = self.http.get(self.dashboard_url)
+        body = self._detail_body()
 
-        self.assertContains(response, self.submit_url)
-        self.assertContains(response, "최종 제출")
+        self.assertNotContains(dashboard, self.submit_url)
+        self.assertEqual(body.count("최종 제출하기"), 2)
 
     def test_submitted_case_shows_completed_state_instead_of_button(self):
         self.case.records_submitted_at = timezone.now()
@@ -290,6 +347,11 @@ class RecordsSubmitButtonTests(TestCase):
 
         self.assertContains(response, "최종 제출 완료")
         self.assertNotContains(response, self.submit_url)
+        self.assertNotContains(response, "최종 제출하기")
+
+        detail = self._detail_body()
+        self.assertNotIn("최종 제출하기", detail)
+        self.assertNotIn(self.submit_url, detail)
 
     def test_case_detail_has_no_submit_controls(self):
         self.case.records_submitted_at = timezone.now()

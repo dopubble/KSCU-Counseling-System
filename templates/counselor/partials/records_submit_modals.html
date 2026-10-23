@@ -25,27 +25,7 @@
 {% endif %}
 
 {% if records_submit_confirm and records_submit_case_pk %}
-<div class="modal fade" id="recordsSubmitConfirmModal" tabindex="-1" aria-labelledby="recordsSubmitConfirmLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow">
-            <div class="modal-header">
-                <h5 class="modal-title" id="recordsSubmitConfirmLabel">최종 제출 확인</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
-            </div>
-            <div class="modal-body">
-                <p class="mb-0">최종 제출 후에는 초기상담 기록지, 상담일지, 종결기록지 및 해당 사례의 모든 정보를 수정할 수 없습니다. 최종 제출하시겠습니까?</p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
-                <form method="post" action="{% url 'counselor:case_records_submit' records_submit_case_pk %}">
-                    {% csrf_token %}
-                    <input type="hidden" name="confirm" value="1">
-                    <button type="submit" class="btn btn-counselor text-white">최종 제출</button>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
+{% include "counselor/partials/records_submit_confirm_modal.html" with submit_case_pk=records_submit_case_pk %}
 {% endif %}
 
 {% if records_submit_errors or records_submit_confirm %}
