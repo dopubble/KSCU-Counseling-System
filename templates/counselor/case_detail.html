@@ -110,8 +110,12 @@
         </div>
         {% endif %}
 
+        {% if not case.records_submitted_at and case.status != "ON_HOLD" and case.status != "TRANSFERRED" and request.user.id == case.counselor_id %}
         {% include "counselor/partials/case_records_submit_button.html" with placement="above" %}
+        <div class="row g-4 case-detail-row">
+        {% else %}
         <div class="row g-4 section-spacing case-detail-row">
+        {% endif %}
             <div class="col-lg-5 case-detail-sidebar-col">
                 <div class="card client-dashboard-card border-0 mb-4">
                     <div class="card-header client-portal-card-header border-0">

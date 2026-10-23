@@ -11,6 +11,7 @@ from apps.counseling.models import (
     ApplicationStatus,
     Case,
     CaseStatus,
+    CaseTerminationType,
     CounselingApplication,
     CounselingMethod,
 )
@@ -257,6 +258,10 @@ class RecordsSubmitButtonTests(TestCase):
         self.assertEqual(response.status_code, 200)
         return response.content.decode()
 
+    def _row_tag(self, body):
+        row = body.index("case-detail-row")
+        return body[body.rfind("<div", 0, row):body.index(">", row)]
+
     def test_dashboard_row_has_no_submit_button(self):
         response = self.http.get(self.dashboard_url)
 
@@ -274,7 +279,14 @@ class RecordsSubmitButtonTests(TestCase):
         wrapper = body.rfind("<div", 0, first_button)
         self.assertLess(wrapper, first_button)
         self.assertLess(first_button, row)
-        self.assertIn("d-flex justify-content-end mb-2", body[wrapper:first_button])
+        self.assertIn("d-flex justify-content-end mb-4", body[wrapper:first_button])
+        row_tag = body[body.rfind("<div", 0, row):body.index(">", row)]
+        self.assertIn("g-4", row_tag)
+        self.assertNotIn("section-spacing", row_tag)
+        self.assertIn(
+            "d-flex flex-wrap justify-content-center align-items-center gap-2 section-spacing",
+            body,
+        )
         right_col = body[body.index("col-lg-7"):body.index("회기별 상담")]
         self.assertNotIn("최종 제출하기", right_col)
         self.assertNotIn("justify-content-end", right_col)
@@ -332,6 +344,9 @@ class RecordsSubmitButtonTests(TestCase):
             body = self._detail_body()
             self.assertNotIn("최종 제출하기", body)
             self.assertNotIn(self.submit_url, body)
+            row_tag = self._row_tag(body)
+            self.assertIn("section-spacing", row_tag)
+            self.assertIn("g-4", row_tag)
 
     def test_ready_without_termination_record_is_still_rejected(self):
         self.case.remaining_sessions = 0
@@ -357,6 +372,22 @@ class RecordsSubmitButtonTests(TestCase):
         self.assertContains(dashboard, "종결 사례")
         self.assertNotContains(dashboard, self.submit_url)
         self.assertEqual(body.count("최종 제출하기"), 2)
+        self.assertNotIn("section-spacing", self._row_tag(body))
+
+    def test_early_unsubmitted_detail_shows_submit_without_row_section_spacing(self):
+        self.case.status = CaseStatus.CLOSED
+        self.case.termination_type = CaseTerminationType.EARLY
+        self.case.records_submitted_at = None
+        self.case.save(update_fields=["status", "termination_type", "records_submitted_at"])
+
+        body = self._detail_body()
+
+        self.assertEqual(body.count("최종 제출하기"), 2)
+        self.assertIn("d-flex justify-content-end mb-4", body)
+        row_tag = self._row_tag(body)
+        self.assertIn("g-4", row_tag)
+        self.assertNotIn("section-spacing", row_tag)
+        self.assertLess(body.index("최종 제출하기"), body.index("case-detail-row"))
 
     def test_draft_journal_still_shows_detail_submit_buttons(self):
         _create_journal(self.case, self.counselor, 1, is_draft=True)
@@ -394,6 +425,11 @@ class RecordsSubmitButtonTests(TestCase):
         self.assertNotContains(response, "최종 제출 완료")
         self.assertNotContains(response, "제출자 정보 없음")
         self.assertNotContains(response, "최종 제출")
+        body = response.content.decode()
+        row_tag = self._row_tag(body)
+        self.assertIn("section-spacing", row_tag)
+        self.assertIn("g-4", row_tag)
+        self.assertNotIn("최종 제출하기", body)
 
     def test_submit_post_returns_to_dashboard_not_case_detail(self):
         response = self.http.post(self.submit_url)
