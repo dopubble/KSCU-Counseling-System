@@ -237,7 +237,7 @@ class ClosedCaseBeforeSubmitTests(TestCase):
         self.assertEqual(Appointment.objects.filter(case=self.case).count(), 0)
 
 
-SUBMIT_HINT = "상담일지 및 종결기록지 작성 후 최종 제출하기 버튼을 눌러야 최종 종결처리가 됩니다."
+SUBMIT_HINT = "※ 상담일지 및 종결기록지 작성 후 최종 제출하기 버튼을 눌러야 최종 종결처리가 됩니다."
 
 
 class RecordsSubmitButtonTests(TestCase):
@@ -295,15 +295,15 @@ class RecordsSubmitButtonTests(TestCase):
         self.assertEqual(len(buttons), 2)
         first_button = buttons[0]
         hint = body.index(SUBMIT_HINT)
-        wrapper = body.rfind("<div", 0, hint)
+        wrapper = body.rfind("<div", 0, first_button)
         self.assertEqual(body.count(SUBMIT_HINT), 1)
-        self.assertLess(wrapper, hint)
-        self.assertLess(hint, first_button)
-        self.assertLess(first_button, row)
-        self.assertIn("small text-muted", body[wrapper:hint])
+        self.assertLess(wrapper, first_button)
+        self.assertLess(first_button, hint)
+        self.assertLess(hint, row)
+        self.assertIn("small text-muted", body[first_button:hint])
         self.assertIn(
-            "d-flex align-items-center justify-content-end flex-wrap gap-2 mb-4",
-            body[wrapper:hint],
+            "d-flex flex-column align-items-end gap-2 mb-4",
+            body[wrapper:first_button],
         )
         self.assertNotIn(SUBMIT_HINT, body[body.index("bi-arrow-left"):])
         row_tag = body[body.rfind("<div", 0, row):body.index(">", row)]
@@ -408,10 +408,7 @@ class RecordsSubmitButtonTests(TestCase):
 
         self.assertEqual(len(self._submit_button_positions(body)), 2)
         self.assertEqual(body.count(SUBMIT_HINT), 1)
-        self.assertIn(
-            "d-flex align-items-center justify-content-end flex-wrap gap-2 mb-4",
-            body,
-        )
+        self.assertIn("d-flex flex-column align-items-end gap-2 mb-4", body)
         row_tag = self._row_tag(body)
         self.assertIn("g-4", row_tag)
         self.assertNotIn("section-spacing", row_tag)

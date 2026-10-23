@@ -1,7 +1,5 @@
 {% if not case.records_submitted_at and case.status != "ON_HOLD" and case.status != "TRANSFERRED" and request.user.id == case.counselor_id %}
-{% if placement == "above" %}<div class="d-flex align-items-center justify-content-end flex-wrap gap-2 mb-4">
-<span class="small text-muted">상담일지 및 종결기록지 작성 후 최종 제출하기 버튼을 눌러야 최종 종결처리가 됩니다.</span>
-{% endif %}
+{% if placement == "above" %}<div class="d-flex flex-column align-items-end gap-2 mb-4">{% endif %}
 <button type="button"
         class="btn client-dashboard-action-btn px-4 fs-6 lh-base"
         style="padding-top: 0.375rem; padding-bottom: 0.375rem;"
@@ -9,5 +7,8 @@
         title="최종 제출 후에는 상담기록을 수정할 수 없습니다.">
     최종 제출하기
 </button>
-{% if placement == "above" %}</div>{% endif %}
+{% if placement == "above" %}
+<span class="small text-muted">※ 상담일지 및 종결기록지 작성 후 최종 제출하기 버튼을 눌러야 최종 종결처리가 됩니다.</span>
+</div>
+{% endif %}
 {% endif %}
