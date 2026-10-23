@@ -767,6 +767,7 @@ def assign_counselor(
         if case.status != CaseStatus.ACTIVE:
             case.status = CaseStatus.ACTIVE
             case.closed_at = None
+            case.termination_type = ""
         if needs_session_reset:
             case.total_sessions = total_sessions
             case.remaining_sessions = total_sessions

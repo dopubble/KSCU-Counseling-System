@@ -9,7 +9,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from apps.accounts.models import SupervisorProfile, User, UserRole, UserStatus
-from apps.counseling.models import CaseStatus
+from apps.counseling.models import CaseStatus, CaseTerminationType
 from apps.counseling.tests.test_journal_permissions import (
     _create_case,
     _create_client,
@@ -371,7 +371,7 @@ class CaseRecordSummaryTests(TestCase):
 
     def test_termination_status_follows_completed_record_and_case_status(self):
         open_body = self._page().content.decode()
-        self.assertIn("종결 전", _header(open_body, self.case.pk))
+        self.assertIn(">진행중</span>", _header(open_body, self.case.pk))
         open_row = _row(open_body, self.case.pk, "termination")
         self.assertIn("종결기록지", open_row)
         self.assertIn("종결 전", open_row)
@@ -381,7 +381,7 @@ class CaseRecordSummaryTests(TestCase):
         self.case.save(update_fields=["status"])
         closed_body = self._page().content.decode()
         closed_header = _header(closed_body, self.case.pk)
-        self.assertIn("종결", closed_header)
+        self.assertIn(">종결</span>", closed_header)
         self.assertNotIn("종결 전", closed_header)
         closed_row = _row(closed_body, self.case.pk, "termination")
         self.assertIn("미작성", closed_row)
@@ -398,7 +398,7 @@ class CaseRecordSummaryTests(TestCase):
         self.case.status = CaseStatus.ACTIVE
         self.case.save(update_fields=["status"])
         active_body = self._page().content.decode()
-        self.assertIn("종결 전", _header(active_body, self.case.pk))
+        self.assertIn(">진행중</span>", _header(active_body, self.case.pk))
         active_draft = _row(active_body, self.case.pk, "termination")
         self.assertIn("종결 전", active_draft)
 
@@ -409,7 +409,7 @@ class CaseRecordSummaryTests(TestCase):
         done_row = _row(done_body, self.case.pk, "termination")
         self.assertIn("작성완료", done_row)
         self.assertNotIn("href", done_row)
-        self.assertIn("종결 전", _header(done_body, self.case.pk))
+        self.assertIn(">진행중</span>", _header(done_body, self.case.pk))
 
     def test_summary_journal_count_matches_completed_journals(self):
         CounselingJournal.objects.create(
@@ -461,6 +461,34 @@ class CaseRecordSummaryTests(TestCase):
             return len(captured)
 
         self.assertEqual(query_count(one), query_count(many))
+
+    def test_header_labels_follow_status_and_termination_type(self):
+        labels = (
+            (CaseStatus.ACTIVE, "", "진행중"),
+            (CaseStatus.ON_HOLD, "", "휴지"),
+            (CaseStatus.TRANSFERRED, "", "이관"),
+            (CaseStatus.CLOSED, CaseTerminationType.NORMAL, "정상종결"),
+            (CaseStatus.CLOSED, CaseTerminationType.EARLY, "조기종결"),
+            (CaseStatus.CLOSED, "", "종결"),
+        )
+        for status, termination_type, label in labels:
+            self.case.status = status
+            self.case.termination_type = termination_type
+            self.case.save(update_fields=["status", "termination_type"])
+            header = _header(self._page().content.decode(), self.case.pk)
+            self.assertIn(f">{label}</span>", header)
+            self.assertIn("pe-none", header)
+
+    def test_early_termination_header_is_independent_of_missing_record(self):
+        self.case.status = CaseStatus.CLOSED
+        self.case.termination_type = CaseTerminationType.EARLY
+        self.case.save(update_fields=["status", "termination_type"])
+        body = self._page().content.decode()
+        self.assertIn(">조기종결</span>", _header(body, self.case.pk))
+        row = _row(body, self.case.pk, "termination")
+        self.assertIn("종결기록지", row)
+        self.assertIn("미작성", row)
+        self.assertNotIn("href", row)
 
     def test_accordion_collapse_flags_remain(self):
         body = self._page().content.decode()

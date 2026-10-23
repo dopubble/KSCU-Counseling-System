@@ -21,6 +21,11 @@ class CaseStatus(models.TextChoices):
     TRANSFERRED = "TRANSFERRED", "이관"
 
 
+class CaseTerminationType(models.TextChoices):
+    NORMAL = "NORMAL", "정상종결"
+    EARLY = "EARLY", "조기종결"
+
+
 class RiskLevel(models.TextChoices):
     LOW = "LOW", "낮음"
     MEDIUM = "MEDIUM", "보통"
@@ -151,6 +156,14 @@ class Case(models.Model):
     case_number = models.CharField("사례번호", max_length=20, unique=True)
     status = models.CharField(
         "상태", max_length=20, choices=CaseStatus.choices, default=CaseStatus.ACTIVE
+    )
+    termination_type = models.CharField(
+        "종결유형",
+        max_length=20,
+        choices=CaseTerminationType.choices,
+        blank=True,
+        default="",
+        help_text="종결 상태일 때만 사용합니다. 종결되지 않은 사례에서는 저장 시 비워집니다.",
     )
     risk_level = models.CharField(
         "위험도", max_length=20, choices=RiskLevel.choices, default=RiskLevel.LOW
