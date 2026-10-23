@@ -1,9 +1,7 @@
 {% if not case.records_submitted_at and case.status != "ON_HOLD" and case.status != "TRANSFERRED" and request.user.id == case.counselor_id %}
-{% if placement == "top" %}<div class="px-3 pt-3">{% endif %}
-<button type="button" class="btn btn-counselor text-white"
+<button type="button" class="btn btn-sm client-dashboard-action-btn"
         data-bs-toggle="modal" data-bs-target="#recordsSubmitConfirmModal"
         title="최종 제출 후에는 상담기록을 수정할 수 없습니다.">
     최종 제출하기
 </button>
-{% if placement == "top" %}</div>{% endif %}
 {% endif %}

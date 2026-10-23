@@ -269,11 +269,17 @@ class RecordsSubmitButtonTests(TestCase):
 
     def test_detail_shows_submit_above_first_session_and_beside_dashboard(self):
         body = self._detail_body()
-        first_button = body.index("최종 제출하기")
-        self.assertLess(first_button, body.index("1회기"))
+        header = body[body.index("회기별 상담"):body.index("client-session-list")]
+        self.assertEqual(header.count("최종 제출하기"), 1)
+        self.assertIn("client-dashboard-action-btn", header)
+        self.assertLess(body.index("회기별 상담"), body.index("최종 제출하기"))
+        self.assertLess(body.index("최종 제출하기"), body.index("1회기"))
         self.assertLess(body.index("bi-arrow-left"), body.rindex("최종 제출하기"))
         self.assertEqual(body.count("최종 제출하기"), 2)
+        self.assertEqual(body.count("btn btn-sm client-dashboard-action-btn"), 2)
         self.assertEqual(body.count('data-bs-target="#recordsSubmitConfirmModal"'), 2)
+        self.assertNotIn('target="_blank"', body[body.index("최종 제출하기") - 250:body.index("최종 제출하기")])
+        self.assertNotIn('target="_blank"', body[body.rindex("최종 제출하기") - 250:body.rindex("최종 제출하기")])
         self.assertEqual(body.count('id="recordsSubmitConfirmModal"'), 1)
         self.assertIn(
             "최종 제출 후에는 초기상담 기록지, 상담일지, 종결기록지 및 해당 사례의 모든 정보를 수정할 수 없습니다. 최종 제출하시겠습니까?",
@@ -294,6 +300,17 @@ class RecordsSubmitButtonTests(TestCase):
         self.assertIn('method="post"', chunk)
         self.assertIn("csrfmiddlewaretoken", chunk)
         self.assertIn('name="confirm" value="1"', chunk)
+
+    def test_zoom_join_button_markup_is_unchanged(self):
+        from pathlib import Path
+
+        template = Path("templates/counselor/partials/session_card.html").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("Zoom 회의 입장", template)
+        self.assertIn('class="btn btn-sm client-dashboard-action-btn"', template)
+        self.assertIn('target="_blank"', template)
+        self.assertIn("{{ session.zoom_url }}", template)
 
     def test_hold_and_transferred_details_hide_submit_buttons(self):
         for status in (CaseStatus.ON_HOLD, CaseStatus.TRANSFERRED):
