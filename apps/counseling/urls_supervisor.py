@@ -8,6 +8,11 @@ urlpatterns = [
     path("", views_supervisor.supervisor_dashboard, name="dashboard"),
     path("journals/", views_supervisor.supervisor_cohort_journals, name="cohort_journals"),
     path(
+        "journals/counselors/<uuid:counselor_id>/",
+        views_supervisor.supervisor_counselor_journals,
+        name="counselor_journals",
+    ),
+    path(
         "journals/<uuid:journal_pk>/pdf/",
         views_supervisor.supervisor_journal_pdf,
         name="journal_pdf",

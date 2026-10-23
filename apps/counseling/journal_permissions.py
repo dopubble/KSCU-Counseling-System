@@ -53,6 +53,19 @@ def user_can_browse_cohort_journals(user: "User") -> bool:
     return bool(get_supervisor_assigned_cohorts(user))
 
 
+def user_can_browse_counselor_journals(user: "User", counselor: "User") -> bool:
+    """
+    특정 상담사의 수퍼비전 일지 목록을 열 수 있는지.
+
+    목록 입장(user_can_browse_cohort_journals)과
+    그 상담사 기수(supervisor_can_access_cohort)를 함께 본다.
+    상담사는 불가, 다른 기수는 불가, 관리자·superuser는 기수가 있는 상담사 전체.
+    """
+    if not user_can_browse_cohort_journals(user):
+        return False
+    return supervisor_can_access_cohort(user, get_counselor_cohort(counselor))
+
+
 def user_can_view_journal(user: "User", journal: "CounselingJournal") -> bool:
     if not user.is_authenticated:
         return False

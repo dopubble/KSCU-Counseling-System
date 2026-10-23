@@ -162,8 +162,9 @@ class JournalPermissionTests(TestCase):
         http.force_login(supervisor)
         response = http.get(reverse("supervisor:cohort_journals"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "CASE-JP-1")
-        self.assertContains(response, "CASE-JP-2")
+        self.assertContains(response, "상담사A")
+        self.assertContains(response, "상담사B")
+        self.assertNotContains(response, "상담사C")
 
     def test_supervisor_other_cohort_journal_pdf_denied(self):
         journal_other = _create_journal(

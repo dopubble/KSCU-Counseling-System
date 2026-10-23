@@ -10,26 +10,30 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from apps.accounts.decorators import supervisor_required
+from apps.accounts.models import User
 from apps.counseling.cohort_journal_service import (
     get_cohort_initial_records_for_supervision,
-    get_cohort_journals_for_supervision,
+    get_counselor_journals_for_supervision,
+    get_supervision_counselors_by_cohort,
 )
 from apps.counseling.journal_permissions import (
     build_supervisor_dashboard_context,
     supervision_cohorts_for_user,
     user_can_browse_cohort_initial_records,
     user_can_browse_cohort_journals,
+    user_can_browse_counselor_journals,
     user_can_download_initial_counseling_record_pdf,
     user_can_download_journal_pdf,
     user_can_view_initial_counseling_record,
 )
+from apps.counseling.privacy import mask_client_name
 from apps.counseling.views import (
-    _build_cohort_journal_entry,
     _get_pdf_password_from_request,
     _journal_client_summary,
     _pdf_file_response,
     _record_pdf_context,
 )
+from apps.scheduling.availability import format_local_datetime
 from apps.sessions_app.models import CounselingJournal, InitialCounselingRecord
 from apps.sessions_app.pdf import (
     build_initial_record_pdf,
@@ -73,46 +77,66 @@ def _build_cohort_initial_record_entry(record, *, requesting_user):
     }
 
 
+def _supervisor_journal_session_at(journal):
+    """상담일. 일지 일시가 없으면 연결된 예약 일시를 쓴다."""
+    session_at = journal.session_datetime
+    if session_at is None and journal.appointment_id:
+        session_at = journal.appointment.scheduled_at
+    return format_local_datetime(session_at)
+
+
+def _supervisor_counselor_journal_row(journal) -> dict:
+    client = journal.case.client
+    return {
+        "journal_id": journal.pk,
+        "client_name": mask_client_name(client.name if client else ""),
+        "session_number": journal.session_number,
+        "session_label": f"{journal.session_number}회기",
+        "session_at": _supervisor_journal_session_at(journal),
+        "status_label": "작성완료",
+    }
+
+
 @supervisor_required
 def supervisor_cohort_journals(request):
     if not user_can_browse_cohort_journals(request.user):
         raise PermissionDenied("상담일지 열람 권한이 없습니다.")
 
     allowed_cohorts = supervision_cohorts_for_user(request.user)
-    raw_by_session = get_cohort_journals_for_supervision(
-        allowed_cohorts=allowed_cohorts,
-        max_session=20,
-    )
-
-    sessions = []
-    for session_number in sorted(raw_by_session):
-        journals = raw_by_session[session_number]
-        sessions.append(
-            {
-                "session_number": session_number,
-                "session_label": f"{session_number}회기",
-                "entries": [
-                    _build_cohort_journal_entry(
-                        journal,
-                        requesting_user=request.user,
-                        mask_private=True,
-                    )
-                    for journal in journals
-                ],
-            }
-        )
-
-    if allowed_cohorts is None:
-        cohort_label = "전체 기수"
-    else:
-        cohort_label = ", ".join(f"{c}기" for c in allowed_cohorts)
-
     return render(
         request,
         "supervisor/cohort_journals.html",
         {
-            "sessions": sessions,
-            "cohort_label": cohort_label,
+            "cohort_groups": get_supervision_counselors_by_cohort(
+                allowed_cohorts=allowed_cohorts,
+            ),
+            "cohort_label": _supervision_cohort_label(allowed_cohorts),
+        },
+    )
+
+
+@supervisor_required
+def supervisor_counselor_journals(request, counselor_id):
+    counselor = get_object_or_404(
+        User.objects.select_related("counselor_profile"),
+        pk=counselor_id,
+    )
+    if not user_can_browse_counselor_journals(request.user, counselor):
+        raise PermissionDenied("상담일지 열람 권한이 없습니다.")
+
+    profile = getattr(counselor, "counselor_profile", None)
+    cohort = profile.cohort if profile is not None else None
+    journals = get_counselor_journals_for_supervision(counselor)
+    return render(
+        request,
+        "supervisor/counselor_journals.html",
+        {
+            "counselor": counselor,
+            "cohort_label": f"{cohort}기" if cohort else "",
+            "page_title": (
+                f"[{cohort}기] {counselor.name} 상담일지" if cohort else f"{counselor.name} 상담일지"
+            ),
+            "entries": [_supervisor_counselor_journal_row(journal) for journal in journals],
             "pdf_url_name": "supervisor:journal_pdf",
         },
     )
