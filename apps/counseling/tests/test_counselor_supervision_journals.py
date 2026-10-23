@@ -1,5 +1,6 @@
 """상담사별 수퍼비전 일지 조회 — 완료 일지 QuerySet과 담당 기수 권한."""
 
+from django.core.exceptions import ObjectDoesNotExist
 from django.test import TestCase
 
 from apps.accounts.models import SupervisorProfile, User, UserRole, UserStatus
@@ -109,3 +110,8 @@ class CounselorSupervisionJournalTests(TestCase):
                 journal.case.client.name
                 journal.counselor.counselor_profile.cohort
                 journal.appointment
+                for name in ("initial_counseling_record", "termination_counseling_record"):
+                    try:
+                        getattr(journal.case, name)
+                    except ObjectDoesNotExist:
+                        pass

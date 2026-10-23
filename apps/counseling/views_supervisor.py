@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from django.contrib import messages
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -11,6 +11,7 @@ from django.views.decorators.http import require_POST
 
 from apps.accounts.decorators import supervisor_required
 from apps.accounts.models import User
+from apps.counseling.models import CaseStatus
 from apps.counseling.cohort_journal_service import (
     get_cohort_initial_records_for_supervision,
     get_counselor_journals_for_supervision,
@@ -89,6 +90,32 @@ def _supervisor_journal_session_at(journal):
     return format_local_datetime(_supervisor_journal_session_datetime(journal))
 
 
+def _optional_related(instance, name):
+    try:
+        return getattr(instance, name)
+    except ObjectDoesNotExist:
+        return None
+
+
+def _case_record_summary(case) -> dict:
+    """사례기록 표시값. 초안은 완료 기록이 아니다."""
+    initial = _optional_related(case, "initial_counseling_record")
+    termination = _optional_related(case, "termination_counseling_record")
+    initial_completed = initial is not None and not initial.is_draft
+    termination_completed = termination is not None and not termination.is_draft
+    if termination_completed:
+        termination_label = "작성완료"
+    elif case.status == CaseStatus.CLOSED:
+        termination_label = "미작성"
+    else:
+        termination_label = "종결 전"
+    return {
+        "initial_can_view": initial_completed,
+        "initial_record_id": initial.pk if initial_completed else None,
+        "termination_label": termination_label,
+    }
+
+
 def _supervisor_counselor_journal_row(journal) -> dict:
     return {
         "journal_id": journal.pk,
@@ -116,6 +143,7 @@ def _supervisor_counselor_case_groups(journals) -> list[dict]:
                 "latest_session_at": None,
                 "latest_session_label": "—",
                 "journals": [],
+                **_case_record_summary(journal.case),
             }
             grouped[journal.case_id] = group
             groups.append(group)

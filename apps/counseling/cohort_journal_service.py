@@ -133,6 +133,8 @@ def get_counselor_journals_for_supervision(counselor):
         .select_related(
             "case",
             "case__client",
+            "case__initial_counseling_record",
+            "case__termination_counseling_record",
             "appointment",
             "counselor",
             "counselor__counselor_profile",

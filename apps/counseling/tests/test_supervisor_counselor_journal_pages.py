@@ -2,11 +2,14 @@
 
 from datetime import datetime
 
+from django.db import connection
 from django.test import Client as HttpClient, TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
 from apps.accounts.models import SupervisorProfile, User, UserRole, UserStatus
+from apps.counseling.models import CaseStatus
 from apps.counseling.tests.test_journal_permissions import (
     _create_case,
     _create_client,
@@ -14,7 +17,11 @@ from apps.counseling.tests.test_journal_permissions import (
     _create_journal,
 )
 from apps.scheduling.models import Appointment, AppointmentStatus
-from apps.sessions_app.models import CounselingJournal
+from apps.sessions_app.models import (
+    CounselingJournal,
+    InitialCounselingRecord,
+    TerminationCounselingRecord,
+)
 
 
 def _supervisor(email: str, name: str, cohorts: list[int]) -> User:
@@ -235,9 +242,10 @@ class SupervisorCounselorJournalPageTests(TestCase):
         self.assertIn("2회기 | 최근상담 2024-10-18 11:00", header)
         self.assertNotIn("22회기", header)
         collapse_at = body.index(f'id="caseCollapse{other_case.pk}"')
-        collapse = body[collapse_at:collapse_at + 2500]
-        self.assertLess(collapse.index(">1회기<"), collapse.index(">2회기<"))
-        self.assertNotIn("collapse show", collapse)
+        section = body[collapse_at:]
+        self.assertNotIn("collapse show", section[:section.index("<tbody>")])
+        table = section[section.index("<tbody>"):]
+        self.assertLess(table.index(">1회기<"), table.index(">2회기<"))
         self.assertNotIn("<th scope=\"col\">내담자</th>", body)
 
     def test_same_client_name_stays_separate_cases(self):
@@ -268,3 +276,167 @@ class SupervisorCounselorJournalPageTests(TestCase):
         twin_at = body.index(f'id="caseHeading{twin_case.pk}"')
         self.assertIn("2회기 | 최근상담 2024-03-15 14:30", body[original:original + 700])
         self.assertIn("1회기 | 최근상담 2023-05-01 09:00", body[twin_at:twin_at + 700])
+
+
+def _record_row(body: str, case_id, kind: str) -> str:
+    collapse_at = body.index(f'id="caseCollapse{case_id}"')
+    summary = body[collapse_at:]
+    summary = summary[:summary.index('class="table-responsive"')]
+    start = summary.index(f'data-case-record="{kind}"')
+    rest = summary[start + 1:]
+    next_at = rest.find("data-case-record=")
+    if next_at == -1:
+        return summary[start:]
+    return summary[start:start + 1 + next_at]
+
+
+class CaseRecordSummaryTests(TestCase):
+    def setUp(self):
+        self.counselor = _create_counselor("기록상담", cohort=1)
+        self.client_user = _create_client("기록내담")
+        self.case = _create_case(self.counselor, self.client_user, "CASE-REC-1")
+        self.journal = _create_journal(self.case, self.counselor, session_number=1)
+        self.journal.session_datetime = timezone.make_aware(datetime(2024, 7, 3, 10, 0))
+        self.journal.save(update_fields=["session_datetime", "updated_at"])
+        _create_journal(self.case, self.counselor, session_number=2)
+        self.supervisor = _supervisor("sv-rec@example.com", "기록수퍼", [1])
+        self.http = HttpClient()
+        self.http.force_login(self.supervisor)
+
+    def _page(self):
+        response = self.http.get(
+            reverse(
+                "supervisor:counselor_journals",
+                kwargs={"counselor_id": self.counselor.pk},
+            )
+        )
+        self.assertEqual(response.status_code, 200)
+        return response
+
+    def test_completed_initial_record_links_supervisor_detail(self):
+        record = InitialCounselingRecord.objects.create(
+            case=self.case,
+            counselor=self.counselor,
+            is_draft=False,
+        )
+        response = self._page()
+        detail_url = reverse(
+            "supervisor:initial_record_detail",
+            kwargs={"record_pk": record.pk},
+        )
+        row = _record_row(response.content.decode(), self.case.pk, "initial")
+        self.assertIn("보기", row)
+        self.assertIn(detail_url, row)
+        self.assertNotIn("counselor", detail_url)
+        self.assertNotContains(response, "termination-record")
+        self.assertNotContains(response, "/initial-record/")
+
+        other = _supervisor("sv-rec-other@example.com", "다른기수", [2])
+        http = HttpClient()
+        http.force_login(other)
+        denied = http.get(detail_url)
+        self.assertEqual(denied.status_code, 403)
+
+    def test_missing_or_draft_initial_record_is_unwritten(self):
+        missing = self._page()
+        missing_row = _record_row(missing.content.decode(), self.case.pk, "initial")
+        self.assertIn("미작성", missing_row)
+        self.assertNotIn("보기", missing_row)
+
+        InitialCounselingRecord.objects.create(
+            case=self.case,
+            counselor=self.counselor,
+            is_draft=True,
+        )
+        draft = self._page()
+        draft_row = _record_row(draft.content.decode(), self.case.pk, "initial")
+        self.assertIn("미작성", draft_row)
+        self.assertNotIn("보기", draft_row)
+        self.assertNotIn("initial-records/", draft_row)
+
+    def test_termination_status_follows_completed_record_and_case_status(self):
+        open_row = _record_row(self._page().content.decode(), self.case.pk, "termination")
+        self.assertIn("종결 전", open_row)
+        self.assertNotIn("보기", open_row)
+
+        self.case.status = CaseStatus.CLOSED
+        self.case.save(update_fields=["status"])
+        closed_row = _record_row(self._page().content.decode(), self.case.pk, "termination")
+        self.assertIn("미작성", closed_row)
+
+        TerminationCounselingRecord.objects.create(
+            case=self.case,
+            counselor=self.counselor,
+            is_draft=True,
+        )
+        draft_row = _record_row(self._page().content.decode(), self.case.pk, "termination")
+        self.assertIn("미작성", draft_row)
+        self.assertNotIn("작성완료", draft_row)
+
+        self.case.status = CaseStatus.ACTIVE
+        self.case.save(update_fields=["status"])
+        active_draft = _record_row(self._page().content.decode(), self.case.pk, "termination")
+        self.assertIn("종결 전", active_draft)
+
+        record = self.case.termination_counseling_record
+        record.is_draft = False
+        record.save(update_fields=["is_draft", "updated_at"])
+        done_row = _record_row(self._page().content.decode(), self.case.pk, "termination")
+        self.assertIn("작성완료", done_row)
+        self.assertNotIn("href", done_row)
+
+    def test_summary_journal_count_matches_completed_journals(self):
+        CounselingJournal.objects.create(
+            case=self.case,
+            counselor=self.counselor,
+            session_number=9,
+            is_draft=True,
+        )
+        row = _record_row(self._page().content.decode(), self.case.pk, "journals")
+        self.assertIn("2회기", row)
+        self.assertNotIn("3회기", row)
+        self.assertNotIn("9회기", row)
+
+    def test_record_relations_do_not_add_a_query_per_case(self):
+        def build(name, count):
+            counselor = _create_counselor(name, cohort=1)
+            for index in range(count):
+                client = _create_client(f"{name}내담{index}")
+                case = _create_case(counselor, client, f"CASE-{name}-{index}")
+                _create_journal(case, counselor, session_number=1)
+                InitialCounselingRecord.objects.create(
+                    case=case,
+                    counselor=counselor,
+                    is_draft=False,
+                )
+                TerminationCounselingRecord.objects.create(
+                    case=case,
+                    counselor=counselor,
+                    is_draft=False,
+                )
+            return counselor
+
+        one = build("한사례", 1)
+        many = build("세사례", 3)
+
+        def query_count(counselor):
+            with CaptureQueriesContext(connection) as captured:
+                response = self.http.get(
+                    reverse(
+                        "supervisor:counselor_journals",
+                        kwargs={"counselor_id": counselor.pk},
+                    )
+                )
+            self.assertEqual(response.status_code, 200)
+            return len(captured)
+
+        self.assertEqual(query_count(one), query_count(many))
+
+    def test_accordion_collapse_flags_remain(self):
+        body = self._page().content.decode()
+        self.assertIn("사례기록", body)
+        self.assertNotIn("accordion-collapse collapse show", body)
+        self.assertNotIn("data-bs-parent", body)
+        self.assertNotIn("성별", body)
+        self.assertNotIn("생년월일", body)
+        self.assertNotIn("직업", body)
