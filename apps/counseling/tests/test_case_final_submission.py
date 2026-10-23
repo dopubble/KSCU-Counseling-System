@@ -393,7 +393,7 @@ class ReadyAndEarlySubmissionTests(TestCase):
         )
         self.assertEqual(
             detail_body.count(
-                "※ 상담일지 및 종결기록지 작성 후 최종 제출하기 버튼을 눌러야 최종 종결처리가 됩니다."
+                "※ 상담일지 및 종결기록지 작성 후 최종 제출하기 버튼을 눌러 사례 종결을 완료하시기 바랍니다."
             ),
             1,
         )
