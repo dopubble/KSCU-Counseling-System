@@ -111,17 +111,19 @@ class CaseClosureRuleTests(TestCase):
         self.http = HttpClient()
         self.http.force_login(self.counselor)
 
-    def test_sessions_exhausted_closes_case(self):
+    def test_sessions_exhausted_keeps_case_active(self):
         for session_number in range(1, 4):
             finalize_completed_journal(
                 _create_journal(self.case, self.counselor, session_number)
             )
 
         self.case.refresh_from_db()
-        self.assertEqual(self.case.status, CaseStatus.CLOSED)
         self.assertEqual(self.case.remaining_sessions, 0)
-        self.assertIsNotNone(self.case.closed_at)
-        self.assertEqual(self.case.application.status, ApplicationStatus.CLOSED)
+        self.assertEqual(self.case.status, CaseStatus.ACTIVE)
+        self.assertEqual(self.case.termination_type, "")
+        self.assertIsNone(self.case.records_submitted_at)
+        self.assertIsNone(self.case.closed_at)
+        self.assertEqual(self.case.application.status, ApplicationStatus.IN_PROGRESS)
 
     def test_termination_record_closes_case_and_preserves_remaining_sessions(self):
         response = self.http.post(
@@ -138,10 +140,12 @@ class CaseClosureRuleTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.case.refresh_from_db()
-        self.assertEqual(self.case.status, CaseStatus.CLOSED)
-        self.assertIsNotNone(self.case.closed_at)
+        self.assertEqual(self.case.status, CaseStatus.ACTIVE)
+        self.assertIsNone(self.case.closed_at)
+        self.assertEqual(self.case.termination_type, "")
+        self.assertIsNone(self.case.records_submitted_at)
         self.assertEqual(self.case.remaining_sessions, 3)
-        self.assertEqual(self.case.application.status, ApplicationStatus.CLOSED)
+        self.assertEqual(self.case.application.status, ApplicationStatus.IN_PROGRESS)
 
     def test_termination_record_edit_keeps_original_closed_at(self):
         record = _create_termination_record(self.case, self.counselor)
@@ -331,12 +335,17 @@ class RecordsSubmitValidationTests(TestCase):
     def _post(self, **data):
         return self.http.post(self.submit_url, data, follow=True)
 
-    def test_active_case_reports_not_closed(self):
+    def test_active_case_without_termination_record_is_not_closed_by_validation(self):
         response = self._post()
 
         errors = response.context["records_submit_errors"]
-        self.assertTrue(any("아직 종결되지 않았습니다" in e for e in errors))
-        self.assertContains(response, "최종 제출할 수 없습니다.")
+        self.assertNotIn(
+            "휴지 또는 이관 상태의 사례는 최종 제출할 수 없습니다.",
+            errors,
+        )
+        self.assertIn("종결기록지가 작성되지 않았습니다.", errors)
+        self.case.refresh_from_db()
+        self.assertEqual(self.case.status, CaseStatus.ACTIVE)
 
     def test_missing_termination_record_is_reported(self):
         response = self._post()
@@ -361,7 +370,7 @@ class RecordsSubmitValidationTests(TestCase):
         response = self._post()
 
         errors = response.context["records_submit_errors"]
-        self.assertEqual(len(errors), 3)
+        self.assertEqual(len(errors), 2)
 
     def test_failed_submit_does_not_change_db(self):
         self._post()
@@ -394,6 +403,8 @@ class RecordsSubmitValidationTests(TestCase):
         self.case.refresh_from_db()
         self.assertIsNotNone(self.case.records_submitted_at)
         self.assertEqual(self.case.records_submitted_by, self.counselor)
+        self.assertEqual(self.case.status, CaseStatus.CLOSED)
+        self.assertEqual(self.case.termination_type, "")
         self.assertContains(response, "최종 제출되었습니다.")
         self.assertContains(response, "최종 제출 완료")
         self.assertEqual(response.resolver_match.url_name, "dashboard")
@@ -706,8 +717,8 @@ class RecordsTerminologyTests(TestCase):
 
         errors = response.context["records_submit_errors"]
         self.assertIn("종결기록지가 작성되지 않았습니다.", errors)
-        self.assertIn(
-            "상담이 아직 종결되지 않았습니다. 회기 차감 완료 또는 종결기록지 작성 후 제출해 주세요.",
+        self.assertNotIn(
+            "휴지 또는 이관 상태의 사례는 최종 제출할 수 없습니다.",
             errors,
         )
         self.assertNotContains(response, "종결일지")

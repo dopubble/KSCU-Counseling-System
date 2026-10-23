@@ -131,7 +131,7 @@
                             <td class="fw-semibold text-counselor">{{ case.client.name }}</td>
                             <td>{{ case.application.counseling_type }}</td>
                             <td>
-                                <span class="badge badge-counselor-active">{{ case.get_status_display }}</span>
+                                <span class="badge badge-counselor-active">{{ case.operation_label }}</span>
                             </td>
                             <td class="text-muted small">{{ case.opened_at|date:"Y-m-d" }}</td>
                             {% include "counselor/partials/records_submit_row_action.html" %}
@@ -183,7 +183,7 @@
                             <td class="fw-semibold text-counselor">{{ case.client.name }}</td>
                             <td>{{ case.application.counseling_type }}</td>
                             <td>
-                                <span class="badge badge-counselor-closed">{{ case.get_status_display }}</span>
+                                <span class="badge badge-counselor-closed">{{ case.operation_label }}</span>
                             </td>
                             <td class="text-muted small">{% if case.closed_at %}{{ case.closed_at|date:"Y-m-d" }}{% else %}—{% endif %}</td>
                             {% include "counselor/partials/records_submit_row_action.html" %}

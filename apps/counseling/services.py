@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from typing import Any, Optional
 
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
 from django.db import transaction
 from django.db.models import Count, DateTimeField, Exists, F, OuterRef, Q, QuerySet, Subquery, Window
 from django.db.models.functions import Coalesce, RowNumber
@@ -31,6 +31,7 @@ from .models import (
     ApplicationStatus,
     Case,
     CaseStatus,
+    CaseTerminationType,
     CounselingApplication,
     CounselingMethod,
     SessionScheduleChangeRequest,
@@ -788,18 +789,6 @@ def _sync_application_closed(case: Case) -> None:
 
 
 @transaction.atomic
-def close_case_after_sessions_exhausted(case: Case) -> None:
-    """남은 회기가 0이 되었을 때 사례·신청을 종결 처리."""
-    now = timezone.now()
-    case.status = CaseStatus.CLOSED
-    case.closed_at = case.closed_at or now
-    case.remaining_sessions = 0
-    case.save(update_fields=["status", "closed_at", "remaining_sessions"])
-
-    _sync_application_closed(case)
-
-
-@transaction.atomic
 def close_case_on_termination_record(case: Case) -> bool:
     """
     종결기록지 저장에 의한 조기 종결.
@@ -823,7 +812,7 @@ def close_case_on_termination_record(case: Case) -> bool:
 
 @transaction.atomic
 def consume_counseling_session(case: Case) -> None:
-    """상담 1회 완료 시 남은 회기를 1 차감하고, 0이면 종결합니다."""
+    """상담 1회 완료 시 남은 회기를 1 차감합니다. 0이 되어도 사례는 닫지 않습니다."""
     locked = Case.objects.select_for_update().get(pk=case.pk)
     if locked.status != CaseStatus.ACTIVE:
         return
@@ -832,9 +821,6 @@ def consume_counseling_session(case: Case) -> None:
 
     locked.remaining_sessions -= 1
     locked.save(update_fields=["remaining_sessions"])
-
-    if locked.remaining_sessions <= 0:
-        close_case_after_sessions_exhausted(locked)
 
 
 def finalize_completed_journal(journal) -> None:
@@ -852,11 +838,34 @@ def finalize_completed_journal(journal) -> None:
 
 SUBMIT_ERROR_NOT_OWNER = "이 사례를 제출할 권한이 없습니다."
 SUBMIT_ERROR_ALREADY_SUBMITTED = "이미 최종 제출된 사례입니다."
-SUBMIT_ERROR_NOT_CLOSED = (
-    "상담이 아직 종결되지 않았습니다. "
-    "회기 차감 완료 또는 종결기록지 작성 후 제출해 주세요."
-)
+SUBMIT_ERROR_STATUS_NOT_ALLOWED = "휴지 또는 이관 상태의 사례는 최종 제출할 수 없습니다."
 SUBMIT_ERROR_NO_TERMINATION_RECORD = "종결기록지가 작성되지 않았습니다."
+
+
+def _optional_case_related(case, name):
+    try:
+        return getattr(case, name)
+    except ObjectDoesNotExist:
+        return None
+
+
+def case_operation_label(case) -> str:
+    """상담사·수퍼바이저 화면용 운영 상태. DB 상태가 아니다."""
+    if case.status == CaseStatus.CLOSED:
+        if case.termination_type == CaseTerminationType.NORMAL:
+            return "정상종결"
+        if case.termination_type == CaseTerminationType.EARLY:
+            return "조기종결"
+        return "종결"
+    if case.status == CaseStatus.ON_HOLD:
+        return "휴지"
+    if case.status == CaseStatus.TRANSFERRED:
+        return "이관"
+    record = _optional_case_related(case, "termination_counseling_record")
+    completed_termination = record is not None and not record.is_draft
+    if completed_termination or case.remaining_sessions == 0:
+        return "종결준비"
+    return "진행중"
 
 
 def validate_case_records_submission(user, case: Case) -> list[str]:
@@ -869,8 +878,8 @@ def validate_case_records_submission(user, case: Case) -> list[str]:
     if case.records_submitted_at is not None:
         errors.append(SUBMIT_ERROR_ALREADY_SUBMITTED)
 
-    if case.status != CaseStatus.CLOSED:
-        errors.append(SUBMIT_ERROR_NOT_CLOSED)
+    if case.status not in (CaseStatus.ACTIVE, CaseStatus.CLOSED):
+        errors.append(SUBMIT_ERROR_STATUS_NOT_ALLOWED)
 
     if not TerminationCounselingRecord.objects.filter(case=case, is_draft=False).exists():
         errors.append(SUBMIT_ERROR_NO_TERMINATION_RECORD)
@@ -895,10 +904,23 @@ def submit_case_records(case: Case, user) -> tuple[bool, list[str]]:
     if errors:
         return False, errors
 
-    locked.records_submitted_at = timezone.now()
+    now = timezone.now()
+    update_fields = ["records_submitted_at", "records_submitted_by"]
+    locked.records_submitted_at = now
     locked.records_submitted_by = user
-    locked.save(update_fields=["records_submitted_at", "records_submitted_by"])
+    if locked.status == CaseStatus.ACTIVE:
+        locked.status = CaseStatus.CLOSED
+        if locked.termination_type == "":
+            locked.termination_type = CaseTerminationType.NORMAL
+        if locked.closed_at is None:
+            locked.closed_at = now
+        update_fields.extend(["status", "termination_type", "closed_at"])
+        _sync_application_closed(locked)
+    locked.save(update_fields=update_fields)
 
+    case.status = locked.status
+    case.termination_type = locked.termination_type
+    case.closed_at = locked.closed_at
     case.records_submitted_at = locked.records_submitted_at
     case.records_submitted_by = locked.records_submitted_by
     return True, []

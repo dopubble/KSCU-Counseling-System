@@ -409,7 +409,7 @@ class CaseRecordSummaryTests(TestCase):
         done_row = _row(done_body, self.case.pk, "termination")
         self.assertIn("작성완료", done_row)
         self.assertNotIn("href", done_row)
-        self.assertIn(">진행중</span>", _header(done_body, self.case.pk))
+        self.assertIn(">종결준비</span>", _header(done_body, self.case.pk))
 
     def test_summary_journal_count_matches_completed_journals(self):
         CounselingJournal.objects.create(

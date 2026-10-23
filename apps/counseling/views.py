@@ -126,7 +126,7 @@ from .services import (
     build_case_session_cards,
     build_case_session_cards_cached,
     build_counselor_session_views,
-    close_case_on_termination_record,
+    case_operation_label,
     submit_case_records,
     unsubmit_case_records,
     validate_case_records_submission,
@@ -1578,7 +1578,7 @@ def _counselor_active_cases(user):
     """상담사 대시보드용 활성 사례 — 본인에게 배정된 사례만"""
     return (
         Case.objects.filter(status=CaseStatus.ACTIVE, counselor=user)
-        .select_related("client", "application", "counselor")
+        .select_related("client", "application", "counselor", "termination_counseling_record")
         .order_by("-opened_at")
     )
 
@@ -1587,7 +1587,7 @@ def _counselor_closed_cases(user):
     """상담사 대시보드용 종결 사례 — 본인에게 배정된 사례만 (기록 열람용)"""
     return (
         Case.objects.filter(status=CaseStatus.CLOSED, counselor=user)
-        .select_related("client", "application", "counselor")
+        .select_related("client", "application", "counselor", "termination_counseling_record")
         .order_by(F("closed_at").desc(nulls_last=True), "-opened_at")
     )
 
@@ -1779,11 +1779,18 @@ def _render_journal_form(request, case, form, *, is_edit=False, journal=None):
     return render(request, "counselor/journal_form.html", context)
 
 
+def _label_case_operations(cases):
+    labeled = list(cases)
+    for case in labeled:
+        case.operation_label = case_operation_label(case)
+    return labeled
+
+
 @counselor_required
 def counselor_dashboard(request):
     """상담사 전용 대시보드 — 활성 사례 목록 + 종결 사례 열람"""
-    cases = _counselor_active_cases(request.user)
-    closed_cases = _counselor_closed_cases(request.user)
+    cases = _label_case_operations(_counselor_active_cases(request.user))
+    closed_cases = _label_case_operations(_counselor_closed_cases(request.user))
     pending_appointments = (
         Appointment.objects.filter(
             counselor=request.user,
@@ -1798,9 +1805,9 @@ def counselor_dashboard(request):
         "counselor/dashboard.html",
         {
             "cases": cases,
-            "active_count": cases.count(),
+            "active_count": len(cases),
             "closed_cases": closed_cases,
-            "closed_count": closed_cases.count(),
+            "closed_count": len(closed_cases),
             "pending_appointments": pending_appointments,
             "pending_count": pending_appointments.count(),
             "records_submit_errors": (
@@ -1854,6 +1861,7 @@ def counselor_case_detail(request, pk):
         "counselor/case_detail.html",
         {
             "case": case,
+            "operation_label": case_operation_label(case),
             "application": application,
             "records_submitted": case.records_submitted_at is not None,
             "can_unsubmit_records": (
@@ -3267,13 +3275,7 @@ def termination_record_create(request, pk):
             record.case = case
             record.counselor = request.user
             record.save()
-            if close_case_on_termination_record(case):
-                messages.success(
-                    request,
-                    "종결기록지가 저장되어 상담이 종결 처리되었습니다.",
-                )
-            else:
-                messages.success(request, "종결기록지가 저장되었습니다.")
+            messages.success(request, "종결기록지가 저장되었습니다.")
             return redirect("counselor:case_detail", pk=case.pk)
         messages.error(request, "입력 내용을 확인해 주세요.")
     else:
@@ -3359,13 +3361,7 @@ def termination_record_edit(request, pk):
             if not updated.counselor_id:
                 updated.counselor = request.user
             updated.save()
-            if close_case_on_termination_record(case):
-                messages.success(
-                    request,
-                    "종결기록지가 저장되어 상담이 종결 처리되었습니다.",
-                )
-            else:
-                messages.success(request, "종결기록지가 저장되었습니다.")
+            messages.success(request, "종결기록지가 저장되었습니다.")
             return redirect("counselor:case_detail", pk=case.pk)
         messages.error(request, "입력 내용을 확인해 주세요.")
     else:

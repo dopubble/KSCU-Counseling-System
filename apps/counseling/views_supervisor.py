@@ -11,7 +11,8 @@ from django.views.decorators.http import require_POST
 
 from apps.accounts.decorators import supervisor_required
 from apps.accounts.models import User
-from apps.counseling.models import CaseStatus, CaseTerminationType
+from apps.counseling.models import CaseStatus
+from apps.counseling.services import case_operation_label
 from apps.counseling.cohort_journal_service import (
     get_cohort_initial_records_for_supervision,
     get_counselor_journals_for_supervision,
@@ -97,21 +98,6 @@ def _optional_related(instance, name):
         return None
 
 
-def _case_progress_label(case) -> str:
-    """수퍼바이저 헤더용 운영 상태. ACTIVE 표시명 '개입중'은 이 화면에서만 '진행중'이다."""
-    if case.status == CaseStatus.CLOSED:
-        if case.termination_type == CaseTerminationType.NORMAL:
-            return "정상종결"
-        if case.termination_type == CaseTerminationType.EARLY:
-            return "조기종결"
-        return "종결"
-    if case.status == CaseStatus.ON_HOLD:
-        return "휴지"
-    if case.status == CaseStatus.TRANSFERRED:
-        return "이관"
-    return "진행중"
-
-
 def _case_record_summary(case) -> dict:
     """사례기록 표시값. 초안은 완료 기록이 아니다."""
     initial = _optional_related(case, "initial_counseling_record")
@@ -129,7 +115,7 @@ def _case_record_summary(case) -> dict:
     else:
         initial_session_at = "—"
     return {
-        "case_progress_label": _case_progress_label(case),
+        "case_progress_label": case_operation_label(case),
         "initial_can_view": initial_completed,
         "initial_record_id": initial.pk if initial_completed else None,
         "initial_session_at": initial_session_at,

@@ -26,7 +26,7 @@
                         </p>
                     </div>
                     <div class="d-flex flex-wrap gap-2 align-items-center">
-                        <span class="badge {% if case.status == 'ACTIVE' %}badge-counselor-active{% else %}badge-counselor-closed{% endif %} fs-6">{{ case.get_status_display }}</span>
+                        <span class="badge {% if case.status == 'ACTIVE' %}badge-counselor-active{% else %}badge-counselor-closed{% endif %} fs-6">{{ operation_label }}</span>
                         <span class="client-session-inline">
                             남은 회기 <strong>{{ case.remaining_sessions }}</strong> / {{ case.total_sessions }}
                         </span>

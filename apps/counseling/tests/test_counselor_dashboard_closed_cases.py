@@ -113,7 +113,7 @@ class CounselorDashboardClosedCaseTests(TestCase):
         )
         self.assertEqual(response.context["active_count"], 1)
         self.assertContains(response, "CASE-DASH-ACTIVE")
-        self.assertContains(response, "개입중")
+        self.assertContains(response, "진행중")
 
     def test_closed_case_listed_in_closed_section(self):
         response = self.http.get(self.url)

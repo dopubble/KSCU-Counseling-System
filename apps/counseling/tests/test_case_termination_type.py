@@ -20,9 +20,9 @@ from apps.counseling.models import (
 )
 from apps.counseling.services import (
     assign_counselor,
-    close_case_after_sessions_exhausted,
     close_case_for_early_termination,
     close_case_on_termination_record,
+    consume_counseling_session,
 )
 from apps.sessions_app.admin import CounselingJournalAdmin
 from apps.sessions_app.models import CounselingJournal, TerminationCounselingRecord
@@ -124,10 +124,14 @@ class CaseTerminationTypeModelTests(TestCase):
 
     def test_automatic_close_paths_leave_termination_type_blank(self):
         exhausted = _case(self.counselor, self.client_user, "CASE-TYPE-X")
-        close_case_after_sessions_exhausted(exhausted)
+        exhausted.remaining_sessions = 1
+        exhausted.save(update_fields=["remaining_sessions"])
+        consume_counseling_session(exhausted)
         exhausted.refresh_from_db()
-        self.assertEqual(exhausted.status, CaseStatus.CLOSED)
+        self.assertEqual(exhausted.remaining_sessions, 0)
+        self.assertEqual(exhausted.status, CaseStatus.ACTIVE)
         self.assertEqual(exhausted.termination_type, "")
+        self.assertIsNone(exhausted.records_submitted_at)
 
         early_client = _user("당일내담@example.com", "당일내담", UserRole.CLIENT)
         early = _case(self.counselor, early_client, "CASE-TYPE-D")

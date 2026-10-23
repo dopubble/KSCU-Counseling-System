@@ -5,8 +5,9 @@
     <form method="post" action="{% url 'counselor:case_records_submit' case.pk %}" class="d-inline">
         {% csrf_token %}
         <button type="submit" class="btn btn-sm btn-counselor text-white counselor-records-submit-btn"
+                title="최종 제출 후에는 상담기록을 수정할 수 없습니다."
                 onclick="event.stopPropagation();">
-            최종 제출
+            사례기록 최종 제출
         </button>
     </form>
     {% endif %}
