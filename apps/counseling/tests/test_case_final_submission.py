@@ -386,7 +386,17 @@ class ReadyAndEarlySubmissionTests(TestCase):
             reverse("counselor:case_records_submit", kwargs={"pk": case.pk}),
         )
         self.assertContains(detail, "조기종결")
-        self.assertEqual(detail.content.decode().count("최종 제출하기"), 2)
+        detail_body = detail.content.decode()
+        self.assertEqual(
+            detail_body.count("btn client-dashboard-action-btn px-4 fs-6 lh-base"),
+            2,
+        )
+        self.assertEqual(
+            detail_body.count(
+                "상담일지 및 종결기록지 작성 후 최종 제출하기 버튼을 눌러야 최종 종결처리가 됩니다."
+            ),
+            1,
+        )
         self.assertEqual(
             http.get(
                 reverse("counselor:termination_record_create", kwargs={"pk": case.pk})
