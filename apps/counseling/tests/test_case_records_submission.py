@@ -269,14 +269,18 @@ class RecordsSubmitButtonTests(TestCase):
 
     def test_detail_shows_submit_above_first_session_and_beside_dashboard(self):
         body = self._detail_body()
-        header = body[body.index("회기별 상담"):body.index("client-session-list")]
-        self.assertEqual(header.count("최종 제출하기"), 1)
-        self.assertIn("client-dashboard-action-btn", header)
-        self.assertLess(body.index("회기별 상담"), body.index("최종 제출하기"))
+        above_card = body[body.index("col-lg-7"):body.index("회기별 상담")]
+        self.assertIn("justify-content-end", above_card)
+        self.assertEqual(above_card.count("최종 제출하기"), 1)
+        session_header = body[body.index("회기별 상담"):body.index("client-session-list")]
+        self.assertNotIn("최종 제출하기", session_header)
+        self.assertLess(body.index("최종 제출하기"), body.index("회기별 상담"))
         self.assertLess(body.index("최종 제출하기"), body.index("1회기"))
         self.assertLess(body.index("bi-arrow-left"), body.rindex("최종 제출하기"))
         self.assertEqual(body.count("최종 제출하기"), 2)
-        self.assertEqual(body.count("btn btn-sm client-dashboard-action-btn"), 2)
+        self.assertEqual(body.count("btn client-dashboard-action-btn px-4 fs-6 lh-base"), 2)
+        self.assertNotIn("btn-outline-secondary", body[body.index("최종 제출하기") - 250:body.index("최종 제출하기")])
+        self.assertNotIn("btn-sm", body[body.index("최종 제출하기") - 250:body.index("최종 제출하기")])
         self.assertEqual(body.count('data-bs-target="#recordsSubmitConfirmModal"'), 2)
         self.assertNotIn('target="_blank"', body[body.index("최종 제출하기") - 250:body.index("최종 제출하기")])
         self.assertNotIn('target="_blank"', body[body.rindex("최종 제출하기") - 250:body.rindex("최종 제출하기")])
@@ -288,7 +292,7 @@ class RecordsSubmitButtonTests(TestCase):
         start = 0
         for _ in range(2):
             pos = body.index("최종 제출하기", start)
-            trigger = body[max(0, pos - 350):pos]
+            trigger = body[max(0, pos - 600):pos]
             self.assertIn('type="button"', trigger)
             self.assertIn('data-bs-target="#recordsSubmitConfirmModal"', trigger)
             self.assertNotIn('type="submit"', trigger)
