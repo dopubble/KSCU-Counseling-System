@@ -109,9 +109,15 @@ def _case_record_summary(case) -> dict:
         termination_label = "미작성"
     else:
         termination_label = "종결 전"
+    if initial_completed:
+        initial_session_at = format_local_datetime(initial.session_start_datetime)
+    else:
+        initial_session_at = "—"
     return {
+        "case_progress_label": "종결" if case.status == CaseStatus.CLOSED else "종결 전",
         "initial_can_view": initial_completed,
         "initial_record_id": initial.pk if initial_completed else None,
+        "initial_session_at": initial_session_at,
         "termination_label": termination_label,
     }
 

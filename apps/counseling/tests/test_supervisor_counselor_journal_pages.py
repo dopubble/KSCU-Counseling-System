@@ -237,8 +237,7 @@ class SupervisorCounselorJournalPageTests(TestCase):
         self.assertContains(response, f'id="caseCollapse{self.case.pk}"')
         self.assertContains(response, f'id="caseCollapse{other_case.pk}"')
         self.assertLess(body.index("이*영"), body.index("홍*동"))
-        header_at = body.index(f'id="caseHeading{other_case.pk}"')
-        header = body[header_at:header_at + 700]
+        header = _header(body, other_case.pk)
         self.assertIn("2회기 | 최근상담 2024-10-18 11:00", header)
         self.assertNotIn("22회기", header)
         collapse_at = body.index(f'id="caseCollapse{other_case.pk}"')
@@ -272,22 +271,27 @@ class SupervisorCounselorJournalPageTests(TestCase):
         self.assertContains(response, f'id="caseCollapse{twin_case.pk}"')
         self.assertContains(response, "사례 2건 | 완료 상담 3회기")
         self.assertNotContains(response, "홍길동")
-        original = body.index(f'id="caseHeading{self.case.pk}"')
-        twin_at = body.index(f'id="caseHeading{twin_case.pk}"')
-        self.assertIn("2회기 | 최근상담 2024-03-15 14:30", body[original:original + 700])
-        self.assertIn("1회기 | 최근상담 2023-05-01 09:00", body[twin_at:twin_at + 700])
+        self.assertIn("2회기 | 최근상담 2024-03-15 14:30", _header(body, self.case.pk))
+        self.assertIn("1회기 | 최근상담 2023-05-01 09:00", _header(body, twin_case.pk))
 
 
-def _record_row(body: str, case_id, kind: str) -> str:
-    collapse_at = body.index(f'id="caseCollapse{case_id}"')
-    summary = body[collapse_at:]
-    summary = summary[:summary.index('class="table-responsive"')]
-    start = summary.index(f'data-case-record="{kind}"')
-    rest = summary[start + 1:]
-    next_at = rest.find("data-case-record=")
-    if next_at == -1:
-        return summary[start:]
-    return summary[start:start + 1 + next_at]
+def _case_section(body: str, case_id) -> str:
+    start = body.index(f'id="caseHeading{case_id}"')
+    nxt = body.find("accordion-item", start + 1)
+    if nxt == -1:
+        return body[start:]
+    return body[start:nxt]
+
+
+def _header(body: str, case_id) -> str:
+    section = _case_section(body, case_id)
+    return section[:section.index(f'id="caseCollapse{case_id}"')]
+
+
+def _row(body: str, case_id, kind: str) -> str:
+    section = _case_section(body, case_id)
+    start = section.index(f'data-row="{kind}"')
+    return section[start:section.index("</tr>", start)]
 
 
 class CaseRecordSummaryTests(TestCase):
@@ -314,20 +318,27 @@ class CaseRecordSummaryTests(TestCase):
         return response
 
     def test_completed_initial_record_links_supervisor_detail(self):
+        started = timezone.make_aware(datetime(2024, 6, 22, 16, 30))
         record = InitialCounselingRecord.objects.create(
             case=self.case,
             counselor=self.counselor,
             is_draft=False,
+            session_start_datetime=started,
         )
         response = self._page()
         detail_url = reverse(
             "supervisor:initial_record_detail",
             kwargs={"record_pk": record.pk},
         )
-        row = _record_row(response.content.decode(), self.case.pk, "initial")
+        body = response.content.decode()
+        row = _row(body, self.case.pk, "initial")
+        self.assertIn("초기상담기록지", row)
+        self.assertIn("2024-06-22 16:30", row)
+        self.assertIn("작성완료", row)
         self.assertIn("보기", row)
         self.assertIn(detail_url, row)
         self.assertNotIn("counselor", detail_url)
+        self.assertNotContains(response, "사례기록")
         self.assertNotContains(response, "termination-record")
         self.assertNotContains(response, "/initial-record/")
 
@@ -339,7 +350,9 @@ class CaseRecordSummaryTests(TestCase):
 
     def test_missing_or_draft_initial_record_is_unwritten(self):
         missing = self._page()
-        missing_row = _record_row(missing.content.decode(), self.case.pk, "initial")
+        missing_row = _row(missing.content.decode(), self.case.pk, "initial")
+        self.assertIn("초기상담기록지", missing_row)
+        self.assertIn("—", missing_row)
         self.assertIn("미작성", missing_row)
         self.assertNotIn("보기", missing_row)
 
@@ -347,21 +360,30 @@ class CaseRecordSummaryTests(TestCase):
             case=self.case,
             counselor=self.counselor,
             is_draft=True,
+            session_start_datetime=timezone.make_aware(datetime(2024, 6, 22, 16, 30)),
         )
         draft = self._page()
-        draft_row = _record_row(draft.content.decode(), self.case.pk, "initial")
+        draft_row = _row(draft.content.decode(), self.case.pk, "initial")
         self.assertIn("미작성", draft_row)
+        self.assertNotIn("2024-06-22 16:30", draft_row)
         self.assertNotIn("보기", draft_row)
         self.assertNotIn("initial-records/", draft_row)
 
     def test_termination_status_follows_completed_record_and_case_status(self):
-        open_row = _record_row(self._page().content.decode(), self.case.pk, "termination")
+        open_body = self._page().content.decode()
+        self.assertIn("종결 전", _header(open_body, self.case.pk))
+        open_row = _row(open_body, self.case.pk, "termination")
+        self.assertIn("종결기록지", open_row)
         self.assertIn("종결 전", open_row)
-        self.assertNotIn("보기", open_row)
+        self.assertNotIn("href", open_row)
 
         self.case.status = CaseStatus.CLOSED
         self.case.save(update_fields=["status"])
-        closed_row = _record_row(self._page().content.decode(), self.case.pk, "termination")
+        closed_body = self._page().content.decode()
+        closed_header = _header(closed_body, self.case.pk)
+        self.assertIn("종결", closed_header)
+        self.assertNotIn("종결 전", closed_header)
+        closed_row = _row(closed_body, self.case.pk, "termination")
         self.assertIn("미작성", closed_row)
 
         TerminationCounselingRecord.objects.create(
@@ -369,21 +391,25 @@ class CaseRecordSummaryTests(TestCase):
             counselor=self.counselor,
             is_draft=True,
         )
-        draft_row = _record_row(self._page().content.decode(), self.case.pk, "termination")
+        draft_row = _row(self._page().content.decode(), self.case.pk, "termination")
         self.assertIn("미작성", draft_row)
         self.assertNotIn("작성완료", draft_row)
 
         self.case.status = CaseStatus.ACTIVE
         self.case.save(update_fields=["status"])
-        active_draft = _record_row(self._page().content.decode(), self.case.pk, "termination")
+        active_body = self._page().content.decode()
+        self.assertIn("종결 전", _header(active_body, self.case.pk))
+        active_draft = _row(active_body, self.case.pk, "termination")
         self.assertIn("종결 전", active_draft)
 
         record = self.case.termination_counseling_record
         record.is_draft = False
         record.save(update_fields=["is_draft", "updated_at"])
-        done_row = _record_row(self._page().content.decode(), self.case.pk, "termination")
+        done_body = self._page().content.decode()
+        done_row = _row(done_body, self.case.pk, "termination")
         self.assertIn("작성완료", done_row)
         self.assertNotIn("href", done_row)
+        self.assertIn("종결 전", _header(done_body, self.case.pk))
 
     def test_summary_journal_count_matches_completed_journals(self):
         CounselingJournal.objects.create(
@@ -392,10 +418,14 @@ class CaseRecordSummaryTests(TestCase):
             session_number=9,
             is_draft=True,
         )
-        row = _record_row(self._page().content.decode(), self.case.pk, "journals")
-        self.assertIn("2회기", row)
-        self.assertNotIn("3회기", row)
-        self.assertNotIn("9회기", row)
+        body = self._page().content.decode()
+        self.assertIn("2회기 | 최근상담", _header(body, self.case.pk))
+        self.assertContains(self._page(), "완료 상담 2회기")
+        section = _case_section(body, self.case.pk)
+        self.assertLess(section.index("초기상담기록지"), section.index(">1회기<"))
+        self.assertLess(section.index(">1회기<"), section.index(">2회기<"))
+        self.assertLess(section.index(">2회기<"), section.index("종결기록지"))
+        self.assertNotIn(">9회기<", section)
 
     def test_record_relations_do_not_add_a_query_per_case(self):
         def build(name, count):
@@ -434,7 +464,7 @@ class CaseRecordSummaryTests(TestCase):
 
     def test_accordion_collapse_flags_remain(self):
         body = self._page().content.decode()
-        self.assertIn("사례기록", body)
+        self.assertNotIn("사례기록", body)
         self.assertNotIn("accordion-collapse collapse show", body)
         self.assertNotIn("data-bs-parent", body)
         self.assertNotIn("성별", body)
