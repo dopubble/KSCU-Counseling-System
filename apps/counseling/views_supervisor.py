@@ -77,24 +77,71 @@ def _build_cohort_initial_record_entry(record, *, requesting_user):
     }
 
 
-def _supervisor_journal_session_at(journal):
-    """상담일. 일지 일시가 없으면 연결된 예약 일시를 쓴다."""
+def _supervisor_journal_session_datetime(journal):
+    """상담일 원본. 일지 일시가 없으면 연결된 예약 일시를 쓴다."""
     session_at = journal.session_datetime
     if session_at is None and journal.appointment_id:
         session_at = journal.appointment.scheduled_at
-    return format_local_datetime(session_at)
+    return session_at
+
+
+def _supervisor_journal_session_at(journal):
+    return format_local_datetime(_supervisor_journal_session_datetime(journal))
 
 
 def _supervisor_counselor_journal_row(journal) -> dict:
-    client = journal.case.client
     return {
         "journal_id": journal.pk,
-        "client_name": mask_client_name(client.name if client else ""),
         "session_number": journal.session_number,
         "session_label": f"{journal.session_number}회기",
         "session_at": _supervisor_journal_session_at(journal),
         "status_label": "작성완료",
     }
+
+
+def _supervisor_counselor_case_groups(journals) -> list[dict]:
+    """완료 일지를 Case 단위로 묶는다. 조회는 호출 전에 한 번만 한다."""
+    grouped: dict = {}
+    groups: list[dict] = []
+    for journal in journals:
+        if not journal.case_id:
+            continue
+        group = grouped.get(journal.case_id)
+        if group is None:
+            client = journal.case.client
+            group = {
+                "case_id": journal.case_id,
+                "client_name": mask_client_name(client.name if client else ""),
+                "journal_count": 0,
+                "latest_session_at": None,
+                "latest_session_label": "—",
+                "journals": [],
+            }
+            grouped[journal.case_id] = group
+            groups.append(group)
+        row = _supervisor_counselor_journal_row(journal)
+        group["journals"].append(row)
+        group["journal_count"] += 1
+        session_at = _supervisor_journal_session_datetime(journal)
+        if session_at is not None and (
+            group["latest_session_at"] is None or session_at > group["latest_session_at"]
+        ):
+            group["latest_session_at"] = session_at
+            group["latest_session_label"] = row["session_at"]
+
+    for group in groups:
+        group["journals"].sort(key=lambda row: row["session_number"])
+
+    groups.sort(
+        key=lambda group: (
+            group["latest_session_at"] is None,
+            -(group["latest_session_at"].timestamp())
+            if group["latest_session_at"] is not None
+            else 0,
+            str(group["case_id"]),
+        )
+    )
+    return groups
 
 
 @supervisor_required
@@ -126,7 +173,9 @@ def supervisor_counselor_journals(request, counselor_id):
 
     profile = getattr(counselor, "counselor_profile", None)
     cohort = profile.cohort if profile is not None else None
-    journals = get_counselor_journals_for_supervision(counselor)
+    case_groups = _supervisor_counselor_case_groups(
+        get_counselor_journals_for_supervision(counselor)
+    )
     return render(
         request,
         "supervisor/counselor_journals.html",
@@ -136,7 +185,9 @@ def supervisor_counselor_journals(request, counselor_id):
             "page_title": (
                 f"[{cohort}기] {counselor.name} 상담일지" if cohort else f"{counselor.name} 상담일지"
             ),
-            "entries": [_supervisor_counselor_journal_row(journal) for journal in journals],
+            "case_groups": case_groups,
+            "case_count": len(case_groups),
+            "completed_session_count": sum(group["journal_count"] for group in case_groups),
             "pdf_url_name": "supervisor:journal_pdf",
         },
     )

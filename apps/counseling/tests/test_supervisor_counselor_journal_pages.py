@@ -138,11 +138,17 @@ class SupervisorCounselorJournalPageTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "[1기] 김상담 상담일지")
+        self.assertContains(response, "사례 1건 | 완료 상담 2회기")
         self.assertContains(response, "홍*동")
+        self.assertContains(response, "2회기 | 최근상담 2024-03-15 14:30")
         self.assertNotContains(response, "홍길동")
-        self.assertContains(response, "1회기")
-        self.assertContains(response, "21회기")
+        self.assertContains(response, ">1회기<")
+        self.assertContains(response, ">21회기<")
         self.assertNotContains(response, "22회기")
+        self.assertNotContains(response, "accordion-collapse collapse show")
+        self.assertNotContains(response, 'aria-expanded="true"')
+        self.assertNotContains(response, "data-bs-parent")
+        self.assertContains(response, "accordion-button collapsed")
         self.assertContains(response, "작성완료")
         self.assertContains(response, "2024-03-15 14:30")
         self.assertNotContains(response, "김영희")
@@ -200,4 +206,65 @@ class SupervisorCounselorJournalPageTests(TestCase):
             )
         )
         self.assertContains(response, "2024-06-12 10:00")
-        self.assertContains(response, "4회기")
+        self.assertContains(response, ">4회기<")
+        self.assertContains(response, "최근상담 2024-06-12 10:00")
+
+    def test_cases_are_grouped_and_ordered_by_latest_session(self):
+        other_client = _create_client("이수영")
+        other_case = _create_case(self.counselor, other_client, "CASE-PAGE-4")
+        later = _create_journal(other_case, self.counselor, session_number=2)
+        later.session_datetime = timezone.make_aware(datetime(2024, 10, 18, 11, 0))
+        later.save(update_fields=["session_datetime", "updated_at"])
+        earlier = _create_journal(other_case, self.counselor, session_number=1)
+        earlier.session_datetime = timezone.make_aware(datetime(2024, 1, 2, 9, 0))
+        earlier.save(update_fields=["session_datetime", "updated_at"])
+
+        response = self.http.get(
+            reverse(
+                "supervisor:counselor_journals",
+                kwargs={"counselor_id": self.counselor.pk},
+            )
+        )
+        body = response.content.decode()
+        self.assertContains(response, "사례 2건 | 완료 상담 4회기")
+        self.assertContains(response, f'id="caseCollapse{self.case.pk}"')
+        self.assertContains(response, f'id="caseCollapse{other_case.pk}"')
+        self.assertLess(body.index("이*영"), body.index("홍*동"))
+        header_at = body.index(f'id="caseHeading{other_case.pk}"')
+        header = body[header_at:header_at + 700]
+        self.assertIn("2회기 | 최근상담 2024-10-18 11:00", header)
+        self.assertNotIn("22회기", header)
+        collapse_at = body.index(f'id="caseCollapse{other_case.pk}"')
+        collapse = body[collapse_at:collapse_at + 2500]
+        self.assertLess(collapse.index(">1회기<"), collapse.index(">2회기<"))
+        self.assertNotIn("collapse show", collapse)
+        self.assertNotIn("<th scope=\"col\">내담자</th>", body)
+
+    def test_same_client_name_stays_separate_cases(self):
+        twin = User.objects.create_user(
+            email="twin-hong@example.com",
+            password="pass12345",
+            name="홍길동",
+            role=UserRole.CLIENT,
+            status=UserStatus.ACTIVE,
+        )
+        twin_case = _create_case(self.counselor, twin, "CASE-PAGE-5")
+        twin_journal = _create_journal(twin_case, self.counselor, session_number=1)
+        twin_journal.session_datetime = timezone.make_aware(datetime(2023, 5, 1, 9, 0))
+        twin_journal.save(update_fields=["session_datetime", "updated_at"])
+
+        response = self.http.get(
+            reverse(
+                "supervisor:counselor_journals",
+                kwargs={"counselor_id": self.counselor.pk},
+            )
+        )
+        body = response.content.decode()
+        self.assertContains(response, f'id="caseCollapse{self.case.pk}"')
+        self.assertContains(response, f'id="caseCollapse{twin_case.pk}"')
+        self.assertContains(response, "사례 2건 | 완료 상담 3회기")
+        self.assertNotContains(response, "홍길동")
+        original = body.index(f'id="caseHeading{self.case.pk}"')
+        twin_at = body.index(f'id="caseHeading{twin_case.pk}"')
+        self.assertIn("2회기 | 최근상담 2024-03-15 14:30", body[original:original + 700])
+        self.assertIn("1회기 | 최근상담 2023-05-01 09:00", body[twin_at:twin_at + 700])
