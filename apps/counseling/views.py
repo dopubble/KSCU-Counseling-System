@@ -156,6 +156,7 @@ from .services import (
     serialize_apply_initial,
     sync_case_counseling_method_from_application,
 )
+from .training_progress import get_counselor_training_progress
 
 SESSION_APPLY_PREFILL = "counseling_apply_prefill"
 SESSION_APPLY_EDIT_ID = "counseling_apply_edit_id"
@@ -1819,6 +1820,7 @@ def counselor_dashboard(request):
             "records_submit_case_pk": (
                 submit_feedback["case"] if submit_feedback else None
             ),
+            "training_progress": get_counselor_training_progress(request.user),
         },
     )
 
