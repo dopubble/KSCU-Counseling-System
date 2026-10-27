@@ -188,7 +188,7 @@
                             <th>사례번호</th>
                             <th>학생 이름</th>
                             <th>신청 분야</th>
-                            <th>상담 상태</th>
+                            <th>진행 현황</th>
                             <th>개시일</th>
                             <th class="counselor-records-submit-col"></th>
                             <th></th>
@@ -202,7 +202,11 @@
                             <td class="fw-semibold text-counselor">{{ case.client.name }}</td>
                             <td>{{ case.application.counseling_type }}</td>
                             <td>
+                                {% if case.operation_label == "진행중" %}
+                                <span class="small">총 <span class="fw-semibold">{{ case.total_sessions }}</span>회기 / <span class="fw-semibold">{{ case.completed_session_count }}</span>회 완료</span>
+                                {% else %}
                                 <span class="badge badge-counselor-active">{{ case.operation_label }}</span>
+                                {% endif %}
                             </td>
                             <td class="text-muted small">{{ case.opened_at|date:"Y-m-d" }}</td>
                             {% include "counselor/partials/records_submit_row_action.html" %}

@@ -8,7 +8,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError
-from django.db.models import F
+from django.db.models import Count, F, Q
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
@@ -1576,10 +1576,21 @@ def client_request_appointment(request, pk):
 
 
 def _counselor_active_cases(user):
-    """상담사 대시보드용 활성 사례 — 본인에게 배정된 사례만"""
+    """상담사 대시보드용 활성 사례 — 본인에게 배정된 사례만.
+
+    완료 회기는 Appointment.status가 COMPLETED인 예약 수다.
+    remaining_sessions나 상담일지 수로 세지 않는다.
+    """
     return (
         Case.objects.filter(status=CaseStatus.ACTIVE, counselor=user)
         .select_related("client", "application", "counselor", "termination_counseling_record")
+        .annotate(
+            completed_session_count=Count(
+                "appointments",
+                filter=Q(appointments__status=AppointmentStatus.COMPLETED),
+                distinct=True,
+            )
+        )
         .order_by("-opened_at")
     )
 
