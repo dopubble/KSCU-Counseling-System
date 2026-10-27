@@ -245,18 +245,44 @@ class CounselorTrainingProgressTests(TestCase):
         self.assertEqual(progress["counseling_assigned_count"], 0)
         self.assertEqual(progress["journal_completed_count"], 0)
 
-    def test_termination_targets_exclude_ordinary_active_cases(self):
-        _create_case(
+    def test_termination_required_counts_every_assigned_case(self):
+        active = _create_case(
             self.counselor,
             _create_client("진행중"),
             "CASE-TRAIN-OPEN",
             total_sessions=10,
             remaining_sessions=7,
         )
+        progress = get_counselor_training_progress(self.counselor)
+        self.assertEqual(progress["termination_required_count"], 1)
+        self.assertEqual(progress["termination_completed_count"], 0)
+
         ready = _create_case(
             self.counselor,
             _create_client("종결준비"),
             "CASE-TRAIN-READY",
+            remaining_sessions=0,
+        )
+        progress = get_counselor_training_progress(self.counselor)
+        self.assertEqual(progress["termination_required_count"], 2)
+        self.assertEqual(progress["termination_completed_count"], 0)
+
+        TerminationCounselingRecord.objects.create(
+            case=ready, counselor=self.counselor, is_draft=False
+        )
+        TerminationCounselingRecord.objects.create(
+            case=active, counselor=self.counselor, is_draft=True
+        )
+        progress = get_counselor_training_progress(self.counselor)
+        self.assertEqual(progress["termination_required_count"], 2)
+        self.assertEqual(progress["termination_completed_count"], 1)
+
+        _create_case(
+            self.counselor,
+            _create_client("정상"),
+            "CASE-TRAIN-NORMAL",
+            status=CaseStatus.CLOSED,
+            termination_type=CaseTerminationType.NORMAL,
             remaining_sessions=0,
         )
         _create_case(
@@ -267,25 +293,24 @@ class CounselorTrainingProgressTests(TestCase):
             termination_type=CaseTerminationType.EARLY,
             remaining_sessions=6,
         )
-        finished = _create_case(
-            self.counselor,
-            _create_client("정상"),
-            "CASE-TRAIN-NORMAL",
+        other_case = _create_case(
+            self.other,
+            _create_client("타인종결"),
+            "CASE-TRAIN-TERM-OTHER",
             status=CaseStatus.CLOSED,
             termination_type=CaseTerminationType.NORMAL,
             remaining_sessions=0,
         )
         TerminationCounselingRecord.objects.create(
-            case=ready, counselor=self.counselor, is_draft=False
-        )
-        TerminationCounselingRecord.objects.create(
-            case=finished, counselor=self.counselor, is_draft=True
+            case=other_case, counselor=self.other, is_draft=False
         )
 
         progress = get_counselor_training_progress(self.counselor)
-
-        self.assertEqual(progress["termination_required_count"], 3)
+        self.assertEqual(progress["termination_required_count"], 4)
         self.assertEqual(progress["termination_completed_count"], 1)
+        other_progress = get_counselor_training_progress(self.other)
+        self.assertEqual(other_progress["termination_required_count"], 1)
+        self.assertEqual(other_progress["termination_completed_count"], 1)
 
     def test_supervision_attendance_uses_completed_sessions_only(self):
         profile = self.counselor.counselor_profile
@@ -479,6 +504,8 @@ class CounselorTrainingProgressDashboardTests(TestCase):
         self.assertIn("총 20회 / 3회 완료", body)
         self.assertIn("15%", body)
         self.assertIn("총 20시간 / 3시간 완료", body)
+        self.assertEqual(progress["termination_required_count"], 1)
+        self.assertEqual(progress["termination_completed_count"], 0)
         self.assertIn("총 1건 / 0건 제출", body)
         self.assertNotIn("완료 회기", body)
         self.assertNotIn("작성완료", body)
@@ -498,3 +525,28 @@ class CounselorTrainingProgressDashboardTests(TestCase):
             response,
             "게시글이 사례와 연결되어 있지 않아 제출 수를 집계하지 않습니다.",
         )
+
+    def test_dashboard_counts_every_case_toward_termination_records(self):
+        ready = _create_case(
+            self.counselor,
+            _create_client("화면종결준비"),
+            "CASE-UI-READY",
+            remaining_sessions=0,
+        )
+        _create_case(
+            self.counselor,
+            _create_client("화면진행"),
+            "CASE-UI-OPEN",
+            total_sessions=10,
+            remaining_sessions=7,
+        )
+        TerminationCounselingRecord.objects.create(
+            case=ready, counselor=self.counselor, is_draft=False
+        )
+
+        response = self.http.get(self.url)
+        progress = response.context["training_progress"]
+
+        self.assertEqual(progress["termination_required_count"], 2)
+        self.assertEqual(progress["termination_completed_count"], 1)
+        self.assertContains(response, "총 2건 / 1건 제출")

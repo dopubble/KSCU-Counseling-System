@@ -10,11 +10,8 @@
 완료는 CounselingJournal.is_draft=False 수다.
 예약 COMPLETED는 쓰지 않는다.
 
-종결기록지 대상은 종결준비·종결 판정과 같다.
-- 진행 중이고 남은 회기가 0
-- 종결 사례
-- 종결기록지가 이미 있음
-진행 중이고 회기가 남았으며 종결기록지가 없는 사례는 대상이 아니다.
+종결기록지 총량은 담당 사례 수다.
+진행 중인 사례도 최종적으로 종결기록지 1건이 필요하므로 포함한다.
 완료는 TerminationCounselingRecord가 있고 is_draft=False인 경우다.
 
 수퍼비전 출석률은 상담사 기수의 완료 회차 중 출석 수다.
@@ -50,7 +47,6 @@ from apps.counseling.models import (
     Case,
     CasePresentationComment,
     CasePresentationPost,
-    CaseStatus,
     SupervisionAttendanceStatus,
     SupervisionSession,
     SupervisionSessionStatus,
@@ -97,14 +93,6 @@ def _completed_journal_count():
         .values("total")[:1]
     )
     return Coalesce(Subquery(completed, output_field=IntegerField()), Value(0))
-
-
-def _termination_required_filter() -> Q:
-    return (
-        Q(termination_exists=True)
-        | Q(status=CaseStatus.CLOSED)
-        | Q(status=CaseStatus.ACTIVE, remaining_sessions=0)
-    )
 
 
 def _supervision_counts(counselor) -> tuple[int, int]:
@@ -178,9 +166,6 @@ def get_counselor_training_progress(counselor) -> dict:
                     is_draft=False,
                 )
             ),
-            termination_exists=Exists(
-                TerminationCounselingRecord.objects.filter(case_id=OuterRef("pk"))
-            ),
             termination_completed=Exists(
                 TerminationCounselingRecord.objects.filter(
                     case_id=OuterRef("pk"),
@@ -192,13 +177,6 @@ def get_counselor_training_progress(counselor) -> dict:
                     case_id=OuterRef("pk"),
                     author_id=counselor.pk,
                 )
-            ),
-        )
-        .annotate(
-            termination_required=SqlCase(
-                When(_termination_required_filter(), then=Value(1)),
-                default=Value(0),
-                output_field=flag,
             ),
         )
         .aggregate(
@@ -215,15 +193,11 @@ def get_counselor_training_progress(counselor) -> dict:
             ),
             counseling_assigned_count=Coalesce(Sum("total_sessions"), Value(0)),
             journal_completed_count=Coalesce(Sum("completed_journal_count"), Value(0)),
-            termination_required_count=Coalesce(Sum("termination_required"), Value(0)),
+            termination_required_count=Count("pk"),
             termination_completed_count=Coalesce(
                 Sum(
                     SqlCase(
-                        When(
-                            termination_completed=True,
-                            termination_required=1,
-                            then=Value(1),
-                        ),
+                        When(termination_completed=True, then=Value(1)),
                         default=Value(0),
                         output_field=flag,
                     )
