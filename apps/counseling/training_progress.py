@@ -27,7 +27,8 @@
 공개사례발표회 참여는 본인이 댓글을 단 서로 다른 게시글 수다.
 
 접수면접과 상담자 경험의 1회 인정시간은
-DEFAULT_APPOINTMENT_DURATION_MINUTES다.
+TRAINING_CREDIT_MINUTES_PER_SESSION이다.
+실제 예약 시간 DEFAULT_APPOINTMENT_DURATION_MINUTES와는 별도다.
 """
 
 from django.db.models import (
@@ -54,12 +55,15 @@ from apps.counseling.models import (
     SupervisionSession,
     SupervisionSessionStatus,
 )
-from apps.scheduling.constants import DEFAULT_APPOINTMENT_DURATION_MINUTES
 from apps.sessions_app.models import (
     CounselingJournal,
     InitialCounselingRecord,
     TerminationCounselingRecord,
 )
+
+# 수련현황·수련확인서의 1회 인정시간.
+# 실제 상담 예약은 DEFAULT_APPOINTMENT_DURATION_MINUTES(50분)를 유지한다.
+TRAINING_CREDIT_MINUTES_PER_SESSION = 60
 
 
 def format_training_minutes(total_minutes: int) -> str:
@@ -242,10 +246,10 @@ def get_counselor_training_progress(counselor) -> dict:
     intake_completed = row["intake_completed_count"]
     assigned = row["counseling_assigned_count"]
     journal_completed = row["journal_completed_count"]
-    intake_required_minutes = intake_required * DEFAULT_APPOINTMENT_DURATION_MINUTES
-    intake_completed_minutes = intake_completed * DEFAULT_APPOINTMENT_DURATION_MINUTES
-    assigned_minutes = assigned * DEFAULT_APPOINTMENT_DURATION_MINUTES
-    completed_minutes = journal_completed * DEFAULT_APPOINTMENT_DURATION_MINUTES
+    intake_required_minutes = intake_required * TRAINING_CREDIT_MINUTES_PER_SESSION
+    intake_completed_minutes = intake_completed * TRAINING_CREDIT_MINUTES_PER_SESSION
+    assigned_minutes = assigned * TRAINING_CREDIT_MINUTES_PER_SESSION
+    completed_minutes = journal_completed * TRAINING_CREDIT_MINUTES_PER_SESSION
     supervision_required, supervision_attended = _supervision_counts(counselor)
     return {
         "intake_required_count": intake_required,

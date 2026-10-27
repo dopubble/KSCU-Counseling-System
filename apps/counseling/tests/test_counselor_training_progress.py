@@ -21,10 +21,15 @@ from apps.counseling.models import (
     SupervisionSessionStatus,
 )
 from apps.counseling.training_progress import (
+    TRAINING_CREDIT_MINUTES_PER_SESSION,
     format_training_minutes,
     get_counselor_training_progress,
 )
-from apps.scheduling.constants import DEFAULT_APPOINTMENT_DURATION_MINUTES
+from apps.scheduling.constants import (
+    DEFAULT_APPOINTMENT_DURATION_MINUTES,
+    DEFAULT_ZOOM_HOST_BUFFER_MINUTES,
+)
+from apps.scheduling.models import Appointment
 from apps.sessions_app.models import (
     CounselingJournal,
     InitialCounselingRecord,
@@ -115,10 +120,14 @@ class FormatTrainingMinutesTests(TestCase):
     def test_formats_hours_and_minutes(self):
         self.assertEqual(format_training_minutes(0), "0분")
         self.assertEqual(format_training_minutes(50), "50분")
+        self.assertEqual(format_training_minutes(60), "1시간")
         self.assertEqual(format_training_minutes(100), "1시간 40분")
+        self.assertEqual(format_training_minutes(120), "2시간")
         self.assertEqual(format_training_minutes(150), "2시간 30분")
+        self.assertEqual(format_training_minutes(180), "3시간")
         self.assertEqual(format_training_minutes(600), "10시간")
         self.assertEqual(format_training_minutes(1000), "16시간 40분")
+        self.assertEqual(format_training_minutes(1200), "20시간")
 
 
 class CounselorTrainingProgressTests(TestCase):
@@ -160,11 +169,17 @@ class CounselorTrainingProgressTests(TestCase):
 
         self.assertEqual(progress["intake_required_count"], 2)
         self.assertEqual(progress["intake_completed_count"], 1)
+        self.assertEqual(TRAINING_CREDIT_MINUTES_PER_SESSION, 60)
         self.assertEqual(DEFAULT_APPOINTMENT_DURATION_MINUTES, 50)
-        self.assertEqual(progress["intake_required_minutes"], 100)
-        self.assertEqual(progress["intake_completed_minutes"], 50)
-        self.assertEqual(progress["intake_required_label"], "1시간 40분")
-        self.assertEqual(progress["intake_completed_label"], "50분")
+        self.assertEqual(
+            Appointment._meta.get_field("duration_minutes").default,
+            DEFAULT_APPOINTMENT_DURATION_MINUTES,
+        )
+        self.assertEqual(DEFAULT_ZOOM_HOST_BUFFER_MINUTES, 30)
+        self.assertEqual(progress["intake_required_minutes"], 120)
+        self.assertEqual(progress["intake_completed_minutes"], 60)
+        self.assertEqual(progress["intake_required_label"], "2시간")
+        self.assertEqual(progress["intake_completed_label"], "1시간")
 
     def test_counseling_experience_uses_assigned_sessions_including_early_closure(self):
         active = _create_case(
@@ -193,10 +208,10 @@ class CounselorTrainingProgressTests(TestCase):
         self.assertEqual(progress["counseling_assigned_count"], 20)
         self.assertEqual(progress["journal_completed_count"], 4)
         self.assertEqual(progress["counseling_progress_percent"], 20)
-        self.assertEqual(progress["counseling_assigned_minutes"], 1000)
-        self.assertEqual(progress["counseling_completed_minutes"], 200)
-        self.assertEqual(progress["counseling_assigned_label"], "16시간 40분")
-        self.assertEqual(progress["counseling_completed_label"], "3시간 20분")
+        self.assertEqual(progress["counseling_assigned_minutes"], 1200)
+        self.assertEqual(progress["counseling_completed_minutes"], 240)
+        self.assertEqual(progress["counseling_assigned_label"], "20시간")
+        self.assertEqual(progress["counseling_completed_label"], "4시간")
 
     def test_progress_bar_percent_does_not_exceed_100(self):
         case = _create_case(
@@ -456,12 +471,14 @@ class CounselorTrainingProgressDashboardTests(TestCase):
         self.assertEqual(progress["counseling_assigned_count"], 20)
         self.assertEqual(progress["journal_completed_count"], 3)
         self.assertEqual(progress["counseling_progress_percent"], 15)
+        self.assertEqual(progress["counseling_assigned_minutes"], 1200)
+        self.assertEqual(progress["counseling_completed_minutes"], 180)
         self.assertEqual(response.context["training_progress"], progress)
-        self.assertIn("총 1건 · 50분", body)
-        self.assertIn("1건 완료 · 50분", body)
+        self.assertIn("총 1건 · 1시간", body)
+        self.assertIn("1건 완료 · 1시간", body)
         self.assertIn("총 20회 / 3회 완료", body)
         self.assertIn("15%", body)
-        self.assertIn("총 16시간 40분 / 2시간 30분 완료", body)
+        self.assertIn("총 20시간 / 3시간 완료", body)
         self.assertIn("총 1건 / 0건 제출", body)
         self.assertNotIn("완료 회기", body)
         self.assertNotIn("작성완료", body)
