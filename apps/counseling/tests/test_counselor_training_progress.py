@@ -25,6 +25,7 @@ from apps.counseling.training_progress import (
     format_training_minutes,
     get_counselor_training_progress,
 )
+from apps.documents.models import ConsentDocType, ConsentDocument
 from apps.scheduling.constants import (
     DEFAULT_APPOINTMENT_DURATION_MINUTES,
     DEFAULT_ZOOM_HOST_BUFFER_MINUTES,
@@ -93,6 +94,16 @@ def _create_case(
     )
 
 
+def _submit_intake(case, *, doc_type=ConsentDocType.INTAKE, filename="consents/intake.pdf"):
+    return ConsentDocument.objects.create(
+        client=case.client,
+        application=case.application,
+        doc_type=doc_type,
+        file=filename,
+        uploaded_by=case.counselor,
+    )
+
+
 def _create_journal(case, session_number, *, is_draft=False):
     return CounselingJournal.objects.create(
         case=case,
@@ -155,20 +166,39 @@ class CounselorTrainingProgressTests(TestCase):
             progress = get_counselor_training_progress(None)
         self.assertEqual(progress["counseling_progress_percent"], 0)
 
-    def test_intake_counts_cases_and_completed_initial_records(self):
+    def test_intake_counts_submitted_intake_forms(self):
         first = _create_case(self.counselor, _create_client("초기1"), "CASE-TRAIN-I1")
         second = _create_case(self.counselor, _create_client("초기2"), "CASE-TRAIN-I2")
-        InitialCounselingRecord.objects.create(
-            case=first, counselor=self.counselor, is_draft=False
-        )
-        InitialCounselingRecord.objects.create(
-            case=second, counselor=self.counselor, is_draft=True
-        )
-
         progress = get_counselor_training_progress(self.counselor)
+        self.assertEqual(progress["intake_required_count"], 2)
+        self.assertEqual(progress["intake_completed_count"], 0)
 
+        _submit_intake(first)
+        InitialCounselingRecord.objects.create(
+            case=second, counselor=self.counselor, is_draft=False
+        )
+        empty_intake = ConsentDocument.objects.create(
+            client=second.client,
+            application=second.application,
+            doc_type=ConsentDocType.INTAKE,
+            file="",
+            uploaded_by=self.counselor,
+        )
+        _submit_intake(first, doc_type=ConsentDocType.PRIVACY, filename="consents/privacy.pdf")
+        progress = get_counselor_training_progress(self.counselor)
         self.assertEqual(progress["intake_required_count"], 2)
         self.assertEqual(progress["intake_completed_count"], 1)
+        self.assertEqual(progress["intake_required_minutes"], 120)
+        self.assertEqual(progress["intake_completed_minutes"], 60)
+        self.assertEqual(progress["intake_required_label"], "2시간")
+        self.assertEqual(progress["intake_completed_label"], "1시간")
+
+        empty_intake.file = "consents/second-intake.pdf"
+        empty_intake.save(update_fields=["file"])
+        progress = get_counselor_training_progress(self.counselor)
+        self.assertEqual(progress["intake_completed_count"], 2)
+        self.assertEqual(progress["intake_completed_minutes"], 120)
+        self.assertEqual(progress["intake_completed_label"], "2시간")
         self.assertEqual(TRAINING_CREDIT_MINUTES_PER_SESSION, 60)
         self.assertEqual(DEFAULT_APPOINTMENT_DURATION_MINUTES, 50)
         self.assertEqual(
@@ -176,10 +206,6 @@ class CounselorTrainingProgressTests(TestCase):
             DEFAULT_APPOINTMENT_DURATION_MINUTES,
         )
         self.assertEqual(DEFAULT_ZOOM_HOST_BUFFER_MINUTES, 30)
-        self.assertEqual(progress["intake_required_minutes"], 120)
-        self.assertEqual(progress["intake_completed_minutes"], 60)
-        self.assertEqual(progress["intake_required_label"], "2시간")
-        self.assertEqual(progress["intake_completed_label"], "1시간")
 
     def test_counseling_experience_uses_assigned_sessions_including_early_closure(self):
         active = _create_case(
@@ -238,6 +264,7 @@ class CounselorTrainingProgressTests(TestCase):
         InitialCounselingRecord.objects.create(
             case=other_case, counselor=self.other, is_draft=False
         )
+        _submit_intake(other_case)
 
         progress = get_counselor_training_progress(self.counselor)
 
@@ -486,9 +513,7 @@ class CounselorTrainingProgressDashboardTests(TestCase):
         )
         for number in range(1, 4):
             _create_journal(case, number)
-        InitialCounselingRecord.objects.create(
-            case=case, counselor=self.counselor, is_draft=False
-        )
+        _submit_intake(case)
         progress = get_counselor_training_progress(self.counselor)
         response = self.http.get(self.url)
         body = response.content.decode()
@@ -550,3 +575,23 @@ class CounselorTrainingProgressDashboardTests(TestCase):
         self.assertEqual(progress["termination_required_count"], 2)
         self.assertEqual(progress["termination_completed_count"], 1)
         self.assertContains(response, "총 2건 / 1건 제출")
+
+    def test_dashboard_counts_submitted_intake_forms(self):
+        submitted = _create_case(
+            self.counselor, _create_client("면접제출"), "CASE-2026-45"
+        )
+        _create_case(self.counselor, _create_client("면접없음"), "CASE-UI-NO-INTAKE")
+        _submit_intake(submitted)
+        InitialCounselingRecord.objects.create(
+            case=submitted, counselor=self.counselor, is_draft=True
+        )
+
+        response = self.http.get(self.url)
+        progress = response.context["training_progress"]
+
+        self.assertEqual(progress["intake_required_count"], 2)
+        self.assertEqual(progress["intake_completed_count"], 1)
+        self.assertEqual(progress["intake_required_label"], "2시간")
+        self.assertEqual(progress["intake_completed_label"], "1시간")
+        self.assertContains(response, "총 2건 · 2시간")
+        self.assertContains(response, "1건 완료 · 1시간")

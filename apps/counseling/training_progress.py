@@ -2,8 +2,9 @@
 
 대시보드와 이후 수련확인서가 같은 값을 쓴다.
 
-접수면접은 담당 사례 1건당 초기상담기록지 1건이다.
-완료는 InitialCounselingRecord가 있고 is_draft=False인 경우다.
+접수면접은 담당 사례 1건당 접수면접지 1건이다.
+완료는 해당 사례 신청에 접수면접지(ConsentDocument, INTAKE) 파일이 있는 경우다.
+초기상담기록지 작성 여부는 쓰지 않는다.
 
 상담자 경험의 부여량은 담당 사례 Case.total_sessions 합계다.
 조기종결이어도 배정 회기를 빼지 않는다.
@@ -51,11 +52,8 @@ from apps.counseling.models import (
     SupervisionSession,
     SupervisionSessionStatus,
 )
-from apps.sessions_app.models import (
-    CounselingJournal,
-    InitialCounselingRecord,
-    TerminationCounselingRecord,
-)
+from apps.documents.models import ConsentDocType, ConsentDocument
+from apps.sessions_app.models import CounselingJournal, TerminationCounselingRecord
 
 # 수련현황·수련확인서의 1회 인정시간.
 # 실제 상담 예약은 DEFAULT_APPOINTMENT_DURATION_MINUTES(50분)를 유지한다.
@@ -160,11 +158,11 @@ def get_counselor_training_progress(counselor) -> dict:
         Case.objects.filter(counselor_id=counselor.pk)
         .annotate(
             completed_journal_count=_completed_journal_count(),
-            initial_completed=Exists(
-                InitialCounselingRecord.objects.filter(
-                    case_id=OuterRef("pk"),
-                    is_draft=False,
-                )
+            intake_submitted=Exists(
+                ConsentDocument.objects.filter(
+                    application_id=OuterRef("application_id"),
+                    doc_type=ConsentDocType.INTAKE,
+                ).exclude(file="")
             ),
             termination_completed=Exists(
                 TerminationCounselingRecord.objects.filter(
@@ -184,7 +182,7 @@ def get_counselor_training_progress(counselor) -> dict:
             intake_completed_count=Coalesce(
                 Sum(
                     SqlCase(
-                        When(initial_completed=True, then=Value(1)),
+                        When(intake_submitted=True, then=Value(1)),
                         default=Value(0),
                         output_field=flag,
                     )
