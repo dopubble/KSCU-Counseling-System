@@ -15,6 +15,11 @@
                         지정된 양식으로 작성하신 사례보고서를 PDF로 변환하여 첨부해 주세요.
                     </p>
                     <div class="mb-3">
+                        <label for="presentationPostCase" class="form-label fw-semibold">담당 사례</label>
+                        {{ post_form.case }}
+                        <p class="form-text small text-muted mb-0 mt-1">본인 담당 사례만 선택할 수 있습니다.</p>
+                    </div>
+                    <div class="mb-3">
                         <label for="presentationPostTitle" class="form-label fw-semibold">제목</label>
                         {{ post_form.title }}
                         <p class="form-text small text-muted mb-0 mt-1">작성자명 기준으로 자동 설정되며 수정할 수 없습니다.</p>

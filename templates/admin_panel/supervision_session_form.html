@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% load ui_tags %}
+
+{% block title %}{% if is_edit %}수퍼비전 회차 수정{% else %}수퍼비전 회차 만들기{% endif %}{% endblock %}
+
+{% block content %}
+{% page_header show_heading=False c1_label="대시보드" c1_url_name="admin_panel:dashboard" c1_icon="bi-speedometer2" c2_label="수퍼비전 회차" c2_url_name="admin_panel:supervision_sessions" c2_url_arg=cohort c3_label="회차 편집" %}
+<h2 class="h4 mt-4 mb-3">{% if is_edit %}수퍼비전 회차 수정{% else %}수퍼비전 회차 만들기{% endif %}</h2>
+<form method="post" class="col-lg-6">
+    {% csrf_token %}
+    {% for field in form %}
+    <div class="mb-3">
+        <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {% if field.errors %}<div class="text-danger small">{{ field.errors|join:", " }}</div>{% endif %}
+    </div>
+    {% endfor %}
+    <button type="submit" class="btn btn-primary">저장</button>
+</form>
+{% endblock %}

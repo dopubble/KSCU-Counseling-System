@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% load ui_tags %}
+
+{% block title %}{{ cohort }}기 수퍼비전 회차{% endblock %}
+
+{% block content %}
+{% page_header show_heading=False c1_label="대시보드" c1_url_name="admin_panel:dashboard" c1_icon="bi-speedometer2" c2_label="수퍼비전 출석관리" c2_url_name="admin_panel:supervision_cohorts" c3_label="회차" %}
+<div class="d-flex justify-content-between align-items-center mt-4 mb-3">
+    <h2 class="h4 mb-0">{{ cohort }}기 수퍼비전 회차</h2>
+    {% if can_manage_sessions %}
+    <a class="btn btn-primary btn-sm" href="{% url 'admin_panel:supervision_session_create' cohort %}">회차 만들기</a>
+    {% endif %}
+</div>
+{% if sessions %}
+<div class="list-group">
+    {% for session in sessions %}
+    <div class="list-group-item d-flex justify-content-between align-items-center gap-2">
+        <a href="{% url 'admin_panel:supervision_attendance' session.pk %}">{{ session.session_number }}회차 {% if session.title %}{{ session.title }}{% endif %}</a>
+        <span class="text-muted small">{{ session.scheduled_at|date:"Y-m-d H:i" }} · {{ session.duration_minutes }}분 · {{ session.get_status_display }}</span>
+        {% if can_manage_sessions %}
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'admin_panel:supervision_session_edit' session.pk %}">수정</a>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-muted mb-0">등록된 수퍼비전 회차가 없습니다.</p>
+{% endif %}
+{% endblock %}

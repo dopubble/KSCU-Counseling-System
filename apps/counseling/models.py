@@ -4,6 +4,8 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
+from apps.scheduling.constants import DEFAULT_APPOINTMENT_DURATION_MINUTES
+
 
 class ApplicationStatus(models.TextChoices):
     RECEIVED = "RECEIVED", "접수"
@@ -378,6 +380,15 @@ class CasePresentationPost(models.Model):
         related_name="case_presentation_posts",
         verbose_name="작성자",
     )
+    case = models.ForeignKey(
+        "counseling.Case",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="presentation_posts",
+        verbose_name="담당 사례",
+        help_text="사례보고서 수련실적에 연결할 담당 사례. 기존 글은 비어 있을 수 있습니다.",
+    )
     title = models.CharField("제목", max_length=200)
     content = models.TextField("내용", blank=True)
     file = models.FileField(
@@ -454,3 +465,97 @@ class CasePresentationComment(models.Model):
         if not self.file:
             return ""
         return os.path.basename(self.file.name.replace("\\", "/"))
+
+
+class SupervisionSessionStatus(models.TextChoices):
+    SCHEDULED = "SCHEDULED", "예정"
+    COMPLETED = "COMPLETED", "완료"
+    CANCELLED = "CANCELLED", "취소"
+
+
+class SupervisionAttendanceStatus(models.TextChoices):
+    UNCHECKED = "UNCHECKED", "미체크"
+    PRESENT = "PRESENT", "출석"
+    ABSENT = "ABSENT", "결석"
+
+
+class SupervisionSession(models.Model):
+    """기수 수퍼비전 회차. 출석률의 분모는 완료 회차만 사용한다."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    cohort = models.PositiveIntegerField("기수", db_index=True)
+    session_number = models.PositiveIntegerField("회차")
+    title = models.CharField("제목", max_length=200, blank=True, default="")
+    scheduled_at = models.DateTimeField("일시")
+    duration_minutes = models.PositiveIntegerField(
+        "인정시간(분)",
+        default=DEFAULT_APPOINTMENT_DURATION_MINUTES,
+    )
+    status = models.CharField(
+        "상태",
+        max_length=20,
+        choices=SupervisionSessionStatus.choices,
+        default=SupervisionSessionStatus.SCHEDULED,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "수퍼비전 회차"
+        verbose_name_plural = "수퍼비전 회차"
+        ordering = ["cohort", "session_number", "scheduled_at"]
+        indexes = [
+            models.Index(fields=["cohort", "status"]),
+        ]
+
+    def __str__(self):
+        label = self.title or f"{self.session_number}회차"
+        return f"{self.cohort}기 {label}"
+
+
+class SupervisionAttendance(models.Model):
+    """수퍼비전 회차별 상담사 출석. 회차·상담사 조합은 하나다."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    session = models.ForeignKey(
+        SupervisionSession,
+        on_delete=models.CASCADE,
+        related_name="attendances",
+        verbose_name="수퍼비전 회차",
+    )
+    counselor = models.ForeignKey(
+        "accounts.CounselorProfile",
+        on_delete=models.CASCADE,
+        related_name="supervision_attendances",
+        verbose_name="상담사",
+    )
+    status = models.CharField(
+        "출석상태",
+        max_length=20,
+        choices=SupervisionAttendanceStatus.choices,
+        default=SupervisionAttendanceStatus.UNCHECKED,
+    )
+    checked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="checked_supervision_attendances",
+        verbose_name="출석 확인자",
+    )
+    checked_at = models.DateTimeField("출석 확인 시각", null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "수퍼비전 출석"
+        verbose_name_plural = "수퍼비전 출석"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["session", "counselor"],
+                name="uniq_supervision_attendance_session_counselor",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.session} — {self.counselor}"

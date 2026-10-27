@@ -37,7 +37,18 @@
             {% presentation_file_password_required post.author_id as post_download_requires_password %}
             {% include "counselor/partials/presentation_board_file_download_button.html" with download_url=post_file_download_url filename=post.filename button_class="btn btn-outline-primary" show_icon=True requires_password=post_download_requires_password %}
             {% endif %}
-            {% if is_author %}
+            {% if is_author and case_form %}
+            <form method="post"
+                  action="{% url 'counselor:presentation_board_post_case' post.pk %}"
+                  class="mt-3 pt-3 border-top">
+                {% csrf_token %}
+                {% if not post.case_id %}
+                <p class="small text-muted mb-2">수련실적 반영을 위해 담당 사례를 연결해 주세요.</p>
+                {% endif %}
+                <label class="form-label fw-semibold" for="{{ case_form.case.id_for_label }}">담당 사례</label>
+                {{ case_form.case }}
+                <button type="submit" class="btn btn-sm btn-outline-primary mt-2">사례 연결 저장</button>
+            </form>
             <p class="small text-muted mt-3 mb-0">
                 발표자 본인도 메모·첨부용 댓글을 남길 수 있습니다. 동기 제출 현황에는 포함되지 않습니다.
             </p>

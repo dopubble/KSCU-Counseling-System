@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% load static ui_tags %}
+
+{% block title %}수퍼비전 출석관리{% endblock %}
+
+{% block extra_css %}
+<link href="{% static 'css/counselor.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block layout %}
+<div class="site-page counselor-page py-4 py-lg-5">
+    <div class="container site-container">
+{% block content %}
+    {% page_header title="수퍼비전 출석관리" subtitle="담당 기수의 수퍼비전 회차 출석을 확인합니다." heading_tag="h1" title_class="h3 fw-semibold site-page-title mb-0" header_class="site-page-header mb-4" c1_label="수퍼비전" c1_url_name="supervisor:dashboard" c1_icon="bi-check2-square" %}
+    {% if cohorts %}
+    <div class="list-group">
+        {% for cohort in cohorts %}
+        <a class="list-group-item list-group-item-action" href="{% url 'supervisor:supervision_sessions' cohort %}">{{ cohort }}기</a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-muted mb-0">담당 기수가 없습니다.</p>
+    {% endif %}
+{% endblock %}
+    </div>
+</div>
+{% endblock %}

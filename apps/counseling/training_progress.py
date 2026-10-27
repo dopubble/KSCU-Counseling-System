@@ -1,105 +1,276 @@
 """상담사 수련현황 집계.
 
-작성완료 상담일지와 완료 회기는 서로 다른 기준이다.
-작성완료는 상담사의 is_draft=False 일지 전체이고,
-완료 회기는 status=COMPLETED 예약만이다.
-미작성은 완료 예약 중 그 예약에 연결된 작성완료 일지가 없는 건수다.
-appointment가 없는 일지는 완료 회기 수에서 빼거나 더하지 않는다.
+대시보드와 이후 수련확인서가 같은 값을 쓴다.
 
-네 값은 상담사 행에 스칼라 서브쿼리를 붙인 SQL 한 번으로 구한다.
-예약과 일지를 조인해 세지 않으므로 일지가 여러 건이어도 예약이 중복 집계되지 않는다.
+접수면접은 담당 사례 1건당 초기상담기록지 1건이다.
+완료는 InitialCounselingRecord가 있고 is_draft=False인 경우다.
+
+상담자 경험의 부여량은 담당 사례 Case.total_sessions 합계다.
+조기종결이어도 배정 회기를 빼지 않는다.
+완료는 CounselingJournal.is_draft=False 수다.
+예약 COMPLETED는 쓰지 않는다.
+
+종결기록지 대상은 종결준비·종결 판정과 같다.
+- 진행 중이고 남은 회기가 0
+- 종결 사례
+- 종결기록지가 이미 있음
+진행 중이고 회기가 남았으며 종결기록지가 없는 사례는 대상이 아니다.
+완료는 TerminationCounselingRecord가 있고 is_draft=False인 경우다.
+
+수퍼비전 출석률은 상담사 기수의 완료 회차 중 출석 수다.
+예정·취소 회차는 분모에서 뺀다.
+
+사례보고서는 담당 사례 1건당 1건이다.
+제출은 이 상담사가 작성하고 본인 담당 사례에 연결된 게시글의 서로 다른 사례 수다.
+사례가 비어 있는 기존 글은 제출로 세지 않는다.
+
+공개사례발표회 참여는 본인이 댓글을 단 서로 다른 게시글 수다.
+
+접수면접과 상담자 경험의 1회 인정시간은
+DEFAULT_APPOINTMENT_DURATION_MINUTES다.
 """
 
-from django.contrib.auth import get_user_model
-from django.db.models import Count, Exists, IntegerField, OuterRef, Subquery, Value
+from django.db.models import (
+    Case as SqlCase,
+    Count,
+    Exists,
+    IntegerField,
+    OuterRef,
+    Q,
+    Subquery,
+    Sum,
+    Value,
+    When,
+)
 from django.db.models.functions import Coalesce
 
-from apps.scheduling.models import Appointment, AppointmentStatus
-from apps.sessions_app.models import CounselingJournal
+from apps.accounts.models import CounselorProfile
+from apps.counseling.models import (
+    Case,
+    CasePresentationComment,
+    CasePresentationPost,
+    CaseStatus,
+    SupervisionAttendanceStatus,
+    SupervisionSession,
+    SupervisionSessionStatus,
+)
+from apps.scheduling.constants import DEFAULT_APPOINTMENT_DURATION_MINUTES
+from apps.sessions_app.models import (
+    CounselingJournal,
+    InitialCounselingRecord,
+    TerminationCounselingRecord,
+)
 
 
-def _scalar_count(queryset):
-    """조건에 맞는 행 수를 한 칸으로 반환한다. 없으면 0이다."""
-    return Coalesce(
-        Subquery(
-            queryset.order_by()
-            .values("counselor_id")
-            .annotate(total=Count("pk"))
-            .values("total")[:1],
-            output_field=IntegerField(),
-        ),
-        Value(0),
+def format_training_minutes(total_minutes: int) -> str:
+    """분을 '2시간 30분' 형식으로 나타낸다. 0분은 붙이지 않는다."""
+    minutes = max(int(total_minutes or 0), 0)
+    hours, remainder = divmod(minutes, 60)
+    if hours and remainder:
+        return f"{hours}시간 {remainder}분"
+    if hours:
+        return f"{hours}시간"
+    return f"{remainder}분"
+
+
+def _percent(completed: int, required: int) -> int:
+    if required <= 0:
+        return 0
+    percent = (completed * 100 + required // 2) // required
+    return min(percent, 100)
+
+
+def _completed_journal_count():
+    completed = (
+        CounselingJournal.objects.filter(
+            case_id=OuterRef("pk"),
+            counselor_id=OuterRef("counselor_id"),
+            is_draft=False,
+        )
+        .order_by()
+        .values("case_id")
+        .annotate(total=Count("pk"))
+        .values("total")[:1]
     )
+    return Coalesce(Subquery(completed, output_field=IntegerField()), Value(0))
+
+
+def _termination_required_filter() -> Q:
+    return (
+        Q(termination_exists=True)
+        | Q(status=CaseStatus.CLOSED)
+        | Q(status=CaseStatus.ACTIVE, remaining_sessions=0)
+    )
+
+
+def _supervision_counts(counselor) -> tuple[int, int]:
+    profile = (
+        CounselorProfile.objects.filter(user_id=counselor.pk)
+        .only("id", "cohort")
+        .first()
+    )
+    if profile is None or profile.cohort is None:
+        return 0, 0
+    row = SupervisionSession.objects.filter(
+        cohort=profile.cohort,
+        status=SupervisionSessionStatus.COMPLETED,
+    ).aggregate(
+        required=Count("pk", distinct=True),
+        attended=Count(
+            "pk",
+            distinct=True,
+            filter=Q(
+                attendances__counselor_id=profile.pk,
+                attendances__status=SupervisionAttendanceStatus.PRESENT,
+            ),
+        ),
+    )
+    return row["required"] or 0, row["attended"] or 0
+
+
+def _presentation_participation_count(counselor) -> int:
+    row = CasePresentationComment.objects.filter(author_id=counselor.pk).aggregate(
+        total=Count("post_id", distinct=True)
+    )
+    return row["total"] or 0
 
 
 def get_counselor_training_progress(counselor) -> dict:
-    """로그인한 상담사의 상담일지 작성 현황.
-
-    journal_completed_count: 이 상담사의 작성완료(is_draft=False) 일지 수.
-        예약이 없는 일지와 종결 사례의 일지도 포함한다.
-    completed_appointment_count: 이 상담사의 COMPLETED 예약 수.
-        일지 유무와 무관하다.
-    journal_missing_count: COMPLETED 예약 중 연결된 작성완료 일지가 없는 수.
-        예약-일지 조인이 아니라 예약별 EXISTS로 판별한다.
-    journal_draft_count: 이 상담사의 임시저장(is_draft=True) 일지 수.
-    """
-    empty = {
-        "journal_completed_count": 0,
-        "completed_appointment_count": 0,
-        "journal_missing_count": 0,
-        "journal_draft_count": 0,
-    }
+    """로그인한 상담사의 수련영역별 부여량·이수량·제출현황."""
+    empty_minutes = format_training_minutes(0)
     if counselor is None or not getattr(counselor, "pk", None):
-        return empty
+        return {
+            "intake_required_count": 0,
+            "intake_completed_count": 0,
+            "intake_required_minutes": 0,
+            "intake_completed_minutes": 0,
+            "intake_required_label": empty_minutes,
+            "intake_completed_label": empty_minutes,
+            "counseling_assigned_count": 0,
+            "journal_completed_count": 0,
+            "counseling_assigned_minutes": 0,
+            "counseling_completed_minutes": 0,
+            "counseling_assigned_label": empty_minutes,
+            "counseling_completed_label": empty_minutes,
+            "counseling_progress_percent": 0,
+            "termination_required_count": 0,
+            "termination_completed_count": 0,
+            "supervision_required_count": 0,
+            "supervision_attended_count": 0,
+            "supervision_attendance_percent": 0,
+            "case_report_required_count": 0,
+            "case_report_submitted_count": 0,
+            "public_presentation_participation_count": 0,
+        }
 
-    completed_journal_for_appointment = CounselingJournal.objects.filter(
-        appointment_id=OuterRef("pk"),
-        is_draft=False,
-    )
+    flag = IntegerField()
     row = (
-        get_user_model()
-        .objects.filter(pk=counselor.pk)
+        Case.objects.filter(counselor_id=counselor.pk)
         .annotate(
-            journal_completed_count=_scalar_count(
-                CounselingJournal.objects.filter(
-                    counselor_id=OuterRef("pk"),
+            completed_journal_count=_completed_journal_count(),
+            initial_completed=Exists(
+                InitialCounselingRecord.objects.filter(
+                    case_id=OuterRef("pk"),
                     is_draft=False,
                 )
             ),
-            journal_draft_count=_scalar_count(
-                CounselingJournal.objects.filter(
-                    counselor_id=OuterRef("pk"),
-                    is_draft=True,
+            termination_exists=Exists(
+                TerminationCounselingRecord.objects.filter(case_id=OuterRef("pk"))
+            ),
+            termination_completed=Exists(
+                TerminationCounselingRecord.objects.filter(
+                    case_id=OuterRef("pk"),
+                    is_draft=False,
                 )
             ),
-            completed_appointment_count=_scalar_count(
-                Appointment.objects.filter(
-                    counselor_id=OuterRef("pk"),
-                    status=AppointmentStatus.COMPLETED,
+            case_report_submitted=Exists(
+                CasePresentationPost.objects.filter(
+                    case_id=OuterRef("pk"),
+                    author_id=counselor.pk,
                 )
-            ),
-            journal_missing_count=_scalar_count(
-                Appointment.objects.filter(
-                    counselor_id=OuterRef("pk"),
-                    status=AppointmentStatus.COMPLETED,
-                )
-                .annotate(
-                    has_completed_journal=Exists(completed_journal_for_appointment)
-                )
-                .filter(has_completed_journal=False)
             ),
         )
-        .values(
-            "journal_completed_count",
-            "journal_draft_count",
-            "completed_appointment_count",
-            "journal_missing_count",
+        .annotate(
+            termination_required=SqlCase(
+                When(_termination_required_filter(), then=Value(1)),
+                default=Value(0),
+                output_field=flag,
+            ),
         )
-        .get()
+        .aggregate(
+            intake_required_count=Count("pk"),
+            intake_completed_count=Coalesce(
+                Sum(
+                    SqlCase(
+                        When(initial_completed=True, then=Value(1)),
+                        default=Value(0),
+                        output_field=flag,
+                    )
+                ),
+                Value(0),
+            ),
+            counseling_assigned_count=Coalesce(Sum("total_sessions"), Value(0)),
+            journal_completed_count=Coalesce(Sum("completed_journal_count"), Value(0)),
+            termination_required_count=Coalesce(Sum("termination_required"), Value(0)),
+            termination_completed_count=Coalesce(
+                Sum(
+                    SqlCase(
+                        When(
+                            termination_completed=True,
+                            termination_required=1,
+                            then=Value(1),
+                        ),
+                        default=Value(0),
+                        output_field=flag,
+                    )
+                ),
+                Value(0),
+            ),
+            case_report_submitted_count=Coalesce(
+                Sum(
+                    SqlCase(
+                        When(case_report_submitted=True, then=Value(1)),
+                        default=Value(0),
+                        output_field=flag,
+                    )
+                ),
+                Value(0),
+            ),
+        )
     )
+    intake_required = row["intake_required_count"]
+    intake_completed = row["intake_completed_count"]
+    assigned = row["counseling_assigned_count"]
+    journal_completed = row["journal_completed_count"]
+    intake_required_minutes = intake_required * DEFAULT_APPOINTMENT_DURATION_MINUTES
+    intake_completed_minutes = intake_completed * DEFAULT_APPOINTMENT_DURATION_MINUTES
+    assigned_minutes = assigned * DEFAULT_APPOINTMENT_DURATION_MINUTES
+    completed_minutes = journal_completed * DEFAULT_APPOINTMENT_DURATION_MINUTES
+    supervision_required, supervision_attended = _supervision_counts(counselor)
     return {
-        "journal_completed_count": row["journal_completed_count"],
-        "completed_appointment_count": row["completed_appointment_count"],
-        "journal_missing_count": row["journal_missing_count"],
-        "journal_draft_count": row["journal_draft_count"],
+        "intake_required_count": intake_required,
+        "intake_completed_count": intake_completed,
+        "intake_required_minutes": intake_required_minutes,
+        "intake_completed_minutes": intake_completed_minutes,
+        "intake_required_label": format_training_minutes(intake_required_minutes),
+        "intake_completed_label": format_training_minutes(intake_completed_minutes),
+        "counseling_assigned_count": assigned,
+        "journal_completed_count": journal_completed,
+        "counseling_assigned_minutes": assigned_minutes,
+        "counseling_completed_minutes": completed_minutes,
+        "counseling_assigned_label": format_training_minutes(assigned_minutes),
+        "counseling_completed_label": format_training_minutes(completed_minutes),
+        "counseling_progress_percent": _percent(journal_completed, assigned),
+        "termination_required_count": row["termination_required_count"],
+        "termination_completed_count": row["termination_completed_count"],
+        "supervision_required_count": supervision_required,
+        "supervision_attended_count": supervision_attended,
+        "supervision_attendance_percent": _percent(
+            supervision_attended, supervision_required
+        ),
+        "case_report_required_count": intake_required,
+        "case_report_submitted_count": row["case_report_submitted_count"],
+        "public_presentation_participation_count": _presentation_participation_count(
+            counselor
+        ),
     }

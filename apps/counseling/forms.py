@@ -8,7 +8,8 @@ from apps.counseling.constants import (
     COUNSELING_TYPE_VALUES,
     normalize_counseling_types,
 )
-from apps.counseling.models import CounselingMethod
+from apps.counseling.models import Case, CounselingMethod
+from apps.counseling.privacy import mask_client_name
 from apps.counseling.presentation_board import (
     PRESENTATION_COMMENT_ACCEPT_ATTR,
     PRESENTATION_COMMENT_ALLOWED_EXTENSIONS,
@@ -601,6 +602,56 @@ class BoardPostForm(forms.Form):
         return cleaned
 
 
+def counselor_case_queryset(author):
+    """상담사 본인 담당 사례. 다른 상담사 사례는 선택지에 없다."""
+    if author is None or not getattr(author, "pk", None):
+        return Case.objects.none()
+    return (
+        Case.objects.filter(counselor=author)
+        .select_related("client", "application")
+        .order_by("case_number")
+    )
+
+
+def case_report_choice_label(case) -> str:
+    """사례번호 · 가린 내담자 이름 · 상담분야."""
+    client_name = mask_client_name(case.client.name) if case.client_id else "—"
+    field = ""
+    if case.application_id:
+        field = case.application.get_counseling_types_display()
+    parts = [case.case_number, client_name]
+    if field:
+        parts.append(field)
+    return " · ".join(parts)
+
+
+class PresentationBoardPostCaseForm(forms.Form):
+    """기존 사례발표 글에 담당 사례를 연결한다."""
+
+    case = forms.ModelChoiceField(
+        label="담당 사례",
+        queryset=Case.objects.none(),
+        required=True,
+        empty_label="담당 사례를 선택해 주세요",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+
+    def __init__(self, *args, author=None, **kwargs):
+        self.author = author
+        super().__init__(*args, **kwargs)
+        field = self.fields["case"]
+        field.queryset = counselor_case_queryset(author)
+        field.label_from_instance = case_report_choice_label
+
+    def clean_case(self):
+        case = self.cleaned_data.get("case")
+        if case is None or self.author is None:
+            return case
+        if case.counselor_id != self.author.pk:
+            raise forms.ValidationError("본인 담당 사례만 연결할 수 있습니다.")
+        return case
+
+
 class PresentationBoardPostForm(forms.Form):
     """사례발표 게시판 — 수퍼비전(사례발표)보고서 게시글."""
 
@@ -638,12 +689,33 @@ class PresentationBoardPostForm(forms.Form):
             attrs={"class": "form-control", "accept": ACCEPT_ATTR}
         ),
     )
+    case = forms.ModelChoiceField(
+        label="담당 사례",
+        queryset=Case.objects.none(),
+        required=True,
+        empty_label="담당 사례를 선택해 주세요",
+        widget=forms.Select(
+            attrs={"class": "form-select", "id": "presentationPostCase"}
+        ),
+    )
 
-    def __init__(self, *args, author_name: str = "", **kwargs):
+    def __init__(self, *args, author_name: str = "", author=None, **kwargs):
         self.author_name = author_name
+        self.author = author
         super().__init__(*args, **kwargs)
         if author_name:
             self.fields["title"].initial = default_presentation_post_title(author_name)
+        case_field = self.fields["case"]
+        case_field.queryset = counselor_case_queryset(author)
+        case_field.label_from_instance = case_report_choice_label
+
+    def clean_case(self):
+        case = self.cleaned_data.get("case")
+        if case is None or self.author is None:
+            return case
+        if case.counselor_id != self.author.pk:
+            raise forms.ValidationError("본인 담당 사례만 연결할 수 있습니다.")
+        return case
 
     def clean_title(self):
         if self.author_name:

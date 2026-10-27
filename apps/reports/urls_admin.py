@@ -1,5 +1,7 @@
 from django.urls import path
 
+from apps.counseling import views_supervision
+
 from . import views
 
 app_name = "admin_panel"
@@ -23,5 +25,30 @@ urlpatterns = [
         name="appointment_calendar_events",
     ),
     path("counselors/", views.counselor_list, name="counselor_list"),
+    path(
+        "supervision/",
+        views_supervision.admin_supervision_cohorts,
+        name="supervision_cohorts",
+    ),
+    path(
+        "supervision/<int:cohort>/",
+        views_supervision.admin_supervision_sessions,
+        name="supervision_sessions",
+    ),
+    path(
+        "supervision/<int:cohort>/sessions/new/",
+        views_supervision.admin_supervision_session_create,
+        name="supervision_session_create",
+    ),
+    path(
+        "supervision/sessions/<uuid:pk>/edit/",
+        views_supervision.admin_supervision_session_edit,
+        name="supervision_session_edit",
+    ),
+    path(
+        "supervision/sessions/<uuid:pk>/",
+        views_supervision.admin_supervision_attendance,
+        name="supervision_attendance",
+    ),
     path("consents/", views.consent_submissions, name="consent_submissions"),
 ]

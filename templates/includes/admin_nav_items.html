@@ -30,7 +30,7 @@
 </li>
 
 <li class="nav-item dropdown">
-    <a class="nav-link dropdown-toggle admin-nav-dropdown-toggle {% if ns == 'admin_panel' and url_name == 'counselor_list' or ns == 'admin_panel' and url_name == 'consent_submissions' %}active{% endif %}"
+    <a class="nav-link dropdown-toggle admin-nav-dropdown-toggle {% if ns == 'admin_panel' and url_name == 'counselor_list' or ns == 'admin_panel' and url_name == 'consent_submissions' or ns == 'admin_panel' and url_name == 'supervision_cohorts' or ns == 'admin_panel' and url_name == 'supervision_sessions' or ns == 'admin_panel' and url_name == 'supervision_session_create' or ns == 'admin_panel' and url_name == 'supervision_session_edit' or ns == 'admin_panel' and url_name == 'supervision_attendance' %}active{% endif %}"
        href="#"
        id="adminCounselorMenu"
        role="button"
@@ -46,6 +46,10 @@
         <li>
             <a class="dropdown-item {% if ns == 'admin_panel' and url_name == 'consent_submissions' %}active{% endif %}"
                href="{% url 'admin_panel:consent_submissions' %}">동의서 제출 관리</a>
+        </li>
+        <li>
+            <a class="dropdown-item {% if ns == 'admin_panel' and url_name == 'supervision_cohorts' or ns == 'admin_panel' and url_name == 'supervision_sessions' or ns == 'admin_panel' and url_name == 'supervision_session_create' or ns == 'admin_panel' and url_name == 'supervision_session_edit' or ns == 'admin_panel' and url_name == 'supervision_attendance' %}active{% endif %}"
+               href="{% url 'admin_panel:supervision_cohorts' %}">수퍼비전 출석관리</a>
         </li>
     </ul>
 </li>

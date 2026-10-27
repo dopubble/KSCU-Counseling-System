@@ -3,7 +3,14 @@ from django.test import Client, TestCase
 from django.urls import reverse
 
 from apps.accounts.models import CounselorProfile, User, UserRole, UserStatus
-from apps.counseling.models import CasePresentationComment, CasePresentationPost
+from apps.counseling.models import (
+    ApplicationStatus,
+    Case,
+    CasePresentationComment,
+    CasePresentationPost,
+    CounselingApplication,
+    CounselingMethod,
+)
 from apps.counseling.presentation_board import (
     default_presentation_post_title,
     format_presentation_comment_content,
@@ -64,6 +71,31 @@ class PresentationBoardTests(TestCase):
         kwargs.setdefault("title", default_presentation_post_title("발표자"))
         kwargs.setdefault("file", self.sample_file)
         return CasePresentationPost.objects.create(**kwargs)
+
+    def _owned_case(self, counselor, case_number, client_name="김내담자"):
+        client_user = User.objects.create_user(
+            email=f"{case_number.lower()}@example.com",
+            password="pass",
+            name=client_name,
+            role=UserRole.CLIENT,
+            status=UserStatus.ACTIVE,
+        )
+        application = CounselingApplication.objects.create(
+            client=client_user,
+            counseling_types=["진로상담"],
+            reason="test",
+            counseling_method=CounselingMethod.IN_PERSON,
+            status=ApplicationStatus.IN_PROGRESS,
+        )
+        return Case.objects.create(
+            application=application,
+            client=client_user,
+            counselor=counselor,
+            case_number=case_number,
+        )
+
+    def _pdf(self, name="report.pdf"):
+        return SimpleUploadedFile(name, MINIMAL_PDF, content_type="application/pdf")
 
     def test_cohort_peer_can_view_board(self):
         client = Client()
@@ -269,6 +301,7 @@ class PresentationBoardTests(TestCase):
         self.assertTrue(comment.file.name.endswith("concept.jpg"))
 
     def test_new_post_has_no_stored_password_on_create(self):
+        case = self._owned_case(self.counselor_a, "CASE-PRES-1")
         client = Client()
         client.force_login(self.counselor_a)
         response = client.post(
@@ -277,14 +310,17 @@ class PresentationBoardTests(TestCase):
                 "cohort": "1",
                 "title": default_presentation_post_title("발표자"),
                 "content": "",
+                "case": str(case.pk),
                 "file": self.sample_file,
             },
         )
         self.assertEqual(response.status_code, 302)
         post = CasePresentationPost.objects.get()
         self.assertEqual(post.file_password_hash, "")
+        self.assertEqual(post.case_id, case.pk)
 
     def test_presenter_post_and_peer_comment(self):
+        case = self._owned_case(self.counselor_a, "CASE-PRES-2")
         client = Client()
         client.force_login(self.counselor_a)
         response = client.post(
@@ -293,6 +329,7 @@ class PresentationBoardTests(TestCase):
                 "cohort": "1",
                 "title": "임의로 바꾼 제목",
                 "content": "",
+                "case": str(case.pk),
                 "file": self.sample_file,
             },
         )
@@ -840,3 +877,188 @@ class PresentationBoardTests(TestCase):
         self.assertTrue(post.file.storage.exists(storage_name))
         restored = Path(settings.MEDIA_ROOT) / storage_name
         self.assertEqual(restored.read_bytes(), MINIMAL_PDF)
+
+    def test_create_form_lists_only_own_cases_with_masked_name(self):
+        own = self._owned_case(self.counselor_a, "CASE-OWN", client_name="김내담자")
+        other = self._owned_case(self.counselor_b, "CASE-OTHER", client_name="박다른사람")
+        client = Client()
+        client.force_login(self.counselor_a)
+        response = client.get(reverse("counselor:presentation_board"))
+        self.assertContains(response, "CASE-OWN · 김**자 · 진로상담")
+        self.assertContains(response, str(own.pk))
+        self.assertNotContains(response, "김내담자")
+        self.assertNotContains(response, "CASE-OTHER")
+        self.assertNotContains(response, str(other.pk))
+        self.assertNotContains(response, "박다른사람")
+
+    def test_create_rejects_another_counselors_case(self):
+        other = self._owned_case(self.counselor_b, "CASE-NOT-MINE")
+        client = Client()
+        client.force_login(self.counselor_a)
+        response = client.post(
+            reverse("counselor:presentation_board_post_create"),
+            {
+                "cohort": "1",
+                "title": "도용",
+                "content": "남기지 않음",
+                "case": str(other.pk),
+                "file": self._pdf(),
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(CasePresentationPost.objects.count(), 0)
+
+    def test_create_requires_own_case(self):
+        client = Client()
+        client.force_login(self.counselor_a)
+        response = client.post(
+            reverse("counselor:presentation_board_post_create"),
+            {
+                "cohort": "1",
+                "title": "사례없음",
+                "content": "저장되지 않음",
+                "file": self._pdf("missing-case.pdf"),
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(CasePresentationPost.objects.count(), 0)
+
+    def test_create_allows_multiple_posts_for_same_case(self):
+        case = self._owned_case(self.counselor_a, "CASE-ONCE")
+        client = Client()
+        client.force_login(self.counselor_a)
+        first = client.post(
+            reverse("counselor:presentation_board_post_create"),
+            {
+                "cohort": "1",
+                "title": "첫번째",
+                "content": "첫번째",
+                "case": str(case.pk),
+                "file": self._pdf("first.pdf"),
+            },
+        )
+        self.assertEqual(first.status_code, 302)
+        self.assertEqual(CasePresentationPost.objects.filter(case=case).count(), 1)
+        second = client.post(
+            reverse("counselor:presentation_board_post_create"),
+            {
+                "cohort": "1",
+                "title": "두번째",
+                "content": "두번째",
+                "case": str(case.pk),
+                "file": self._pdf("second.pdf"),
+            },
+        )
+        self.assertEqual(second.status_code, 302)
+        posts = CasePresentationPost.objects.filter(case=case).order_by("created_at")
+        self.assertEqual(posts.count(), 2)
+        self.assertEqual([post.content for post in posts], ["첫번째", "두번째"])
+        self.assertEqual({post.author_id for post in posts}, {self.counselor_a.pk})
+
+    def test_legacy_null_posts_remain_and_author_can_link_own_case(self):
+        post = self._create_post(content="기존 본문", title="기존 제목")
+        comment = CasePresentationComment.objects.create(
+            post=post,
+            author=self.counselor_b,
+            content="기존 댓글",
+        )
+        another = self._create_post(
+            title="또다른 기존 글",
+            content="유지",
+            file=self._pdf("legacy.pdf"),
+        )
+        self.assertIsNone(post.case_id)
+        self.assertIsNone(another.case_id)
+
+        case = self._owned_case(self.counselor_a, "CASE-LINK", client_name="연결내담")
+        client = Client()
+        client.force_login(self.counselor_a)
+        detail = client.get(
+            reverse("counselor:presentation_board_detail", args=[post.pk])
+        )
+        self.assertContains(detail, "수련실적 반영을 위해 담당 사례를 연결해 주세요.")
+        self.assertContains(detail, "CASE-LINK · 연**담 · 진로상담")
+
+        response = client.post(
+            reverse("counselor:presentation_board_post_case", args=[post.pk]),
+            {"case": str(case.pk)},
+        )
+        self.assertRedirects(
+            response,
+            reverse("counselor:presentation_board_detail", args=[post.pk]),
+        )
+        post.refresh_from_db()
+        another.refresh_from_db()
+        comment.refresh_from_db()
+        self.assertEqual(post.case_id, case.pk)
+        self.assertEqual(post.title, "기존 제목")
+        self.assertEqual(post.content, "기존 본문")
+        self.assertEqual(post.author_id, self.counselor_a.pk)
+        self.assertEqual(post.cohort, 1)
+        self.assertTrue(post.file)
+        self.assertEqual(comment.content, "기존 댓글")
+        self.assertEqual(comment.post_id, post.pk)
+        self.assertIsNone(another.case_id)
+        self.assertEqual(another.title, "또다른 기존 글")
+        self.assertEqual(another.content, "유지")
+
+        linked = client.get(
+            reverse("counselor:presentation_board_detail", args=[post.pk])
+        )
+        self.assertNotContains(
+            linked,
+            "수련실적 반영을 위해 담당 사례를 연결해 주세요.",
+        )
+        self.assertContains(linked, f'value="{case.pk}" selected')
+
+    def test_author_cannot_link_another_counselors_case(self):
+        post = self._create_post(content="기존")
+        other = self._owned_case(self.counselor_b, "CASE-FOREIGN")
+        client = Client()
+        client.force_login(self.counselor_a)
+        response = client.post(
+            reverse("counselor:presentation_board_post_case", args=[post.pk]),
+            {"case": str(other.pk)},
+        )
+        self.assertEqual(response.status_code, 302)
+        post.refresh_from_db()
+        self.assertIsNone(post.case_id)
+
+    def test_other_counselor_cannot_link_case_on_someone_elses_post(self):
+        post = self._create_post()
+        own_for_peer = self._owned_case(self.counselor_b, "CASE-PEER")
+        client = Client()
+        client.force_login(self.counselor_b)
+        detail = client.get(
+            reverse("counselor:presentation_board_detail", args=[post.pk])
+        )
+        self.assertNotContains(detail, "수련실적 반영을 위해 담당 사례를 연결해 주세요.")
+        response = client.post(
+            reverse("counselor:presentation_board_post_case", args=[post.pk]),
+            {"case": str(own_for_peer.pk)},
+        )
+        self.assertEqual(response.status_code, 403)
+        post.refresh_from_db()
+        self.assertIsNone(post.case_id)
+
+    def test_null_legacy_posts_can_share_a_linked_case(self):
+        first = self._create_post(title="레거시1", content="하나", file=self._pdf("a.pdf"))
+        second = self._create_post(title="레거시2", content="둘", file=self._pdf("b.pdf"))
+        case = self._owned_case(self.counselor_a, "CASE-SHARED")
+        client = Client()
+        client.force_login(self.counselor_a)
+        for post in (first, second):
+            response = client.post(
+                reverse("counselor:presentation_board_post_case", args=[post.pk]),
+                {"case": str(case.pk)},
+            )
+            self.assertRedirects(
+                response,
+                reverse("counselor:presentation_board_detail", args=[post.pk]),
+            )
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual(first.case_id, case.pk)
+        self.assertEqual(second.case_id, case.pk)
+        self.assertEqual(first.title, "레거시1")
+        self.assertEqual(second.content, "둘")

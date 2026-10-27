@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% load static ui_tags %}
+
+{% block title %}{{ cohort }}기 수퍼비전 회차{% endblock %}
+
+{% block extra_css %}
+<link href="{% static 'css/counselor.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block layout %}
+<div class="site-page counselor-page py-4 py-lg-5">
+    <div class="container site-container">
+{% block content %}
+    {% page_header title=cohort|stringformat:"s"|add:"기 수퍼비전" subtitle="회차를 선택해 출석을 체크합니다." heading_tag="h1" title_class="h3 fw-semibold site-page-title mb-0" header_class="site-page-header mb-4" c1_label="수퍼비전 출석관리" c1_url_name="supervisor:supervision_cohorts" c1_icon="bi-check2-square" %}
+    {% if sessions %}
+    <div class="list-group">
+        {% for session in sessions %}
+        <a class="list-group-item list-group-item-action d-flex justify-content-between" href="{% url 'supervisor:supervision_attendance' session.pk %}">
+            <span>{{ session.session_number }}회차 {% if session.title %}{{ session.title }}{% endif %}</span>
+            <span class="text-muted small">{{ session.scheduled_at|date:"Y-m-d H:i" }} · {{ session.get_status_display }}</span>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-muted mb-0">등록된 수퍼비전 회차가 없습니다.</p>
+    {% endif %}
+{% endblock %}
+    </div>
+</div>
+{% endblock %}

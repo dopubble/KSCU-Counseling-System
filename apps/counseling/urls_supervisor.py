@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views_supervisor
+from . import views_supervision, views_supervisor
 
 app_name = "supervisor"
 
@@ -31,5 +31,20 @@ urlpatterns = [
         "initial-records/<uuid:record_pk>/pdf/",
         views_supervisor.supervisor_initial_record_pdf,
         name="initial_record_pdf",
+    ),
+    path(
+        "supervision/",
+        views_supervision.supervisor_supervision_cohorts,
+        name="supervision_cohorts",
+    ),
+    path(
+        "supervision/<int:cohort>/",
+        views_supervision.supervisor_supervision_sessions,
+        name="supervision_sessions",
+    ),
+    path(
+        "supervision/sessions/<uuid:pk>/",
+        views_supervision.supervisor_supervision_attendance,
+        name="supervision_attendance",
     ),
 ]

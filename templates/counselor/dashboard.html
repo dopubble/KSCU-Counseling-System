@@ -63,13 +63,67 @@
             </h2>
         </div>
         <div class="card-body">
-            <p class="text-muted small mb-1">상담일지</p>
-            <p class="h5 fw-semibold text-counselor mb-1">
-                작성완료 {{ training_progress.journal_completed_count }} / 완료 회기 {{ training_progress.completed_appointment_count }}
-            </p>
-            <p class="small text-muted mb-0">
-                미작성 {{ training_progress.journal_missing_count }}회 · 작성중 {{ training_progress.journal_draft_count }}회
-            </p>
+            <div class="row g-3">
+                <div class="col-md-6 col-xl-4">
+                    <div class="border rounded p-3 h-100">
+                        <h3 class="h6 fw-semibold mb-2">접수면접</h3>
+                        <p class="mb-1">총 {{ training_progress.intake_required_count }}건 · {{ training_progress.intake_required_label }}</p>
+                        <p class="text-muted small mb-0">{{ training_progress.intake_completed_count }}건 완료 · {{ training_progress.intake_completed_label }}</p>
+                    </div>
+                </div>
+                <div class="col-md-6 col-xl-4">
+                    <div class="border rounded p-3 h-100">
+                        <h3 class="h6 fw-semibold mb-2">상담자 경험</h3>
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <div class="progress flex-grow-1" role="progressbar"
+                                 aria-valuenow="{{ training_progress.counseling_progress_percent }}"
+                                 aria-valuemin="0"
+                                 aria-valuemax="100"
+                                 aria-label="상담자 경험 {{ training_progress.counseling_progress_percent }}%">
+                                <div class="progress-bar" style="width: {{ training_progress.counseling_progress_percent }}%;"></div>
+                            </div>
+                            <span class="small text-muted">{{ training_progress.counseling_progress_percent }}%</span>
+                        </div>
+                        <p class="mb-1">총 {{ training_progress.counseling_assigned_count }}회 / {{ training_progress.journal_completed_count }}회 완료</p>
+                        <p class="text-muted small mb-0">총 {{ training_progress.counseling_assigned_label }} / {{ training_progress.counseling_completed_label }} 완료</p>
+                    </div>
+                </div>
+                <div class="col-md-6 col-xl-4">
+                    <div class="border rounded p-3 h-100">
+                        <h3 class="h6 fw-semibold mb-2">종결기록지</h3>
+                        <p class="mb-0">총 {{ training_progress.termination_required_count }}건 / {{ training_progress.termination_completed_count }}건 제출</p>
+                    </div>
+                </div>
+                <div class="col-md-6 col-xl-4">
+                    <div class="border rounded p-3 h-100">
+                        <h3 class="h6 fw-semibold mb-2">수퍼비전</h3>
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <div class="progress flex-grow-1" role="progressbar"
+                                 aria-valuenow="{{ training_progress.supervision_attendance_percent }}"
+                                 aria-valuemin="0"
+                                 aria-valuemax="100"
+                                 aria-label="수퍼비전 출석 {{ training_progress.supervision_attendance_percent }}%">
+                                <div class="progress-bar" style="width: {{ training_progress.supervision_attendance_percent }}%;"></div>
+                            </div>
+                            <span class="small text-muted">{{ training_progress.supervision_attendance_percent }}%</span>
+                        </div>
+                        <p class="mb-0">총 {{ training_progress.supervision_required_count }}회 / {{ training_progress.supervision_attended_count }}회 출석</p>
+                    </div>
+                </div>
+                <div class="col-md-6 col-xl-4">
+                    <div class="border rounded p-3 h-100">
+                        <h3 class="h6 fw-semibold mb-2">사례보고서</h3>
+                        <p class="mb-0">총 {{ training_progress.case_report_required_count }}건 / {{ training_progress.case_report_submitted_count }}건 제출</p>
+                    </div>
+                </div>
+                <div class="col-md-6 col-xl-4">
+                    <div class="border rounded p-3 h-100">
+                        <h3 class="h6 fw-semibold mb-2">공개사례발표회 참여</h3>
+                        <p class="h5 fw-semibold text-counselor mb-1">{{ training_progress.public_presentation_participation_count }}회 참여</p>
+                        <p class="text-muted small mb-0">댓글 참여 기준</p>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 

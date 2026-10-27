@@ -20,6 +20,7 @@ from apps.counseling.cohort_journal_service import get_counselor_cohort
 from apps.counseling.forms import (
     PresentationBoardCommentEditForm,
     PresentationBoardCommentForm,
+    PresentationBoardPostCaseForm,
     PresentationBoardPostForm,
 )
 from apps.counseling.models import CasePresentationComment, CasePresentationPost
@@ -260,7 +261,10 @@ def presentation_board(request):
             "cohort": cohort_filter,
             "viewer_cohort": viewer_cohort,
             "posts": posts,
-            "post_form": PresentationBoardPostForm(author_name=request.user.name),
+            "post_form": PresentationBoardPostForm(
+                author_name=request.user.name,
+                author=request.user,
+            ),
             "form_templates": PRESENTATION_FORM_TEMPLATES,
             "can_create_post": (
                 cohort_filter is not None
@@ -322,6 +326,14 @@ def presentation_board_detail(request, post_pk):
             "is_staff_viewer": user_is_platform_staff(request.user),
             "is_supervisor_viewer": user_is_supervisor_viewer(request.user),
             "is_author": post.author_id == request.user.pk,
+            "case_form": (
+                PresentationBoardPostCaseForm(
+                    author=request.user,
+                    initial={"case": post.case_id},
+                )
+                if post.author_id == request.user.pk
+                else None
+            ),
             "page_subtitle": f"{post.cohort}기 · {post.author.name}",
             "file_password_notice": PRESENTATION_FILE_PASSWORD_NOTICE,
             "post_file_download_url": reverse(
@@ -344,6 +356,7 @@ def presentation_board_post_create(request):
         request.POST,
         request.FILES,
         author_name=request.user.name,
+        author=request.user,
     )
     if not form.is_valid():
         for errors in form.errors.values():
@@ -355,11 +368,38 @@ def presentation_board_post_create(request):
     post = CasePresentationPost.objects.create(
         cohort=cohort,
         author=request.user,
+        case=form.cleaned_data["case"],
         title=form.cleaned_data["title"].strip(),
         content=(form.cleaned_data.get("content") or "").strip(),
         file=form.cleaned_data["file"],
     )
     messages.success(request, "사례발표 보고서가 등록되었습니다.")
+    return redirect("counselor:presentation_board_detail", post_pk=post.pk)
+
+
+@counselor_required
+@require_POST
+def presentation_board_post_case_edit(request, post_pk):
+    """작성자가 본인 글에 담당 사례를 연결한다. 제목·첨부·댓글은 바꾸지 않는다."""
+    post = get_object_or_404(CasePresentationPost, pk=post_pk)
+    require_presentation_board_access(request.user, post.cohort)
+    if post.author_id != request.user.pk:
+        raise PermissionDenied("본인 게시글만 사례를 연결할 수 있습니다.")
+
+    form = PresentationBoardPostCaseForm(
+        request.POST,
+        author=request.user,
+    )
+    if not form.is_valid():
+        for errors in form.errors.values():
+            if errors:
+                messages.error(request, errors[0])
+                break
+        return redirect("counselor:presentation_board_detail", post_pk=post.pk)
+
+    post.case = form.cleaned_data["case"]
+    post.save(update_fields=["case", "updated_at"])
+    messages.success(request, "담당 사례를 연결했습니다.")
     return redirect("counselor:presentation_board_detail", post_pk=post.pk)
 
 
