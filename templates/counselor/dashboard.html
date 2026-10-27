@@ -67,8 +67,7 @@
                 <div class="col-md-6 col-xl-4">
                     <div class="border rounded p-3 h-100">
                         <h3 class="h6 fw-semibold mb-2">접수면접</h3>
-                        <p class="mb-1">총 {{ training_progress.intake_required_count }}건 · {{ training_progress.intake_required_label }}</p>
-                        <p class="text-muted small mb-0">{{ training_progress.intake_completed_count }}건 완료 · {{ training_progress.intake_completed_label }}</p>
+                        <p class="mb-0">총 {{ training_progress.intake_required_count }}건(총 {{ training_progress.intake_required_label }}) / {{ training_progress.intake_completed_count }}건 완료({{ training_progress.intake_completed_label }})</p>
                     </div>
                 </div>
                 <div class="col-md-6 col-xl-4">
@@ -84,7 +83,6 @@
                             </div>
                             <span class="small text-muted">{{ training_progress.counseling_progress_percent }}%</span>
                         </div>
-                        <p class="mb-1">총 {{ training_progress.counseling_assigned_count }}회 / {{ training_progress.journal_completed_count }}회 완료</p>
                         <p class="text-muted small mb-0">총 {{ training_progress.counseling_assigned_label }} / {{ training_progress.counseling_completed_label }} 완료</p>
                     </div>
                 </div>
