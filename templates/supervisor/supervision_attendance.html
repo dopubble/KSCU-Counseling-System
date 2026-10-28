@@ -13,35 +13,7 @@
 {% block content %}
     {% page_header title="출석 체크" subtitle="해당 기수 상담사의 출석 또는 결석을 저장합니다." heading_tag="h1" title_class="h3 fw-semibold site-page-title mb-0" header_class="site-page-header mb-4" c1_label="수퍼비전 회차" c1_url_name="supervisor:supervision_sessions" c1_url_arg=session.cohort c1_icon="bi-check2-square" %}
     <p class="mb-4">{{ session.cohort }}기 {{ session.session_number }}회차 {% if session.title %}{{ session.title }}{% endif %} · {{ session.scheduled_at|date:"Y-m-d H:i" }} · {{ session.get_status_display }}</p>
-    <form method="post">
-        {% csrf_token %}
-        <div class="table-responsive">
-            <table class="table align-middle">
-                <thead>
-                    <tr><th>상담사</th><th>출석</th></tr>
-                </thead>
-                <tbody>
-                    {% for row in roster %}
-                    <tr>
-                        <td>{{ row.name }}</td>
-                        <td>
-                            <select class="form-select form-select-sm" name="attendance_{{ row.profile.pk }}">
-                                <option value="UNCHECKED" {% if row.status == "UNCHECKED" %}selected{% endif %}>미체크</option>
-                                <option value="PRESENT" {% if row.status == "PRESENT" %}selected{% endif %}>출석</option>
-                                <option value="ABSENT" {% if row.status == "ABSENT" %}selected{% endif %}>결석</option>
-                            </select>
-                        </td>
-                    </tr>
-                    {% empty %}
-                    <tr><td colspan="2" class="text-muted">이 기수에 등록된 상담사가 없습니다.</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% if roster %}
-        <button type="submit" class="btn btn-primary">저장</button>
-        {% endif %}
-    </form>
+    {% include "includes/supervision_attendance_form.html" %}
 {% endblock %}
     </div>
 </div>

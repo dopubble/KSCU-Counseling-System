@@ -128,36 +128,24 @@ def session_roster(session: SupervisionSession) -> list[dict]:
 
 
 def save_session_attendance(session: SupervisionSession, user, posted) -> int:
-    """기수 상담사의 출석만 저장한다. 회차·상담사당 한 행이다."""
-    allowed = {
-        SupervisionAttendanceStatus.UNCHECKED,
-        SupervisionAttendanceStatus.PRESENT,
-        SupervisionAttendanceStatus.ABSENT,
-    }
-    profiles = {
-        str(profile.pk): profile
-        for profile in CounselorProfile.objects.filter(cohort=session.cohort)
-    }
+    """기수 상담사 전원을 저장한다. 체크된 상담사는 출석, 나머지는 결석이다."""
+    profiles = list(CounselorProfile.objects.filter(cohort=session.cohort))
     saved = 0
     now = timezone.now()
     with transaction.atomic():
-        for key, raw_status in posted.items():
-            prefix = "attendance_"
-            if not key.startswith(prefix):
-                continue
-            profile = profiles.get(key[len(prefix) :])
-            status = (raw_status or "").strip()
-            if profile is None or status not in allowed:
-                continue
-            checked_by = user if status != SupervisionAttendanceStatus.UNCHECKED else None
-            checked_at = now if checked_by else None
+        for profile in profiles:
+            present = f"attendance_{profile.pk}" in posted
             SupervisionAttendance.objects.update_or_create(
                 session=session,
                 counselor=profile,
                 defaults={
-                    "status": status,
-                    "checked_by": checked_by,
-                    "checked_at": checked_at,
+                    "status": (
+                        SupervisionAttendanceStatus.PRESENT
+                        if present
+                        else SupervisionAttendanceStatus.ABSENT
+                    ),
+                    "checked_by": user,
+                    "checked_at": now,
                 },
             )
             saved += 1

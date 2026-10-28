@@ -137,3 +137,140 @@ class SupervisionAttendanceAccessTests(TestCase):
         admin_list = admin_http.get(reverse("admin_panel:supervision_sessions", args=[2]))
         self.assertEqual(admin_list.status_code, 200)
         self.assertContains(admin_list, "1회")
+
+
+def _attendance_tag(html: str, profile) -> str:
+    marker = f'name="attendance_{profile.pk}"'
+    start = html.find(marker)
+    if start < 0:
+        return ""
+    return html[start:html.find(">", start)]
+
+
+class SupervisionAttendanceCheckboxTests(TestCase):
+    def setUp(self):
+        self.present = _counselor("출석자", 1)
+        self.absent = _counselor("결석자", 1)
+        self.unchecked = _counselor("미저장", 1)
+        self.supervisor = _supervisor("출석수퍼", [1])
+        self.other_supervisor = _supervisor("타기수", [2])
+        self.admin = _user("출석관리자@example.com", "출석관리자", UserRole.ADMIN)
+        self.session = _session(1, 2, SupervisionSessionStatus.COMPLETED)
+        SupervisionAttendance.objects.create(
+            session=self.session,
+            counselor=self.present.counselor_profile,
+            status=SupervisionAttendanceStatus.PRESENT,
+        )
+        SupervisionAttendance.objects.create(
+            session=self.session,
+            counselor=self.absent.counselor_profile,
+            status=SupervisionAttendanceStatus.ABSENT,
+        )
+        SupervisionAttendance.objects.create(
+            session=self.session,
+            counselor=self.unchecked.counselor_profile,
+            status=SupervisionAttendanceStatus.UNCHECKED,
+        )
+        self.url = reverse("supervisor:supervision_attendance", args=[self.session.pk])
+        self.http = HttpClient()
+        self.http.force_login(self.supervisor)
+
+    def test_saved_statuses_render_as_checkboxes_without_writing(self):
+        response = self.http.get(self.url)
+        body = response.content.decode()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "미체크")
+        self.assertContains(response, "전체 출석")
+        self.assertContains(response, "출석 저장")
+        self.assertIn("checked", _attendance_tag(body, self.present.counselor_profile))
+        self.assertNotIn("checked", _attendance_tag(body, self.absent.counselor_profile))
+        self.assertNotIn("checked", _attendance_tag(body, self.unchecked.counselor_profile))
+        self.assertEqual(
+            SupervisionAttendance.objects.get(
+                session=self.session,
+                counselor=self.unchecked.counselor_profile,
+            ).status,
+            SupervisionAttendanceStatus.UNCHECKED,
+        )
+
+    def test_save_checks_as_present_and_blanks_as_absent(self):
+        extra_present = _counselor("추가출석1", 1)
+        extra_present_two = _counselor("추가출석2", 1)
+        response = self.http.post(
+            self.url,
+            {
+                f"attendance_{self.present.counselor_profile.pk}": "PRESENT",
+                f"attendance_{extra_present.counselor_profile.pk}": "PRESENT",
+                f"attendance_{extra_present_two.counselor_profile.pk}": "PRESENT",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+
+        statuses = {
+            row.counselor_id: row.status
+            for row in SupervisionAttendance.objects.filter(session=self.session)
+        }
+        self.assertEqual(statuses[self.present.counselor_profile.pk], SupervisionAttendanceStatus.PRESENT)
+        self.assertEqual(statuses[extra_present.counselor_profile.pk], SupervisionAttendanceStatus.PRESENT)
+        self.assertEqual(statuses[extra_present_two.counselor_profile.pk], SupervisionAttendanceStatus.PRESENT)
+        self.assertEqual(statuses[self.absent.counselor_profile.pk], SupervisionAttendanceStatus.ABSENT)
+        self.assertEqual(statuses[self.unchecked.counselor_profile.pk], SupervisionAttendanceStatus.ABSENT)
+
+    def test_clearing_a_present_box_saves_absent_and_checking_absent_saves_present(self):
+        response = self.http.post(
+            self.url,
+            {f"attendance_{self.absent.counselor_profile.pk}": "PRESENT"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            SupervisionAttendance.objects.get(
+                session=self.session,
+                counselor=self.present.counselor_profile,
+            ).status,
+            SupervisionAttendanceStatus.ABSENT,
+        )
+        self.assertEqual(
+            SupervisionAttendance.objects.get(
+                session=self.session,
+                counselor=self.absent.counselor_profile,
+            ).status,
+            SupervisionAttendanceStatus.PRESENT,
+        )
+
+    def test_admin_attendance_page_uses_the_same_checkbox(self):
+        http = HttpClient()
+        http.force_login(self.admin)
+        url = reverse("admin_panel:supervision_attendance", args=[self.session.pk])
+        page = http.get(url)
+        body = page.content.decode()
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("checked", _attendance_tag(body, self.present.counselor_profile))
+        saved = http.post(
+            url,
+            {f"attendance_{self.absent.counselor_profile.pk}": "PRESENT"},
+        )
+        self.assertEqual(saved.status_code, 302)
+        self.assertEqual(
+            SupervisionAttendance.objects.get(
+                session=self.session,
+                counselor=self.absent.counselor_profile,
+            ).status,
+            SupervisionAttendanceStatus.PRESENT,
+        )
+
+    def test_other_cohort_supervisor_still_cannot_save(self):
+        http = HttpClient()
+        http.force_login(self.other_supervisor)
+        response = http.post(
+            self.url,
+            {f"attendance_{self.present.counselor_profile.pk}": "PRESENT"},
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(
+            SupervisionAttendance.objects.get(
+                session=self.session,
+                counselor=self.unchecked.counselor_profile,
+            ).status,
+            SupervisionAttendanceStatus.UNCHECKED,
+        )

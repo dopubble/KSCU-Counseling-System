@@ -1,0 +1,62 @@
+<form method="post" id="supervision-attendance-form">
+    {% csrf_token %}
+    <div class="table-responsive">
+        <table class="table align-middle">
+            <thead>
+                <tr>
+                    <th>상담사</th>
+                    <th>
+                        {% if roster %}
+                        <label class="form-check mb-0">
+                            <input class="form-check-input" type="checkbox" id="supervision-attendance-all">
+                            전체 출석
+                        </label>
+                        {% else %}
+                        출석
+                        {% endif %}
+                    </th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in roster %}
+                <tr>
+                    <td>{{ row.name }}</td>
+                    <td>
+                        <input class="form-check-input supervision-attendance-box"
+                               type="checkbox"
+                               name="attendance_{{ row.profile.pk }}"
+                               value="PRESENT"
+                               aria-label="{{ row.name }} 출석"
+                               {% if row.status == "PRESENT" %}checked{% endif %}>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="2" class="text-muted">이 기수에 등록된 상담사가 없습니다.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if roster %}
+    <button type="submit" class="btn btn-primary">출석 저장</button>
+    {% endif %}
+</form>
+{% if roster %}
+<script>
+(function () {
+    var form = document.getElementById("supervision-attendance-form");
+    if (!form) {
+        return;
+    }
+    var all = form.querySelector("#supervision-attendance-all");
+    var boxes = form.querySelectorAll(".supervision-attendance-box");
+    if (!all) {
+        return;
+    }
+    all.addEventListener("change", function () {
+        boxes.forEach(function (box) {
+            box.checked = all.checked;
+        });
+    });
+})();
+</script>
+{% endif %}
