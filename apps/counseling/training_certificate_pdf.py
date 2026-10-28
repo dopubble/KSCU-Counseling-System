@@ -18,11 +18,15 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.platypus import (
     Flowable,
+    BaseDocTemplate,
+    Frame,
     Image,
+    PageTemplate,
     Paragraph,
-    SimpleDocTemplate,
     Spacer,
     Table,
     TableStyle,
@@ -37,6 +41,20 @@ CERTIFICATE_METHOD_NOTICE = (
 )
 CERTIFICATE_ISSUER = "숭실사이버대학교 평생교육원"
 _EMPTY = "—"
+
+_PAGE_WIDTH = A4[0]
+_SIDE_MARGIN = 22 * mm
+_TOP_MARGIN = 36 * mm
+_BOTTOM_MARGIN = 22 * mm
+_CONTENT_WIDTH = _PAGE_WIDTH - (2 * _SIDE_MARGIN)
+_SPACE_AFTER_TITLE = 16
+_SPACE_AFTER_IDENTITY = 20
+_SPACE_AFTER_TABLE = 14
+_SPACE_AFTER_NOTICE = 20
+_SPACE_AFTER_CONFIRMATION = 28
+_SPACE_AFTER_DATE = 24
+_ISSUER_GAP = 3 * mm
+_ISSUER_FONT_SIZE = 11
 
 
 def format_certificate_date(day) -> str:
@@ -92,8 +110,8 @@ def _logo_flowable():
         width_px, height_px = image.getSize()
         if not width_px or not height_px:
             return None
-        max_width = 18 * mm
-        max_height = 7 * mm
+        max_width = 14 * mm
+        max_height = 5.8 * mm
         scale = min(max_width / width_px, max_height / height_px)
         flowable = Image(path, width=width_px * scale, height=height_px * scale)
         flowable.hAlign = "CENTER"
@@ -105,15 +123,27 @@ def _logo_flowable():
 def build_training_certificate_pdf(context: dict) -> bytes:
     font = _register_korean_font()
     buffer = BytesIO()
-    doc = SimpleDocTemplate(
+    doc = BaseDocTemplate(
         buffer,
         pagesize=A4,
-        leftMargin=18 * mm,
-        rightMargin=18 * mm,
-        topMargin=16 * mm,
-        bottomMargin=16 * mm,
+        leftMargin=_SIDE_MARGIN,
+        rightMargin=_SIDE_MARGIN,
+        topMargin=_TOP_MARGIN,
+        bottomMargin=_BOTTOM_MARGIN,
         title=context["title"],
     )
+    frame = Frame(
+        doc.leftMargin,
+        doc.bottomMargin,
+        doc.width,
+        doc.height,
+        leftPadding=0,
+        rightPadding=0,
+        topPadding=0,
+        bottomPadding=0,
+        id="certificate",
+    )
+    doc.addPageTemplates([PageTemplate(id="certificate", frames=[frame])])
     title_style = ParagraphStyle(
         "CertificateTitle",
         fontName=font,
@@ -133,8 +163,8 @@ def build_training_certificate_pdf(context: dict) -> bytes:
     notice_style = ParagraphStyle(
         "CertificateNotice",
         fontName=font,
-        fontSize=8,
-        leading=11,
+        fontSize=10,
+        leading=14,
         alignment=TA_CENTER,
         textColor=colors.HexColor("#4a5568"),
     )
@@ -162,36 +192,46 @@ def build_training_certificate_pdf(context: dict) -> bytes:
     )
 
     story = [Paragraph(context["title"], title_style)]
-    story.append(Spacer(1, 8 * mm))
+    story.append(Spacer(1, _SPACE_AFTER_TITLE))
 
+    label_width = 30 * mm
     identity_rows = [
         [Paragraph(label, label_style), Paragraph(value, value_style)]
         for label, value in context["identity"]
     ]
-    identity = Table(identity_rows, colWidths=[32 * mm, 142 * mm])
+    identity = Table(
+        identity_rows,
+        colWidths=[label_width, _CONTENT_WIDTH - label_width],
+    )
+    identity.hAlign = "CENTER"
     identity.setStyle(
         TableStyle(
             [
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 4),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-                ("TOPPADDING", (0, 0), (-1, -1), 3),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                ("LEFTPADDING", (0, 0), (0, -1), 1 * mm),
+                ("RIGHTPADDING", (0, 0), (0, -1), 4 * mm),
+                ("LEFTPADDING", (1, 0), (1, -1), 4 * mm),
+                ("RIGHTPADDING", (1, 0), (1, -1), 1 * mm),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
                 ("LINEBELOW", (0, 0), (-1, -1), 0.3, colors.HexColor("#e2e8f0")),
             ]
         )
     )
-    story.extend([identity, Spacer(1, 8 * mm)])
+    story.extend([identity, Spacer(1, _SPACE_AFTER_IDENTITY)])
 
     header = [Paragraph(column, cell_style) for column in context["columns"]]
     body = [
         [Paragraph(str(cell), cell_style) for cell in row]
         for row in context["rows"]
     ]
+    item_width = _CONTENT_WIDTH * 0.30
+    time_width = _CONTENT_WIDTH * 0.30
     table = Table(
         [header, *body],
-        colWidths=[48 * mm, 58 * mm, 68 * mm],
+        colWidths=[item_width, time_width, _CONTENT_WIDTH - item_width - time_width],
     )
+    table.hAlign = "CENTER"
     table.setStyle(
         TableStyle(
             [
@@ -211,76 +251,100 @@ def build_training_certificate_pdf(context: dict) -> bytes:
     story.extend(
         [
             table,
-            Spacer(1, 6 * mm),
+            Spacer(1, _SPACE_AFTER_TABLE),
             Paragraph(context["method_notice"], notice_style),
-            Spacer(1, 6 * mm),
+            Spacer(1, _SPACE_AFTER_NOTICE),
             Paragraph(context["confirmation"], center_style),
-            _PushToBottom(32 * mm),
+            Spacer(1, _SPACE_AFTER_CONFIRMATION),
             Paragraph(context["issued_on_label"], center_style),
-            Spacer(1, 6 * mm),
-            _issuer_flowable(context, font),
+            Spacer(1, _SPACE_AFTER_DATE),
+            _IssuerMark(
+                context["issuer"],
+                font,
+                _ISSUER_FONT_SIZE,
+                page_width=_PAGE_WIDTH,
+                left_margin=_SIDE_MARGIN,
+                logo=_logo_flowable(),
+                gap=_ISSUER_GAP,
+            ),
         ]
     )
     doc.build(story)
     return buffer.getvalue()
 
 
-class _PushToBottom(Flowable):
-    """발급일과 기관명 그룹을 페이지 하단에 붙인다."""
+def issuer_group_origin(page_width, logo_width, text_width, gap):
+    """로고+간격+기관명 그룹의 페이지 왼쪽 시작 좌표."""
+    logo_width = logo_width or 0
+    gap = gap if logo_width else 0
+    group_width = logo_width + gap + text_width
+    return group_width, (page_width - group_width) / 2
 
-    def __init__(self, reserve):
+
+def issuer_mark_offsets(box_height, logo_height, ascent, descent):
+    """로고와 글자의 시각적 중심이 같은 높이가 되는 좌표."""
+    logo_y = (box_height - logo_height) / 2 if logo_height else 0
+    baseline = box_height / 2 - (ascent + descent) / 2
+    return logo_y, baseline
+
+
+def _text_metrics(font_name, font_size):
+    face = pdfmetrics.getFont(font_name).face
+    ascent = getattr(face, "ascent", 0) or 800
+    descent = getattr(face, "descent", 0) or -200
+    return ascent * font_size / 1000.0, descent * font_size / 1000.0
+
+
+class _IssuerMark(Flowable):
+    """로고와 기관명을 페이지 가로 중심 기준으로 한 그룹으로 그린다."""
+
+    def __init__(self, text, font, font_size, *, page_width, left_margin, logo, gap):
         super().__init__()
-        self.reserve = reserve
-        self.height = 0
+        self.text = text
+        self.font = font
+        self.font_size = font_size
+        self.page_width = page_width
+        self.left_margin = left_margin
+        self.logo = logo
+        self.gap = gap
+        self._ascent = font_size * 0.8
+        self._descent = -font_size * 0.2
 
     def wrap(self, availWidth, availHeight):
-        gap = availHeight - self.reserve
-        self.height = gap if gap > 0 else 0
+        self.width = availWidth
+        self._ascent, self._descent = _text_metrics(self.font, self.font_size)
+        text_height = self._ascent - self._descent
+        logo_height = self.logo.drawHeight if self.logo is not None else 0
+        self.height = max(text_height, logo_height)
         return availWidth, self.height
 
     def draw(self):
-        return
-
-
-def _issuer_flowable(context: dict, font: str):
-    text_style = ParagraphStyle(
-        "CertificateIssuer",
-        fontName=font,
-        fontSize=11,
-        leading=14,
-        alignment=TA_LEFT,
-    )
-    center_style = ParagraphStyle(
-        "CertificateIssuerCenter",
-        fontName=font,
-        fontSize=11,
-        leading=14,
-        alignment=TA_CENTER,
-    )
-    logo = _logo_flowable()
-    if logo is None:
-        return Paragraph(context["issuer"], center_style)
-    gap = 3 * mm
-    group = Table(
-        [[logo, Paragraph(context["issuer"], text_style)]],
-        colWidths=[logo.drawWidth + gap, 68 * mm],
-    )
-    group.hAlign = "CENTER"
-    group.setStyle(
-        TableStyle(
-            [
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("ALIGN", (0, 0), (0, 0), "RIGHT"),
-                ("ALIGN", (1, 0), (1, 0), "LEFT"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                ("RIGHTPADDING", (0, 0), (0, 0), gap),
-                ("RIGHTPADDING", (1, 0), (1, 0), 0),
-                ("TOPPADDING", (0, 0), (-1, -1), 0),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-            ]
+        logo_width = self.logo.drawWidth if self.logo is not None else 0
+        logo_height = self.logo.drawHeight if self.logo is not None else 0
+        text_width = stringWidth(self.text, self.font, self.font_size)
+        _, start_x = issuer_group_origin(
+            self.page_width,
+            logo_width,
+            text_width,
+            self.gap,
         )
-    )
-    return group
+        x = start_x - self.left_margin
+        logo_y, baseline = issuer_mark_offsets(
+            self.height,
+            logo_height,
+            self._ascent,
+            self._descent,
+        )
+        if self.logo is not None:
+            self.canv.saveState()
+            self.canv.translate(x, logo_y)
+            self.logo.canv = self.canv
+            self.logo.draw()
+            self.canv.restoreState()
+            x += logo_width + self.gap
+        self.canv.setFillColor(colors.black)
+        self.canv.setFont(self.font, self.font_size)
+        self.canv.drawString(x, baseline, self.text)
 
 
 def training_certificate_response(counselor) -> HttpResponse:

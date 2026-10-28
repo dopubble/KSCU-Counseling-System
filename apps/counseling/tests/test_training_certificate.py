@@ -32,6 +32,8 @@ from apps.counseling.training_certificate import (
 from apps.counseling.training_certificate_pdf import (
     build_training_certificate_context,
     build_training_certificate_pdf,
+    issuer_group_origin,
+    issuer_mark_offsets,
     training_certificate_response,
 )
 from apps.counseling.training_progress import get_counselor_training_progress
@@ -494,3 +496,27 @@ class TrainingCertificateRecordTests(TestCase):
         present.duration_minutes = 450
         present.save(update_fields=["duration_minutes"])
         self.assertEqual(supervision_attended_time_label(counselor), "7시간 30분")
+
+
+class IssuerGroupLayoutTests(TestCase):
+    def test_logo_and_name_group_is_centered_on_the_page(self):
+        page_width = 595.27
+        group_width, start_x = issuer_group_origin(page_width, 32, 120, 8)
+        self.assertAlmostEqual(start_x + group_width / 2, page_width / 2)
+        self.assertAlmostEqual(group_width, 160)
+
+    def test_text_only_issuer_is_centered_on_the_page(self):
+        page_width = 595.27
+        group_width, start_x = issuer_group_origin(page_width, 0, 140, 9)
+        self.assertEqual(group_width, 140)
+        self.assertAlmostEqual(start_x + group_width / 2, page_width / 2)
+
+    def test_logo_and_text_share_a_vertical_center(self):
+        box_height = 20
+        ascent, descent = 8, -2
+        logo_height = 12
+        logo_y, baseline = issuer_mark_offsets(box_height, logo_height, ascent, descent)
+        logo_center = logo_y + logo_height / 2
+        text_center = baseline + (ascent + descent) / 2
+        self.assertAlmostEqual(logo_center, box_height / 2)
+        self.assertAlmostEqual(text_center, box_height / 2)
