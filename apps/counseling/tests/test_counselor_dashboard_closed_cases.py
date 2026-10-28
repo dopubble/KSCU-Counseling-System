@@ -86,6 +86,19 @@ def _progress_html(total, completed) -> str:
     )
 
 
+def _create_journal(case, session_number, *, is_draft=False):
+    return CounselingJournal.objects.create(
+        case=case,
+        counselor=case.counselor,
+        session_number=session_number,
+        is_draft=is_draft,
+        subjective="S",
+        objective="O",
+        assessment="A",
+        plan="P",
+    )
+
+
 def _create_appointment(case, status, *, minutes=0):
     return Appointment.objects.create(
         case=case,
@@ -337,12 +350,13 @@ class CounselorDashboardProgressLabelTests(TestCase):
             **kwargs,
         )
 
-    def test_active_case_shows_completed_appointments(self):
+    def test_finished_journals_count_completed_sessions(self):
         case = self._active_case("CASE-PROG-3")
+        for session_number in range(1, 4):
+            _create_journal(case, session_number)
+        _create_journal(case, 4, is_draft=True)
         for index, status in enumerate(
             (
-                AppointmentStatus.COMPLETED,
-                AppointmentStatus.COMPLETED,
                 AppointmentStatus.COMPLETED,
                 AppointmentStatus.CONFIRMED,
                 AppointmentStatus.PENDING,
@@ -366,18 +380,28 @@ class CounselorDashboardProgressLabelTests(TestCase):
 
         self.assertContains(response, _progress_html(10, 0))
 
-    def test_journal_without_completed_appointment_does_not_count(self):
+    def test_finished_journal_counts_when_appointment_stays_confirmed(self):
         case = self._active_case("CASE-PROG-JOURNAL", remaining_sessions=6)
-        CounselingJournal.objects.create(
-            case=case,
-            counselor=self.counselor,
-            session_number=1,
-            is_draft=False,
-            subjective="S",
-            objective="O",
-            assessment="A",
-            plan="P",
-        )
+        _create_journal(case, 1)
+        _create_appointment(case, AppointmentStatus.CONFIRMED, minutes=1)
+
+        response = self.http.get(self.url)
+
+        self.assertContains(response, _progress_html(10, 1))
+        self.assertEqual(response.context["cases"][0].completed_session_count, 1)
+
+    def test_completed_appointment_without_journal_counts_zero(self):
+        case = self._active_case("CASE-PROG-APT")
+        _create_appointment(case, AppointmentStatus.COMPLETED, minutes=1)
+
+        response = self.http.get(self.url)
+
+        self.assertContains(response, _progress_html(10, 0))
+        self.assertEqual(response.context["cases"][0].completed_session_count, 0)
+
+    def test_draft_journal_does_not_count(self):
+        case = self._active_case("CASE-PROG-DRAFT")
+        _create_journal(case, 1, is_draft=True)
 
         response = self.http.get(self.url)
 
@@ -392,11 +416,9 @@ class CounselorDashboardProgressLabelTests(TestCase):
         self.assertContains(response, _progress_html(10, 0))
 
     def test_closure_ready_keeps_existing_label(self):
-        self._active_case("CASE-PROG-READY", remaining_sessions=0)
-        _create_appointment(
-            Case.objects.get(case_number="CASE-PROG-READY"),
-            AppointmentStatus.COMPLETED,
-        )
+        ready = self._active_case("CASE-PROG-READY", remaining_sessions=0)
+        _create_journal(ready, 1)
+        _create_appointment(ready, AppointmentStatus.COMPLETED)
 
         response = self.http.get(self.url)
 
@@ -461,14 +483,18 @@ class CounselorDashboardProgressLabelTests(TestCase):
         self.assertNotContains(response, "CASE-PROG-HOLD")
         self.assertNotContains(response, "CASE-PROG-MOVE")
 
-    def test_completed_appointment_count_does_not_add_queries_per_case(self):
+    def test_completed_journal_count_does_not_add_queries_per_case(self):
         first = self._active_case("CASE-PROG-Q1")
+        _create_journal(first, 1)
         _create_appointment(first, AppointmentStatus.COMPLETED, minutes=1)
+        _create_appointment(first, AppointmentStatus.CONFIRMED, minutes=2)
         with CaptureQueriesContext(connection) as before:
             self.http.get(self.url)
 
         for index in range(3):
             extra = self._active_case(f"CASE-PROG-Q{index + 2}")
+            _create_journal(extra, 1)
+            _create_journal(extra, 2, is_draft=True)
             _create_appointment(extra, AppointmentStatus.COMPLETED, minutes=10 + index)
             _create_appointment(extra, AppointmentStatus.CONFIRMED, minutes=20 + index)
 

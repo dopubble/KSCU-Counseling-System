@@ -1578,16 +1578,16 @@ def client_request_appointment(request, pk):
 def _counselor_active_cases(user):
     """상담사 대시보드용 활성 사례 — 본인에게 배정된 사례만.
 
-    완료 회기는 Appointment.status가 COMPLETED인 예약 수다.
-    remaining_sessions나 상담일지 수로 세지 않는다.
+    완료 회기는 CounselingJournal.is_draft=False 수다.
+    예약 상태나 remaining_sessions로 세지 않는다.
     """
     return (
         Case.objects.filter(status=CaseStatus.ACTIVE, counselor=user)
         .select_related("client", "application", "counselor", "termination_counseling_record")
         .annotate(
             completed_session_count=Count(
-                "appointments",
-                filter=Q(appointments__status=AppointmentStatus.COMPLETED),
+                "journals",
+                filter=Q(journals__is_draft=False),
                 distinct=True,
             )
         )
