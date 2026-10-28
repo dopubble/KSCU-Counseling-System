@@ -57,10 +57,14 @@
     </div>
 
     <div class="card border-0 shadow-sm section-spacing" id="counselor-training-progress">
-        <div class="card-header bg-white border-bottom py-3">
+        <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center gap-2">
             <h2 class="h6 fw-semibold mb-0">
                 <i class="bi bi-mortarboard me-2 text-counselor" aria-hidden="true"></i>수련 현황
             </h2>
+            <a href="{% url 'counselor:training_certificate' %}"
+               class="btn btn-sm btn-outline-primary"
+               target="_blank"
+               rel="noopener">수련확인서 출력</a>
         </div>
         <div class="card-body">
             <div class="row g-3">

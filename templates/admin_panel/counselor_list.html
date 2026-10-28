@@ -59,6 +59,7 @@
                         <th scope="col">승인</th>
                         <th scope="col">계정 상태</th>
                         <th scope="col">가입일</th>
+                        <th scope="col">수련확인서</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -83,6 +84,12 @@
                         </td>
                         <td>{{ profile.user.get_status_display }}</td>
                         <td class="small text-nowrap">{{ profile.user.created_at|date:"Y-m-d" }}</td>
+                        <td class="text-nowrap">
+                            <a href="{% url 'admin_panel:counselor_training_certificate' profile.user.pk %}"
+                               class="btn btn-sm btn-outline-primary"
+                               target="_blank"
+                               rel="noopener">수련확인서</a>
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>

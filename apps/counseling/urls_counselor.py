@@ -4,11 +4,17 @@ from apps.scheduling.views import appointment_manage
 
 from . import chat_views, views
 from . import views_presentation_board
+from . import views_training_certificate
 
 app_name = "counselor"
 
 urlpatterns = [
     path("", views.counselor_dashboard, name="dashboard"),
+    path(
+        "training-certificate/",
+        views_training_certificate.counselor_training_certificate,
+        name="training_certificate",
+    ),
     path(
         "presentation-board/",
         views_presentation_board.presentation_board,
