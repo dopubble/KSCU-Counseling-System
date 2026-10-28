@@ -45,14 +45,12 @@ _EMPTY = "—"
 _PAGE_WIDTH = A4[0]
 _SIDE_MARGIN = 22 * mm
 _TOP_MARGIN = 36 * mm
-_BOTTOM_MARGIN = 22 * mm
+_BOTTOM_MARGIN = _TOP_MARGIN
 _CONTENT_WIDTH = _PAGE_WIDTH - (2 * _SIDE_MARGIN)
 _SPACE_AFTER_TITLE = 16
 _SPACE_AFTER_IDENTITY = 20
-_SPACE_AFTER_TABLE = 14
-_SPACE_AFTER_NOTICE = 20
+_SPACE_AFTER_TABLE = 20
 _SPACE_AFTER_CONFIRMATION = 28
-_SPACE_AFTER_DATE = 24
 _ISSUER_GAP = 3 * mm
 _ISSUER_FONT_SIZE = 11
 
@@ -160,14 +158,6 @@ def build_training_certificate_pdf(context: dict) -> bytes:
         leading=16,
         alignment=TA_CENTER,
     )
-    notice_style = ParagraphStyle(
-        "CertificateNotice",
-        fontName=font,
-        fontSize=10,
-        leading=14,
-        alignment=TA_CENTER,
-        textColor=colors.HexColor("#4a5568"),
-    )
     cell_style = ParagraphStyle(
         "CertificateCell",
         fontName=font,
@@ -248,29 +238,45 @@ def build_training_certificate_pdf(context: dict) -> bytes:
             ]
         )
     )
+    issuer = _IssuerMark(
+        context["issuer"],
+        font,
+        _ISSUER_FONT_SIZE,
+        page_width=_PAGE_WIDTH,
+        left_margin=_SIDE_MARGIN,
+        logo=_logo_flowable(),
+        gap=_ISSUER_GAP,
+    )
+    _, issuer_height = issuer.wrap(_CONTENT_WIDTH, doc.height)
     story.extend(
         [
             table,
             Spacer(1, _SPACE_AFTER_TABLE),
-            Paragraph(context["method_notice"], notice_style),
-            Spacer(1, _SPACE_AFTER_NOTICE),
             Paragraph(context["confirmation"], center_style),
             Spacer(1, _SPACE_AFTER_CONFIRMATION),
             Paragraph(context["issued_on_label"], center_style),
-            Spacer(1, _SPACE_AFTER_DATE),
-            _IssuerMark(
-                context["issuer"],
-                font,
-                _ISSUER_FONT_SIZE,
-                page_width=_PAGE_WIDTH,
-                left_margin=_SIDE_MARGIN,
-                logo=_logo_flowable(),
-                gap=_ISSUER_GAP,
-            ),
+            _FillRemaining(issuer_height),
+            issuer,
         ]
     )
     doc.build(story)
     return buffer.getvalue()
+
+
+class _FillRemaining(Flowable):
+    """뒤에 올 요소 높이만 남기고, 그 위를 비워 페이지 하단에 붙인다."""
+
+    def __init__(self, reserve):
+        super().__init__()
+        self.reserve = reserve
+        self.height = 0
+
+    def wrap(self, availWidth, availHeight):
+        self.height = max(availHeight - self.reserve, 0)
+        return availWidth, self.height
+
+    def draw(self):
+        return
 
 
 def issuer_group_origin(page_width, logo_width, text_width, gap):

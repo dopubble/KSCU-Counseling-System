@@ -7,6 +7,8 @@ from unittest.mock import patch
 
 import pikepdf
 from django.core.files.uploadedfile import SimpleUploadedFile
+from reportlab.lib.units import mm
+from reportlab.platypus import Paragraph as RealParagraph
 from django.test import Client as HttpClient, TestCase
 from django.utils import timezone
 from django.urls import resolve, reverse
@@ -30,7 +32,13 @@ from apps.counseling.training_certificate import (
     supervision_attended_time_label,
 )
 from apps.counseling.training_certificate_pdf import (
+    CERTIFICATE_CONFIRMATION,
+    CERTIFICATE_ISSUER,
+    CERTIFICATE_METHOD_NOTICE,
+    _BOTTOM_MARGIN,
+    _TOP_MARGIN,
     build_training_certificate_context,
+    _IssuerMark,
     build_training_certificate_pdf,
     issuer_group_origin,
     issuer_mark_offsets,
@@ -520,3 +528,45 @@ class IssuerGroupLayoutTests(TestCase):
         text_center = baseline + (ascent + descent) / 2
         self.assertAlmostEqual(logo_center, box_height / 2)
         self.assertAlmostEqual(text_center, box_height / 2)
+
+    def test_notice_is_omitted_and_issuer_margin_matches_title(self):
+        self.assertEqual(_BOTTOM_MARGIN, _TOP_MARGIN)
+        self.assertAlmostEqual(_BOTTOM_MARGIN, 36 * mm)
+        context = {
+            "title": "수련확인증",
+            "identity": [("성명", "홍길동"), ("수퍼바이저", "김규리 교수")],
+            "columns": ["수련항목", "수련시간", "진행방식"],
+            "rows": [
+                ["접수면접", "1시간", "비대면"],
+                ["상담자 경험", "5시간", "비대면"],
+                ["수퍼비전", "8시간", "비대면"],
+                ["사례보고서", "1사례", "비대면"],
+            ],
+            "method_notice": CERTIFICATE_METHOD_NOTICE,
+            "confirmation": CERTIFICATE_CONFIRMATION,
+            "issued_on_label": "2026년 10월 28일",
+            "issuer": CERTIFICATE_ISSUER,
+        }
+        seen = []
+        issuers = []
+
+        def spy(text, style):
+            seen.append(text)
+            return RealParagraph(text, style)
+
+        class SpyMark(_IssuerMark):
+            def __init__(self, text, *args, **kwargs):
+                issuers.append(text)
+                super().__init__(text, *args, **kwargs)
+
+        with (
+            patch("apps.counseling.training_certificate_pdf.Paragraph", side_effect=spy),
+            patch("apps.counseling.training_certificate_pdf._IssuerMark", SpyMark),
+        ):
+            pdf_bytes = build_training_certificate_pdf(context)
+        self.assertNotIn(CERTIFICATE_METHOD_NOTICE, seen)
+        self.assertIn(CERTIFICATE_CONFIRMATION, seen)
+        self.assertIn("2026년 10월 28일", seen)
+        self.assertEqual(issuers, [CERTIFICATE_ISSUER])
+        with pikepdf.open(BytesIO(pdf_bytes)) as pdf:
+            self.assertEqual(len(pdf.pages), 1)
