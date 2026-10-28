@@ -6,20 +6,28 @@ from io import BytesIO
 from unittest.mock import patch
 
 import pikepdf
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client as HttpClient, TestCase
+from django.utils import timezone
 from django.urls import resolve, reverse
 
 from apps.accounts.models import CounselorProfile, SupervisorProfile, User, UserRole, UserStatus
 from apps.counseling.models import (
     ApplicationStatus,
     Case,
+    CasePresentationPost,
     CounselingApplication,
     CounselingMethod,
+    SupervisionAttendance,
+    SupervisionAttendanceStatus,
+    SupervisionSession,
+    SupervisionSessionStatus,
 )
 from apps.counseling.training_certificate import (
     intake_delivery_mode_label,
     journal_delivery_mode_label,
     supervisor_label_for_counselor,
+    supervision_attended_time_label,
 )
 from apps.counseling.training_certificate_pdf import (
     build_training_certificate_context,
@@ -62,6 +70,7 @@ class TrainingCertificateContextTests(TestCase):
             supervisor_label="홍길동",
             intake_mode="비대면",
             journal_mode="대면·비대면 혼합",
+            supervision_time="6시간 40분",
         )
 
         self.assertIs(context["progress"], progress)
@@ -75,51 +84,20 @@ class TrainingCertificateContextTests(TestCase):
             ],
         )
         self.assertNotIn("기수", [label for label, _value in context["identity"]])
-        self.assertEqual(context["columns"], ["수련항목", "완료/참여", "진행방식", "인정시간"])
+        self.assertEqual(context["columns"], ["수련항목", "수련시간", "진행방식"])
+        self.assertNotIn("인정시간", context["columns"])
         self.assertEqual(
             context["rows"],
             [
-                [
-                    "접수면접",
-                    f"{progress['intake_completed_count']}건 완료",
-                    "비대면",
-                    progress["intake_completed_label"],
-                ],
-                [
-                    "상담자 경험",
-                    f"{progress['journal_completed_count']}회기 완료",
-                    "대면·비대면 혼합",
-                    progress["counseling_completed_label"],
-                ],
-                [
-                    "종결기록지",
-                    f"{progress['termination_completed_count']}건 제출",
-                    "비대면",
-                    "—",
-                ],
-                [
-                    "수퍼비전",
-                    (
-                        f"{progress['supervision_attended_count']}회 출석 "
-                        f"({progress['supervision_attendance_percent']}%)"
-                    ),
-                    "비대면",
-                    "—",
-                ],
-                [
-                    "사례보고서",
-                    f"{progress['case_report_submitted_count']}건 제출",
-                    "비대면",
-                    "—",
-                ],
-                [
-                    "공개사례발표회",
-                    f"{progress['public_presentation_participation_count']}회 참여",
-                    "비대면",
-                    "—",
-                ],
+                ["접수면접", progress["intake_completed_label"], "비대면"],
+                ["상담자 경험", progress["counseling_completed_label"], "대면·비대면 혼합"],
+                ["수퍼비전", "6시간 40분", "비대면"],
+                ["사례보고서", f"{progress['case_report_submitted_count']}사례", "비대면"],
             ],
         )
+        row_names = [row[0] for row in context["rows"]]
+        self.assertNotIn("종결기록지", row_names)
+        self.assertNotIn("공개사례발표회", row_names)
         self.assertEqual(
             context["method_notice"],
             "※ 접수면접 및 상담자 경험의 진행방식은 현재 사례에 등록된 상담방식을 기준으로 표시합니다.",
@@ -143,6 +121,7 @@ class TrainingCertificateContextTests(TestCase):
             supervisor_label="—",
             intake_mode="—",
             journal_mode="—",
+            supervision_time="0분",
         )
         labels = [label for label, _value in context["identity"]]
         self.assertEqual(context["identity"], [("성명", "기간없음"), ("수퍼바이저", "—")])
@@ -158,6 +137,7 @@ class TrainingCertificateContextTests(TestCase):
             supervisor_label="—",
             intake_mode="—",
             journal_mode="—",
+            supervision_time="0분",
         )
         pdf_bytes = build_training_certificate_pdf(context)
         self.assertTrue(pdf_bytes.startswith(b"%PDF"))
@@ -224,7 +204,7 @@ class TrainingCertificateAccessTests(TestCase):
 
     def test_one_certificate_does_not_query_per_case(self):
         counselor = User.objects.select_related("counselor_profile").get(pk=self.counselor.pk)
-        with self.assertNumQueries(7):
+        with self.assertNumQueries(8):
             response = training_certificate_response(counselor)
         self.assertEqual(response.status_code, 200)
 
@@ -335,8 +315,11 @@ class TrainingCertificateDetailTests(TestCase):
         SupervisorProfile.objects.filter(user=duplicate).update(assigned_cohorts=[4])
         SupervisorProfile.objects.filter(user=elsewhere).update(assigned_cohorts=[9])
 
-        self.assertEqual(supervisor_label_for_counselor(counselor), "김수퍼, 박수퍼")
-        self.assertEqual(supervisor_label_for_counselor(other), "외수퍼")
+        self.assertEqual(
+            supervisor_label_for_counselor(counselor),
+            "김수퍼 교수, 박수퍼 교수",
+        )
+        self.assertEqual(supervisor_label_for_counselor(other), "외수퍼 교수")
 
         alone = _counselor("담당없음", cohort=3)
         self.assertEqual(supervisor_label_for_counselor(alone), "—")
@@ -402,6 +385,7 @@ class TrainingCertificateDetailTests(TestCase):
             supervisor_label="—",
             intake_mode="—",
             journal_mode="대면",
+            supervision_time="0분",
         )
         with patch(
             "apps.counseling.training_certificate_pdf._logo_flowable",
@@ -411,3 +395,102 @@ class TrainingCertificateDetailTests(TestCase):
         self.assertTrue(pdf_bytes.startswith(b"%PDF"))
         with pikepdf.open(BytesIO(pdf_bytes)) as pdf:
             self.assertEqual(len(pdf.pages), 1)
+
+
+def _certificate_context(counselor, progress):
+    return build_training_certificate_context(
+        counselor,
+        progress,
+        date(2026, 10, 28),
+        supervisor_label="—",
+        intake_mode="비대면",
+        journal_mode="비대면",
+        supervision_time=supervision_attended_time_label(counselor),
+    )
+
+
+def _supervision_session(cohort, number, status, minutes):
+    return SupervisionSession.objects.create(
+        cohort=cohort,
+        session_number=number,
+        scheduled_at=timezone.now(),
+        status=status,
+        duration_minutes=minutes,
+    )
+
+
+def _attend(session, counselor, status):
+    return SupervisionAttendance.objects.create(
+        session=session,
+        counselor=counselor.counselor_profile,
+        status=status,
+    )
+
+
+class TrainingCertificateRecordTests(TestCase):
+    def test_credit_hours_and_case_report_counts(self):
+        counselor = _counselor("시간상담", cohort=5)
+        client = _user("시간내담@example.com", "시간내담", UserRole.CLIENT)
+        case = _case(counselor, client, "TIME-1", CounselingMethod.REMOTE)
+        _intake(case)
+        for session_number in range(1, 6):
+            _journal(case, session_number)
+        progress = get_counselor_training_progress(counselor)
+        context = _certificate_context(counselor, progress)
+        self.assertEqual(context["rows"][0][1], "1시간")
+        self.assertEqual(context["rows"][1][1], "5시간")
+        self.assertEqual(context["rows"][3], ["사례보고서", "0사례", "비대면"])
+
+        CasePresentationPost.objects.create(
+            cohort=5,
+            author=counselor,
+            case=case,
+            title="보고서1",
+            file=SimpleUploadedFile("보고서1.pdf", b"%PDF-1.4"),
+        )
+        CasePresentationPost.objects.create(
+            cohort=5,
+            author=counselor,
+            case=case,
+            title="보고서2",
+            file=SimpleUploadedFile("보고서2.pdf", b"%PDF-1.4"),
+        )
+        progress = get_counselor_training_progress(counselor)
+        self.assertEqual(progress["case_report_submitted_count"], 1)
+        context = _certificate_context(counselor, progress)
+        self.assertEqual(context["rows"][3][1], "1사례")
+
+        other_client = _user("시간내담2@example.com", "시간내담2", UserRole.CLIENT)
+        other_case = _case(counselor, other_client, "TIME-2", CounselingMethod.REMOTE)
+        CasePresentationPost.objects.create(
+            cohort=5,
+            author=counselor,
+            case=other_case,
+            title="보고서3",
+            file=SimpleUploadedFile("보고서3.pdf", b"%PDF-1.4"),
+        )
+        progress = get_counselor_training_progress(counselor)
+        self.assertEqual(progress["case_report_submitted_count"], 2)
+        context = _certificate_context(counselor, progress)
+        self.assertEqual(context["rows"][3][1], "2사례")
+
+    def test_supervision_time_uses_present_completed_sessions_only(self):
+        counselor = _counselor("출석시간", cohort=6)
+        other = _counselor("다른기수출석", cohort=7)
+        present = _supervision_session(6, 1, SupervisionSessionStatus.COMPLETED, 480)
+        absent = _supervision_session(6, 2, SupervisionSessionStatus.COMPLETED, 60)
+        unchecked = _supervision_session(6, 3, SupervisionSessionStatus.COMPLETED, 60)
+        scheduled = _supervision_session(6, 4, SupervisionSessionStatus.SCHEDULED, 60)
+        cancelled = _supervision_session(6, 5, SupervisionSessionStatus.CANCELLED, 60)
+        other_present = _supervision_session(7, 1, SupervisionSessionStatus.COMPLETED, 120)
+        _attend(present, counselor, SupervisionAttendanceStatus.PRESENT)
+        _attend(absent, counselor, SupervisionAttendanceStatus.ABSENT)
+        _attend(unchecked, counselor, SupervisionAttendanceStatus.UNCHECKED)
+        _attend(scheduled, counselor, SupervisionAttendanceStatus.PRESENT)
+        _attend(cancelled, counselor, SupervisionAttendanceStatus.PRESENT)
+        _attend(other_present, other, SupervisionAttendanceStatus.PRESENT)
+
+        self.assertEqual(supervision_attended_time_label(counselor), "8시간")
+        present.duration_minutes = 450
+        present.save(update_fields=["duration_minutes"])
+        self.assertEqual(supervision_attended_time_label(counselor), "7시간 30분")

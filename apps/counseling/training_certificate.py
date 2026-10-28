@@ -5,10 +5,17 @@
 회기 수나 일지 수로 대면/비대면을 나누지 않는다.
 """
 
-from django.db.models import Exists, OuterRef
+from django.db.models import Exists, OuterRef, Sum
 
 from apps.accounts.models import SupervisorProfile
-from apps.counseling.models import Case, CounselingMethod
+from apps.counseling.models import (
+    Case,
+    CounselingMethod,
+    SupervisionAttendanceStatus,
+    SupervisionSession,
+    SupervisionSessionStatus,
+)
+from apps.counseling.training_progress import format_training_minutes
 from apps.documents.models import ConsentDocType, ConsentDocument
 
 _UNKNOWN = "UNKNOWN"
@@ -46,7 +53,7 @@ def supervisor_label_for_counselor(counselor) -> str:
         names.append(name)
     if not names:
         return "—"
-    return ", ".join(names)
+    return ", ".join(f"{name} 교수" for name in names)
 
 
 def _bucket(raw) -> str:
@@ -95,6 +102,24 @@ def _intake_case_methods(counselor):
 def intake_delivery_mode_label(counselor) -> str:
     """접수면접지 파일이 있는 담당 사례의 현재 상담방식 종류."""
     return format_case_method_kinds(_intake_case_methods(counselor))
+
+
+def supervision_attended_time_label(counselor) -> str:
+    """완료 회차 중 출석(PRESENT)한 duration_minutes 합계."""
+    profile = getattr(counselor, "counselor_profile", None)
+    cohort = getattr(profile, "cohort", None) if profile is not None else None
+    if profile is None or cohort is None:
+        return format_training_minutes(0)
+    total = (
+        SupervisionSession.objects.filter(
+            cohort=cohort,
+            status=SupervisionSessionStatus.COMPLETED,
+            attendances__counselor_id=profile.pk,
+            attendances__status=SupervisionAttendanceStatus.PRESENT,
+        ).aggregate(total=Sum("duration_minutes"))["total"]
+        or 0
+    )
+    return format_training_minutes(total)
 
 
 def journal_delivery_mode_label(counselor) -> str:

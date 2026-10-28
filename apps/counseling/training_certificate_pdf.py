@@ -18,7 +18,15 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
-from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import (
+    Flowable,
+    Image,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
 from apps.sessions_app.pdf import _register_korean_font
 
@@ -43,6 +51,7 @@ def build_training_certificate_context(
     supervisor_label: str,
     intake_mode: str,
     journal_mode: str,
+    supervision_time: str,
 ) -> dict:
     """확인서에 찍을 값. progress는 수련현황 함수의 반환 그대로다."""
     profile = getattr(counselor, "counselor_profile", None)
@@ -52,50 +61,19 @@ def build_training_certificate_context(
         identity.append(("생년월일", format_certificate_date(birth_date)))
     identity.append(("수퍼바이저", supervisor_label or _EMPTY))
     rows = [
-        [
-            "접수면접",
-            f"{progress['intake_completed_count']}건 완료",
-            intake_mode,
-            progress["intake_completed_label"],
-        ],
-        [
-            "상담자 경험",
-            f"{progress['journal_completed_count']}회기 완료",
-            journal_mode,
-            progress["counseling_completed_label"],
-        ],
-        [
-            "종결기록지",
-            f"{progress['termination_completed_count']}건 제출",
-            "비대면",
-            _EMPTY,
-        ],
-        [
-            "수퍼비전",
-            (
-                f"{progress['supervision_attended_count']}회 출석 "
-                f"({progress['supervision_attendance_percent']}%)"
-            ),
-            "비대면",
-            _EMPTY,
-        ],
+        ["접수면접", progress["intake_completed_label"], intake_mode],
+        ["상담자 경험", progress["counseling_completed_label"], journal_mode],
+        ["수퍼비전", supervision_time, "비대면"],
         [
             "사례보고서",
-            f"{progress['case_report_submitted_count']}건 제출",
+            f"{progress['case_report_submitted_count']}사례",
             "비대면",
-            _EMPTY,
-        ],
-        [
-            "공개사례발표회",
-            f"{progress['public_presentation_participation_count']}회 참여",
-            "비대면",
-            _EMPTY,
         ],
     ]
     return {
         "title": CERTIFICATE_TITLE,
         "identity": identity,
-        "columns": ["수련항목", "완료/참여", "진행방식", "인정시간"],
+        "columns": ["수련항목", "수련시간", "진행방식"],
         "rows": rows,
         "progress": progress,
         "method_notice": CERTIFICATE_METHOD_NOTICE,
@@ -212,7 +190,7 @@ def build_training_certificate_pdf(context: dict) -> bytes:
     ]
     table = Table(
         [header, *body],
-        colWidths=[36 * mm, 48 * mm, 58 * mm, 32 * mm],
+        colWidths=[48 * mm, 58 * mm, 68 * mm],
     )
     table.setStyle(
         TableStyle(
@@ -237,7 +215,7 @@ def build_training_certificate_pdf(context: dict) -> bytes:
             Paragraph(context["method_notice"], notice_style),
             Spacer(1, 6 * mm),
             Paragraph(context["confirmation"], center_style),
-            Spacer(1, 12 * mm),
+            _PushToBottom(32 * mm),
             Paragraph(context["issued_on_label"], center_style),
             Spacer(1, 6 * mm),
             _issuer_flowable(context, font),
@@ -245,6 +223,23 @@ def build_training_certificate_pdf(context: dict) -> bytes:
     )
     doc.build(story)
     return buffer.getvalue()
+
+
+class _PushToBottom(Flowable):
+    """발급일과 기관명 그룹을 페이지 하단에 붙인다."""
+
+    def __init__(self, reserve):
+        super().__init__()
+        self.reserve = reserve
+        self.height = 0
+
+    def wrap(self, availWidth, availHeight):
+        gap = availHeight - self.reserve
+        self.height = gap if gap > 0 else 0
+        return availWidth, self.height
+
+    def draw(self):
+        return
 
 
 def _issuer_flowable(context: dict, font: str):
@@ -293,6 +288,7 @@ def training_certificate_response(counselor) -> HttpResponse:
         intake_delivery_mode_label,
         journal_delivery_mode_label,
         supervisor_label_for_counselor,
+        supervision_attended_time_label,
     )
     from apps.counseling.training_progress import get_counselor_training_progress
 
@@ -304,6 +300,7 @@ def training_certificate_response(counselor) -> HttpResponse:
         supervisor_label=supervisor_label_for_counselor(counselor),
         intake_mode=intake_delivery_mode_label(counselor),
         journal_mode=journal_delivery_mode_label(counselor),
+        supervision_time=supervision_attended_time_label(counselor),
     )
     pdf_bytes = build_training_certificate_pdf(context)
     filename = f"수련확인증_{counselor.name or 'counselor'}.pdf"
