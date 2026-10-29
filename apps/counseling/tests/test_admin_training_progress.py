@@ -442,6 +442,42 @@ class AdminTrainingProgressDetailTests(TestCase):
         progress = get_counselor_training_progress(self.counselor)
         self.assertEqual(response.context["training_progress"], progress)
 
+    def test_case_report_detail_matches_list_meaning(self):
+        cases = [
+            _case(self.counselor, _client_user(f"보고서내담{i}"), f"CASE-REP-{i}")
+            for i in range(4)
+        ]
+        _presentation(self.counselor, "미연결글", case=None, cohort=6)
+        listing = self.http.get(
+            reverse("admin_panel:training_progress"), {"cohort": "6"}
+        )
+        detail = self.http.get(self.url, {"cohort": "6"})
+        detail_body = detail.content.decode()
+        report_section = detail_body[
+            detail_body.index("사례보고서") : detail_body.index("공개사례발표회 참여")
+        ]
+        self.assertContains(listing, "0/4사례")
+        self.assertIn("4건 중 0건 제출", report_section)
+        self.assertNotIn("총 4건 / 0건 제출", report_section)
+        self.assertNotIn("4/0건 제출", report_section)
+
+        _presentation(self.counselor, "연결1", case=cases[0], cohort=6)
+        _presentation(self.counselor, "연결1중복", case=cases[0], cohort=6)
+        _presentation(self.counselor, "연결2", case=cases[1], cohort=6)
+        listing = self.http.get(
+            reverse("admin_panel:training_progress"), {"cohort": "6"}
+        )
+        detail = self.http.get(self.url, {"cohort": "6"})
+        detail_body = detail.content.decode()
+        report_section = detail_body[
+            detail_body.index("사례보고서") : detail_body.index("공개사례발표회 참여")
+        ]
+        self.assertContains(listing, "2/4사례")
+        self.assertIn("4건 중 2건 제출", report_section)
+        progress = get_counselor_training_progress(self.counselor)
+        self.assertEqual(progress["case_report_required_count"], 4)
+        self.assertEqual(progress["case_report_submitted_count"], 2)
+
     def test_missing_counselor_returns_404(self):
         import uuid
 

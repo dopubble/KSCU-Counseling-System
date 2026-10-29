@@ -81,7 +81,8 @@
             <div class="col-md-6 col-xl-4">
                 <div class="border rounded p-3 h-100">
                     <h3 class="h6 fw-semibold mb-2">사례보고서</h3>
-                    <p class="mb-0">총 {{ training_progress.case_report_required_count }}건 / {{ training_progress.case_report_submitted_count }}건 제출</p>
+                    <p class="mb-0">{{ training_progress.case_report_required_count }}건 중 {{ training_progress.case_report_submitted_count }}건 제출</p>
+                    <p class="text-muted small mb-0">담당 사례에 연결된 사례발표 게시글 기준</p>
                 </div>
             </div>
             <div class="col-md-6 col-xl-4">
