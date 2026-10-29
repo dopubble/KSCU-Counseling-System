@@ -550,7 +550,8 @@ class CounselorTrainingProgressDashboardTests(TestCase):
         self.assertNotContains(response, "0건 완료 · 0분")
         self.assertNotContains(response, "총 0회 / 0회 완료")
         self.assertContains(response, "총 0분 / 0분 완료")
-        self.assertContains(response, "총 0회 / 완료 0회 중 0회 출석")
+        self.assertContains(response, "총 0회 / 중 0회 출석")
+        self.assertNotContains(response, "완료 0회 중")
         self.assertNotContains(response, "총 0회 / 0회 출석")
         self.assertContains(response, "0회 참여")
         self.assertContains(response, "댓글 참여 기준")
@@ -614,7 +615,8 @@ class CounselorTrainingProgressDashboardTests(TestCase):
 
         response = self.http.get(self.url)
 
-        self.assertContains(response, "총 9회 / 완료 8회 중 7회 출석")
+        self.assertContains(response, "총 9회 / 중 7회 출석")
+        self.assertNotContains(response, "완료 8회 중")
         self.assertContains(response, "88%")
 
     def test_dashboard_shows_linked_case_report_counts(self):
