@@ -257,19 +257,47 @@ class InitialRecordSupervisorTests(TestCase):
         self.assertContains(response, "호소 내용")
         self.assertContains(response, "전략")
 
-    def test_supervisor_dashboard_shows_initial_records_link(self):
+    def test_supervisor_dashboard_hides_duplicate_initial_records_card(self):
         http = HttpClient()
         http.force_login(self.supervisor)
         response = http.get(reverse("supervisor:dashboard"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "기수별 초기상담 기록지")
+        body = response.content.decode()
+        journals_url = reverse("supervisor:cohort_journals")
+        initial_url = reverse("supervisor:cohort_initial_records")
+        self.assertNotIn("기수별 초기상담 기록지", body)
+        self.assertIn("기수별 상담일지", body)
+        self.assertIn("초기상담기록지·상담일지·종결기록지 열람", body)
+        self.assertIn(f'href="{journals_url}"', body)
+        self.assertEqual(body.count(initial_url), 1)
 
     def test_supervisor_home_shows_dashboard_menus(self):
         http = HttpClient()
         http.force_login(self.supervisor)
         response = http.get(reverse("home"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "기수별 상담일지")
-        self.assertContains(response, "기수별 초기상담 기록지")
-        self.assertContains(response, "사례발표 보고서 게시판")
-        self.assertContains(response, "대시보드")
+        body = response.content.decode()
+        self.assertIn("기수별 상담일지", body)
+        self.assertIn("사례별 초기상담기록지·상담일지·종결기록지를 확인합니다.", body)
+        self.assertNotIn("기수별 초기상담 기록지", body)
+        self.assertIn("사례발표 보고서 게시판", body)
+        self.assertIn("대시보드", body)
+        self.assertIn(reverse("supervisor:cohort_journals"), body)
+
+    def test_admin_home_and_initial_records_url_unchanged(self):
+        admin = User.objects.create_user(
+            email="admin-dash@example.com",
+            password="pass12345",
+            name="관리자",
+            role=UserRole.ADMIN,
+            status=UserStatus.ACTIVE,
+        )
+        http = HttpClient()
+        http.force_login(admin)
+        home = http.get(reverse("home"))
+        self.assertEqual(home.status_code, 200)
+        self.assertContains(home, "센터 현황")
+        self.assertNotContains(home, "기수별 초기상담 기록지")
+        records = http.get(reverse("supervisor:cohort_initial_records"))
+        self.assertEqual(records.status_code, 200)
+        self.assertContains(records, "기수별 초기상담 기록지")
