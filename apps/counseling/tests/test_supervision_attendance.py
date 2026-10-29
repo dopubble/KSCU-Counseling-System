@@ -300,7 +300,7 @@ class AdminSupervisionRosterTests(TestCase):
         when = timezone.localtime(self.session.scheduled_at).strftime("%Y-%m-%d %H:%M")
         title = "<h2 class=\"h4 mb-0\">4기 1회차 출석</h2>"
         meta = f"<p class=\"text-muted mb-0\">{when} · 예정</p>"
-        self.assertIn("d-flex flex-wrap align-items-center gap-3 mt-4 mb-4", above_form)
+        self.assertIn("d-flex flex-wrap align-items-center gap-3 mt-4 mb-5", above_form)
         self.assertIn(title, above_form)
         self.assertIn(meta, above_form)
         self.assertLess(above_form.index(title), above_form.index(meta))
@@ -317,7 +317,7 @@ class AdminSupervisionRosterTests(TestCase):
         self.assertLess(body.index(list_button), body.index(save_button))
         self.assertLess(body.index(save_button), body.index(edit_button))
         self.assertIn(
-            "supervision-attendance-actions d-flex flex-wrap align-items-center justify-content-center gap-2 mt-4",
+            "supervision-attendance-actions d-flex flex-wrap align-items-center justify-content-center gap-2 mt-5",
             body,
         )
         self.assertIn("table align-middle mb-0", body)
@@ -371,7 +371,7 @@ class AdminSupervisionRosterTests(TestCase):
         self.assertNotContains(supervisor_page, "총 3명")
         self.assertNotIn("supervision-attendance-actions", supervisor_body)
         self.assertNotIn("justify-content-center", supervisor_body)
-        self.assertNotIn("gap-3 mt-4 mb-4", supervisor_body)
+        self.assertNotIn("gap-3 mt-4 mb-5", supervisor_body)
         self.assertNotIn("table align-middle mb-0", supervisor_body)
         self.assertNotIn("text-center align-middle", supervisor_body)
         self.assertIn("전체 출석", supervisor_body)
