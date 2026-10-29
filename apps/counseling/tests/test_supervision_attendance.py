@@ -296,7 +296,15 @@ class AdminSupervisionRosterTests(TestCase):
         body = response.content.decode()
         list_url = reverse("admin_panel:supervision_sessions", args=[4])
         edit_url = reverse("admin_panel:supervision_session_edit", args=[self.session.pk])
-        above_form = body.split("<form", 1)[0]
+        above_form = body.split('id="supervision-attendance-form"', 1)[0]
+        when = timezone.localtime(self.session.scheduled_at).strftime("%Y-%m-%d %H:%M")
+        title = "<h2 class=\"h4 mb-0\">4기 1회차 출석</h2>"
+        meta = f"<p class=\"text-muted mb-0\">{when} · 예정</p>"
+        self.assertIn("d-flex flex-wrap align-items-center gap-3 mt-4 mb-3", above_form)
+        self.assertIn(title, above_form)
+        self.assertIn(meta, above_form)
+        self.assertLess(above_form.index(title), above_form.index(meta))
+        self.assertEqual(body.count(f"{when} · 예정"), 1)
         self.assertNotIn("← 목록으로", above_form)
         self.assertNotIn("회차 수정", above_form)
         self.assertNotIn("history.back", body)
@@ -309,7 +317,7 @@ class AdminSupervisionRosterTests(TestCase):
         self.assertLess(body.index(list_button), body.index(save_button))
         self.assertLess(body.index(save_button), body.index(edit_button))
         self.assertIn(
-            "supervision-attendance-actions d-flex flex-wrap align-items-center justify-content-end gap-2",
+            "supervision-attendance-actions d-flex flex-wrap align-items-center justify-content-center gap-2",
             body,
         )
         self.assertIn("--bs-btn-color: var(--kscu-primary)", body)
@@ -361,7 +369,8 @@ class AdminSupervisionRosterTests(TestCase):
         self.assertNotContains(supervisor_page, "회차 수정")
         self.assertNotContains(supervisor_page, "총 3명")
         self.assertNotIn("supervision-attendance-actions", supervisor_body)
-        self.assertNotIn("justify-content-end", supervisor_body)
+        self.assertNotIn("justify-content-center", supervisor_body)
+        self.assertNotIn("gap-3 mt-4 mb-3", supervisor_body)
         self.assertNotIn("text-center align-middle", supervisor_body)
         self.assertIn("전체 출석", supervisor_body)
 
