@@ -48,6 +48,18 @@ def _create_client(name: str) -> User:
     )
 
 
+def _supervision_sessions(cohort, status, count, *, start=1):
+    return [
+        SupervisionSession.objects.create(
+            cohort=cohort,
+            session_number=start + offset,
+            scheduled_at=timezone.now(),
+            status=status,
+        )
+        for offset in range(count)
+    ]
+
+
 def _create_counselor(name: str, *, cohort=1) -> User:
     user = User.objects.create_user(
         email=f"{name}@example.com",
@@ -155,7 +167,10 @@ class CounselorTrainingProgressTests(TestCase):
         self.assertEqual(progress["journal_completed_count"], 0)
         self.assertEqual(progress["counseling_progress_percent"], 0)
         self.assertEqual(progress["termination_required_count"], 0)
+        self.assertEqual(progress["supervision_total_count"], 0)
+        self.assertEqual(progress["supervision_completed_count"], 0)
         self.assertEqual(progress["supervision_required_count"], 0)
+        self.assertEqual(progress["supervision_attended_count"], 0)
         self.assertEqual(progress["supervision_attendance_percent"], 0)
         self.assertEqual(progress["case_report_required_count"], 0)
         self.assertEqual(progress["case_report_submitted_count"], 0)
@@ -339,7 +354,7 @@ class CounselorTrainingProgressTests(TestCase):
         self.assertEqual(other_progress["termination_required_count"], 1)
         self.assertEqual(other_progress["termination_completed_count"], 1)
 
-    def test_supervision_attendance_uses_completed_sessions_only(self):
+    def test_supervision_total_includes_scheduled_but_attendance_rate_uses_completed_sessions(self):
         profile = self.counselor.counselor_profile
         completed = SupervisionSession.objects.create(
             cohort=1,
@@ -388,9 +403,56 @@ class CounselorTrainingProgressTests(TestCase):
 
         progress = get_counselor_training_progress(self.counselor)
 
+        self.assertEqual(progress["supervision_total_count"], 3)
+        self.assertEqual(progress["supervision_completed_count"], 2)
         self.assertEqual(progress["supervision_required_count"], 2)
         self.assertEqual(progress["supervision_attended_count"], 1)
         self.assertEqual(progress["supervision_attendance_percent"], 50)
+
+    def test_registered_total_counts_scheduled_sessions_and_rate_uses_completed(self):
+        profile = self.counselor.counselor_profile
+        completed = _supervision_sessions(1, SupervisionSessionStatus.COMPLETED, 8)
+        _supervision_sessions(1, SupervisionSessionStatus.SCHEDULED, 1, start=9)
+        for session in completed[:7]:
+            SupervisionAttendance.objects.create(
+                session=session,
+                counselor=profile,
+                status=SupervisionAttendanceStatus.PRESENT,
+            )
+
+        progress = get_counselor_training_progress(self.counselor)
+
+        self.assertEqual(progress["supervision_total_count"], 9)
+        self.assertEqual(progress["supervision_completed_count"], 8)
+        self.assertEqual(progress["supervision_attended_count"], 7)
+        self.assertEqual(progress["supervision_attendance_percent"], 88)
+
+    def test_cancelled_session_is_left_out_of_the_registered_total(self):
+        _supervision_sessions(1, SupervisionSessionStatus.COMPLETED, 8)
+        _supervision_sessions(1, SupervisionSessionStatus.SCHEDULED, 1, start=9)
+        cancelled = _supervision_sessions(1, SupervisionSessionStatus.CANCELLED, 1, start=10)
+        SupervisionAttendance.objects.create(
+            session=cancelled[0],
+            counselor=self.counselor.counselor_profile,
+            status=SupervisionAttendanceStatus.PRESENT,
+        )
+
+        progress = get_counselor_training_progress(self.counselor)
+
+        self.assertEqual(progress["supervision_total_count"], 9)
+        self.assertEqual(progress["supervision_completed_count"], 8)
+        self.assertEqual(progress["supervision_attended_count"], 0)
+        self.assertEqual(progress["supervision_attendance_percent"], 0)
+
+    def test_only_scheduled_sessions_show_zero_attendance_rate(self):
+        _supervision_sessions(1, SupervisionSessionStatus.SCHEDULED, 9)
+
+        progress = get_counselor_training_progress(self.counselor)
+
+        self.assertEqual(progress["supervision_total_count"], 9)
+        self.assertEqual(progress["supervision_completed_count"], 0)
+        self.assertEqual(progress["supervision_attended_count"], 0)
+        self.assertEqual(progress["supervision_attendance_percent"], 0)
 
     def test_public_presentation_counts_distinct_posts_not_repeat_comments(self):
         first = _presentation_post(self.counselor, "발표1")
@@ -488,7 +550,8 @@ class CounselorTrainingProgressDashboardTests(TestCase):
         self.assertNotContains(response, "0건 완료 · 0분")
         self.assertNotContains(response, "총 0회 / 0회 완료")
         self.assertContains(response, "총 0분 / 0분 완료")
-        self.assertContains(response, "총 0회 / 0회 출석")
+        self.assertContains(response, "총 0회 / 완료 0회 중 0회 출석")
+        self.assertNotContains(response, "총 0회 / 0회 출석")
         self.assertContains(response, "0회 참여")
         self.assertContains(response, "댓글 참여 기준")
         self.assertContains(response, "총 0건 / 0건 제출", count=2)
@@ -537,6 +600,22 @@ class CounselorTrainingProgressDashboardTests(TestCase):
         self.assertNotIn("완료 회기", body)
         self.assertNotIn("작성완료", body)
         self.assertNotIn("게시글이 사례와 연결되어 있지 않아", body)
+
+    def test_dashboard_supervision_text_separates_total_and_completed(self):
+        profile = self.counselor.counselor_profile
+        completed = _supervision_sessions(1, SupervisionSessionStatus.COMPLETED, 8)
+        _supervision_sessions(1, SupervisionSessionStatus.SCHEDULED, 1, start=9)
+        for session in completed[:7]:
+            SupervisionAttendance.objects.create(
+                session=session,
+                counselor=profile,
+                status=SupervisionAttendanceStatus.PRESENT,
+            )
+
+        response = self.http.get(self.url)
+
+        self.assertContains(response, "총 9회 / 완료 8회 중 7회 출석")
+        self.assertContains(response, "88%")
 
     def test_dashboard_shows_linked_case_report_counts(self):
         first = _create_case(self.counselor, _create_client("화면사례1"), "CASE-UI-1")

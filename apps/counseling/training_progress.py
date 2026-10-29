@@ -15,8 +15,10 @@
 진행 중인 사례도 최종적으로 종결기록지 1건이 필요하므로 포함한다.
 완료는 TerminationCounselingRecord가 있고 is_draft=False인 경우다.
 
-수퍼비전 출석률은 상담사 기수의 완료 회차 중 출석 수다.
-예정·취소 회차는 분모에서 뺀다.
+수퍼비전 총 회차는 상담사 기수에 등록된 회차 중 취소가 아닌 회차다.
+예정 회차도 총 회차에 포함한다.
+출석률은 완료 회차 중 출석 수다.
+예정·취소 회차는 출석률 분모에서 뺀다.
 
 사례보고서는 담당 사례 1건당 1건이다.
 제출은 이 상담사가 작성하고 본인 담당 사례에 연결된 게시글의 서로 다른 사례 수다.
@@ -93,29 +95,37 @@ def _completed_journal_count():
     return Coalesce(Subquery(completed, output_field=IntegerField()), Value(0))
 
 
-def _supervision_counts(counselor) -> tuple[int, int]:
+def _supervision_counts(counselor) -> tuple[int, int, int]:
+    """취소 제외 총 회차, 완료 회차, 완료 중 출석 회차. 쿼리는 한 번이다."""
     profile = (
         CounselorProfile.objects.filter(user_id=counselor.pk)
         .only("id", "cohort")
         .first()
     )
     if profile is None or profile.cohort is None:
-        return 0, 0
-    row = SupervisionSession.objects.filter(
-        cohort=profile.cohort,
-        status=SupervisionSessionStatus.COMPLETED,
-    ).aggregate(
-        required=Count("pk", distinct=True),
+        return 0, 0, 0
+    row = SupervisionSession.objects.filter(cohort=profile.cohort).aggregate(
+        total=Count(
+            "pk",
+            distinct=True,
+            filter=~Q(status=SupervisionSessionStatus.CANCELLED),
+        ),
+        completed=Count(
+            "pk",
+            distinct=True,
+            filter=Q(status=SupervisionSessionStatus.COMPLETED),
+        ),
         attended=Count(
             "pk",
             distinct=True,
             filter=Q(
+                status=SupervisionSessionStatus.COMPLETED,
                 attendances__counselor_id=profile.pk,
                 attendances__status=SupervisionAttendanceStatus.PRESENT,
             ),
         ),
     )
-    return row["required"] or 0, row["attended"] or 0
+    return row["total"] or 0, row["completed"] or 0, row["attended"] or 0
 
 
 def _presentation_participation_count(counselor) -> int:
@@ -145,6 +155,8 @@ def get_counselor_training_progress(counselor) -> dict:
             "counseling_progress_percent": 0,
             "termination_required_count": 0,
             "termination_completed_count": 0,
+            "supervision_total_count": 0,
+            "supervision_completed_count": 0,
             "supervision_required_count": 0,
             "supervision_attended_count": 0,
             "supervision_attendance_percent": 0,
@@ -222,7 +234,9 @@ def get_counselor_training_progress(counselor) -> dict:
     intake_completed_minutes = intake_completed * TRAINING_CREDIT_MINUTES_PER_SESSION
     assigned_minutes = assigned * TRAINING_CREDIT_MINUTES_PER_SESSION
     completed_minutes = journal_completed * TRAINING_CREDIT_MINUTES_PER_SESSION
-    supervision_required, supervision_attended = _supervision_counts(counselor)
+    supervision_total, supervision_completed, supervision_attended = _supervision_counts(
+        counselor
+    )
     return {
         "intake_required_count": intake_required,
         "intake_completed_count": intake_completed,
@@ -239,10 +253,12 @@ def get_counselor_training_progress(counselor) -> dict:
         "counseling_progress_percent": _percent(journal_completed, assigned),
         "termination_required_count": row["termination_required_count"],
         "termination_completed_count": row["termination_completed_count"],
-        "supervision_required_count": supervision_required,
+        "supervision_total_count": supervision_total,
+        "supervision_completed_count": supervision_completed,
+        "supervision_required_count": supervision_completed,
         "supervision_attended_count": supervision_attended,
         "supervision_attendance_percent": _percent(
-            supervision_attended, supervision_required
+            supervision_attended, supervision_completed
         ),
         "case_report_required_count": intake_required,
         "case_report_submitted_count": row["case_report_submitted_count"],
