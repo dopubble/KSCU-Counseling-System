@@ -6,6 +6,7 @@
 """
 
 from django.db.models import Exists, OuterRef, Sum
+from django.utils import timezone
 
 from apps.accounts.models import SupervisorProfile
 from apps.counseling.models import (
@@ -120,6 +121,26 @@ def supervision_attended_time_label(counselor) -> str:
         or 0
     )
     return format_training_minutes(total)
+
+
+def certificate_date_for_counselor(counselor):
+    """취소되지 않은 기수 수퍼비전 중 가장 늦은 회차의 현지 날짜. 없으면 None."""
+    profile = getattr(counselor, "counselor_profile", None)
+    cohort = getattr(profile, "cohort", None) if profile is not None else None
+    if cohort is None:
+        return None
+    scheduled_at = (
+        SupervisionSession.objects.filter(cohort=cohort)
+        .exclude(status=SupervisionSessionStatus.CANCELLED)
+        .order_by("-scheduled_at")
+        .values_list("scheduled_at", flat=True)
+        .first()
+    )
+    if scheduled_at is None:
+        return None
+    if timezone.is_naive(scheduled_at):
+        scheduled_at = timezone.make_aware(scheduled_at, timezone.get_current_timezone())
+    return timezone.localtime(scheduled_at).date()
 
 
 def journal_delivery_mode_label(counselor) -> str:

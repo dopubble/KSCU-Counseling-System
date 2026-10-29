@@ -1,7 +1,8 @@
 """전문상담사 수련확인서 PDF."""
 
 import uuid
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 from io import BytesIO
 from unittest.mock import patch
 
@@ -26,6 +27,7 @@ from apps.counseling.models import (
     SupervisionSessionStatus,
 )
 from apps.counseling.training_certificate import (
+    certificate_date_for_counselor,
     intake_delivery_mode_label,
     journal_delivery_mode_label,
     supervisor_label_for_counselor,
@@ -37,11 +39,12 @@ from apps.counseling.training_certificate_pdf import (
     CERTIFICATE_METHOD_NOTICE,
     _BOTTOM_MARGIN,
     _TOP_MARGIN,
+    FOOTER_LOGO_FILENAME,
+    _FooterMark,
     build_training_certificate_context,
-    _IssuerMark,
     build_training_certificate_pdf,
-    issuer_group_origin,
-    issuer_mark_offsets,
+    footer_logo_origin,
+    footer_logo_size,
     training_certificate_response,
 )
 from apps.counseling.training_progress import get_counselor_training_progress
@@ -197,10 +200,6 @@ class TrainingCertificateAccessTests(TestCase):
                 "apps.counseling.training_certificate_pdf.build_training_certificate_pdf",
                 return_value=b"%PDF-1.4",
             ) as builder,
-            patch(
-                "apps.counseling.training_certificate_pdf.timezone.localdate",
-                return_value=date(2026, 10, 28),
-            ),
         ):
             response = http.get(self.own_url)
         self.assertEqual(response.status_code, 200)
@@ -209,12 +208,12 @@ class TrainingCertificateAccessTests(TestCase):
         context = builder.call_args.args[0]
         self.assertIs(context["progress"], sentinel)
         self.assertEqual(context["identity"][0], ("성명", "본인상담"))
-        self.assertEqual(context["issued_on_label"], "2026년 10월 28일")
+        self.assertEqual(context["issued_on_label"], "—")
         self.assertNotEqual(context["identity"][0][1], self.other.name)
 
     def test_one_certificate_does_not_query_per_case(self):
         counselor = User.objects.select_related("counselor_profile").get(pk=self.counselor.pk)
-        with self.assertNumQueries(8):
+        with self.assertNumQueries(9):
             response = training_certificate_response(counselor)
         self.assertEqual(response.status_code, 200)
 
@@ -398,7 +397,7 @@ class TrainingCertificateDetailTests(TestCase):
             supervision_time="0분",
         )
         with patch(
-            "apps.counseling.training_certificate_pdf._logo_flowable",
+            "apps.counseling.training_certificate_pdf._footer_logo_spec",
             return_value=None,
         ):
             pdf_bytes = build_training_certificate_pdf(context)
@@ -506,28 +505,60 @@ class TrainingCertificateRecordTests(TestCase):
         self.assertEqual(supervision_attended_time_label(counselor), "7시간 30분")
 
 
-class IssuerGroupLayoutTests(TestCase):
-    def test_logo_and_name_group_is_centered_on_the_page(self):
-        page_width = 595.27
-        group_width, start_x = issuer_group_origin(page_width, 32, 120, 8)
-        self.assertAlmostEqual(start_x + group_width / 2, page_width / 2)
-        self.assertAlmostEqual(group_width, 160)
+class FooterLogoLayoutTests(TestCase):
+    def test_footer_logo_keeps_aspect_ratio_within_content_width(self):
+        width, height = footer_logo_size(200, 1024, 341)
+        self.assertAlmostEqual(width, 90)
+        self.assertAlmostEqual(width / height, 1024 / 341)
 
-    def test_text_only_issuer_is_centered_on_the_page(self):
+    def test_footer_logo_is_centered_on_the_page(self):
         page_width = 595.27
-        group_width, start_x = issuer_group_origin(page_width, 0, 140, 9)
-        self.assertEqual(group_width, 140)
-        self.assertAlmostEqual(start_x + group_width / 2, page_width / 2)
+        image_width = 180
+        start_x = footer_logo_origin(page_width, image_width)
+        self.assertAlmostEqual(start_x + image_width / 2, page_width / 2)
 
-    def test_logo_and_text_share_a_vertical_center(self):
-        box_height = 20
-        ascent, descent = 8, -2
-        logo_height = 12
-        logo_y, baseline = issuer_mark_offsets(box_height, logo_height, ascent, descent)
-        logo_center = logo_y + logo_height / 2
-        text_center = baseline + (ascent + descent) / 2
-        self.assertAlmostEqual(logo_center, box_height / 2)
-        self.assertAlmostEqual(text_center, box_height / 2)
+    def test_loaded_footer_uses_the_combined_image_only(self):
+        from apps.counseling.training_certificate_pdf import _footer_logo_spec
+
+        spec = _footer_logo_spec()
+        self.assertIsNotNone(spec)
+        self.assertTrue(spec[0].replace("\\", "/").endswith(FOOTER_LOGO_FILENAME))
+        self.assertNotIn("ssu-logo.png", spec[0].replace("\\", "/"))
+        self.assertAlmostEqual(spec[1] / spec[2], 1024 / 341)
+
+        class Canvas:
+            def __init__(self):
+                self.images = []
+                self.strings = []
+
+            def drawImage(self, path, x, y, width, height, **kwargs):
+                self.images.append((path, x, y, width, height))
+
+            def drawString(self, x, y, text):
+                self.strings.append(text)
+
+            def setFillColor(self, *args, **kwargs):
+                return None
+
+            def setFont(self, *args, **kwargs):
+                return None
+
+        mark = _FooterMark(
+            CERTIFICATE_ISSUER,
+            "Helvetica",
+            11,
+            page_width=595.27,
+            left_margin=62.36,
+            logo=spec,
+        )
+        mark.wrap(400, 700)
+        mark.canv = Canvas()
+        mark.draw()
+        self.assertEqual(mark.canv.strings, [])
+        self.assertEqual(len(mark.canv.images), 1)
+        path, x, _y, width, _height = mark.canv.images[0]
+        self.assertTrue(path.replace("\\", "/").endswith(FOOTER_LOGO_FILENAME))
+        self.assertAlmostEqual(62.36 + x + width / 2, 595.27 / 2)
 
     def test_notice_is_omitted_and_issuer_margin_matches_title(self):
         self.assertEqual(_BOTTOM_MARGIN, _TOP_MARGIN)
@@ -554,14 +585,14 @@ class IssuerGroupLayoutTests(TestCase):
             seen.append(text)
             return RealParagraph(text, style)
 
-        class SpyMark(_IssuerMark):
+        class SpyMark(_FooterMark):
             def __init__(self, text, *args, **kwargs):
                 issuers.append(text)
                 super().__init__(text, *args, **kwargs)
 
         with (
             patch("apps.counseling.training_certificate_pdf.Paragraph", side_effect=spy),
-            patch("apps.counseling.training_certificate_pdf._IssuerMark", SpyMark),
+            patch("apps.counseling.training_certificate_pdf._FooterMark", SpyMark),
         ):
             pdf_bytes = build_training_certificate_pdf(context)
         self.assertNotIn(CERTIFICATE_METHOD_NOTICE, seen)
@@ -570,3 +601,117 @@ class IssuerGroupLayoutTests(TestCase):
         self.assertEqual(issuers, [CERTIFICATE_ISSUER])
         with pikepdf.open(BytesIO(pdf_bytes)) as pdf:
             self.assertEqual(len(pdf.pages), 1)
+
+    def test_missing_image_draws_centered_institution_text(self):
+        mark = _FooterMark(
+            CERTIFICATE_ISSUER,
+            "Helvetica",
+            11,
+            page_width=595.27,
+            left_margin=62.36,
+            logo=None,
+        )
+
+        class Canvas:
+            def __init__(self):
+                self.strings = []
+
+            def drawString(self, x, y, text):
+                self.strings.append((x, text))
+
+            def drawImage(self, *args, **kwargs):
+                raise AssertionError("fallback must not draw an image")
+
+            def setFillColor(self, *args, **kwargs):
+                return None
+
+            def setFont(self, *args, **kwargs):
+                return None
+
+        mark.wrap(400, 700)
+        mark.canv = Canvas()
+        mark.draw()
+        self.assertEqual(len(mark.canv.strings), 1)
+        x, text = mark.canv.strings[0]
+        self.assertEqual(text, CERTIFICATE_ISSUER)
+        from reportlab.pdfbase.pdfmetrics import stringWidth
+
+        text_width = stringWidth(CERTIFICATE_ISSUER, "Helvetica", 11)
+        self.assertAlmostEqual(62.36 + x + text_width / 2, 595.27 / 2)
+
+
+def _dated_session(cohort, number, status, when):
+    return SupervisionSession.objects.create(
+        cohort=cohort,
+        session_number=number,
+        scheduled_at=when,
+        status=status,
+        duration_minutes=50,
+    )
+
+
+def _seoul(year, month, day, hour=10, minute=0):
+    return timezone.make_aware(datetime(year, month, day, hour, minute))
+
+
+class CertificateDateTests(TestCase):
+    def test_date_is_the_latest_non_cancelled_session(self):
+        counselor = _counselor("종료일상담", cohort=8)
+        _dated_session(8, 1, SupervisionSessionStatus.COMPLETED, _seoul(2026, 7, 6))
+        _dated_session(8, 2, SupervisionSessionStatus.COMPLETED, _seoul(2026, 8, 3))
+        _dated_session(8, 3, SupervisionSessionStatus.COMPLETED, _seoul(2026, 10, 26))
+        self.assertEqual(certificate_date_for_counselor(counselor), date(2026, 10, 26))
+
+    def test_cancelled_session_is_excluded(self):
+        counselor = _counselor("취소제외", cohort=9)
+        _dated_session(9, 1, SupervisionSessionStatus.COMPLETED, _seoul(2026, 10, 26))
+        _dated_session(9, 2, SupervisionSessionStatus.CANCELLED, _seoul(2026, 11, 9))
+        self.assertEqual(certificate_date_for_counselor(counselor), date(2026, 10, 26))
+
+    def test_future_scheduled_session_is_included_without_changing_attended_time(self):
+        counselor = _counselor("예정포함", cohort=10)
+        completed = _dated_session(10, 1, SupervisionSessionStatus.COMPLETED, _seoul(2026, 10, 26))
+        completed.duration_minutes = 480
+        completed.save(update_fields=["duration_minutes"])
+        _attend(completed, counselor, SupervisionAttendanceStatus.PRESENT)
+        _dated_session(10, 2, SupervisionSessionStatus.SCHEDULED, _seoul(2026, 11, 9))
+        self.assertEqual(certificate_date_for_counselor(counselor), date(2026, 11, 9))
+        self.assertEqual(supervision_attended_time_label(counselor), "8시간")
+
+    def test_utc_evening_stays_on_the_seoul_date(self):
+        counselor = _counselor("시간대", cohort=11)
+        _dated_session(
+            11,
+            1,
+            SupervisionSessionStatus.COMPLETED,
+            datetime(2026, 10, 25, 15, 30, tzinfo=ZoneInfo("UTC")),
+        )
+        self.assertEqual(certificate_date_for_counselor(counselor), date(2026, 10, 26))
+
+    def test_missing_cohort_or_sessions_show_a_dash(self):
+        without_cohort = _counselor("기수없음날짜", cohort=None)
+        self.assertIsNone(certificate_date_for_counselor(without_cohort))
+        context = build_training_certificate_context(
+            without_cohort,
+            get_counselor_training_progress(without_cohort),
+            certificate_date_for_counselor(without_cohort),
+            supervisor_label="—",
+            intake_mode="—",
+            journal_mode="—",
+            supervision_time="0분",
+        )
+        self.assertEqual(context["issued_on_label"], "—")
+
+        empty = _counselor("회차없음", cohort=12)
+        _dated_session(12, 1, SupervisionSessionStatus.CANCELLED, _seoul(2026, 11, 9))
+        self.assertIsNone(certificate_date_for_counselor(empty))
+        context = build_training_certificate_context(
+            empty,
+            get_counselor_training_progress(empty),
+            None,
+            supervisor_label="—",
+            intake_mode="—",
+            journal_mode="—",
+            supervision_time="0분",
+        )
+        self.assertEqual(context["issued_on_label"], "—")

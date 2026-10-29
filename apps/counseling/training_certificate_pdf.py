@@ -11,7 +11,6 @@ from urllib.parse import quote
 
 from django.conf import settings
 from django.http import HttpResponse
-from django.utils import timezone
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.pagesizes import A4
@@ -24,7 +23,6 @@ from reportlab.platypus import (
     Flowable,
     BaseDocTemplate,
     Frame,
-    Image,
     PageTemplate,
     Paragraph,
     Spacer,
@@ -40,7 +38,9 @@ CERTIFICATE_METHOD_NOTICE = (
     "※ 접수면접 및 상담자 경험의 진행방식은 현재 사례에 등록된 상담방식을 기준으로 표시합니다."
 )
 CERTIFICATE_ISSUER = "숭실사이버대학교 평생교육원"
+FOOTER_LOGO_FILENAME = "training-certificate-footer-logo.png"
 _EMPTY = "—"
+_FOOTER_LOGO_WIDTH_RATIO = 0.45
 
 _PAGE_WIDTH = A4[0]
 _SIDE_MARGIN = 22 * mm
@@ -51,7 +51,6 @@ _SPACE_AFTER_TITLE = 16
 _SPACE_AFTER_IDENTITY = 20
 _SPACE_AFTER_TABLE = 20
 _SPACE_AFTER_CONFIRMATION = 28
-_ISSUER_GAP = 3 * mm
 _ISSUER_FONT_SIZE = 11
 
 
@@ -94,26 +93,35 @@ def build_training_certificate_context(
         "progress": progress,
         "method_notice": CERTIFICATE_METHOD_NOTICE,
         "confirmation": CERTIFICATE_CONFIRMATION,
-        "issued_on_label": format_certificate_date(issued_on),
+        "issued_on_label": format_certificate_date(issued_on) if issued_on else _EMPTY,
         "issuer": CERTIFICATE_ISSUER,
     }
 
 
-def _logo_flowable():
-    path = os.path.join(settings.BASE_DIR, "static", "images", "ssu-logo.png")
+def footer_logo_size(content_width, pixel_width, pixel_height, ratio=_FOOTER_LOGO_WIDTH_RATIO):
+    """원본 비율을 유지한 하단 로고 크기. 가로는 본문 폭의 ratio를 넘지 않는다."""
+    if not pixel_width or not pixel_height:
+        return 0, 0
+    width = content_width * ratio
+    return width, width * (pixel_height / pixel_width)
+
+
+def footer_logo_origin(page_width, image_width):
+    """이미지 왼쪽 시작 좌표. 중심은 페이지 중심과 같다."""
+    return (page_width - image_width) / 2
+
+
+def _footer_logo_spec():
+    path = os.path.join(settings.BASE_DIR, "static", "images", FOOTER_LOGO_FILENAME)
     if not os.path.isfile(path):
         return None
     try:
         image = ImageReader(path)
         width_px, height_px = image.getSize()
-        if not width_px or not height_px:
+        width, height = footer_logo_size(_CONTENT_WIDTH, width_px, height_px)
+        if width <= 0 or height <= 0:
             return None
-        max_width = 14 * mm
-        max_height = 5.8 * mm
-        scale = min(max_width / width_px, max_height / height_px)
-        flowable = Image(path, width=width_px * scale, height=height_px * scale)
-        flowable.hAlign = "CENTER"
-        return flowable
+        return path, width, height
     except Exception:
         return None
 
@@ -238,14 +246,13 @@ def build_training_certificate_pdf(context: dict) -> bytes:
             ]
         )
     )
-    issuer = _IssuerMark(
+    issuer = _FooterMark(
         context["issuer"],
         font,
         _ISSUER_FONT_SIZE,
         page_width=_PAGE_WIDTH,
         left_margin=_SIDE_MARGIN,
-        logo=_logo_flowable(),
-        gap=_ISSUER_GAP,
+        logo=_footer_logo_spec(),
     )
     _, issuer_height = issuer.wrap(_CONTENT_WIDTH, doc.height)
     story.extend(
@@ -279,21 +286,6 @@ class _FillRemaining(Flowable):
         return
 
 
-def issuer_group_origin(page_width, logo_width, text_width, gap):
-    """로고+간격+기관명 그룹의 페이지 왼쪽 시작 좌표."""
-    logo_width = logo_width or 0
-    gap = gap if logo_width else 0
-    group_width = logo_width + gap + text_width
-    return group_width, (page_width - group_width) / 2
-
-
-def issuer_mark_offsets(box_height, logo_height, ascent, descent):
-    """로고와 글자의 시각적 중심이 같은 높이가 되는 좌표."""
-    logo_y = (box_height - logo_height) / 2 if logo_height else 0
-    baseline = box_height / 2 - (ascent + descent) / 2
-    return logo_y, baseline
-
-
 def _text_metrics(font_name, font_size):
     face = pdfmetrics.getFont(font_name).face
     ascent = getattr(face, "ascent", 0) or 800
@@ -301,10 +293,10 @@ def _text_metrics(font_name, font_size):
     return ascent * font_size / 1000.0, descent * font_size / 1000.0
 
 
-class _IssuerMark(Flowable):
-    """로고와 기관명을 페이지 가로 중심 기준으로 한 그룹으로 그린다."""
+class _FooterMark(Flowable):
+    """완성형 하단 로고. 이미지가 없으면 기관명 텍스트만 중앙에 그린다."""
 
-    def __init__(self, text, font, font_size, *, page_width, left_margin, logo, gap):
+    def __init__(self, text, font, font_size, *, page_width, left_margin, logo):
         super().__init__()
         self.text = text
         self.font = font
@@ -312,51 +304,44 @@ class _IssuerMark(Flowable):
         self.page_width = page_width
         self.left_margin = left_margin
         self.logo = logo
-        self.gap = gap
         self._ascent = font_size * 0.8
         self._descent = -font_size * 0.2
 
     def wrap(self, availWidth, availHeight):
         self.width = availWidth
-        self._ascent, self._descent = _text_metrics(self.font, self.font_size)
-        text_height = self._ascent - self._descent
-        logo_height = self.logo.drawHeight if self.logo is not None else 0
-        self.height = max(text_height, logo_height)
+        if self.logo is not None:
+            self.height = self.logo[2]
+        else:
+            self._ascent, self._descent = _text_metrics(self.font, self.font_size)
+            self.height = self._ascent - self._descent
         return availWidth, self.height
 
     def draw(self):
-        logo_width = self.logo.drawWidth if self.logo is not None else 0
-        logo_height = self.logo.drawHeight if self.logo is not None else 0
-        text_width = stringWidth(self.text, self.font, self.font_size)
-        _, start_x = issuer_group_origin(
-            self.page_width,
-            logo_width,
-            text_width,
-            self.gap,
-        )
-        x = start_x - self.left_margin
-        logo_y, baseline = issuer_mark_offsets(
-            self.height,
-            logo_height,
-            self._ascent,
-            self._descent,
-        )
         if self.logo is not None:
-            self.canv.saveState()
-            self.canv.translate(x, logo_y)
-            self.logo.canv = self.canv
-            self.logo.draw()
-            self.canv.restoreState()
-            x += logo_width + self.gap
+            path, width, height = self.logo
+            x = footer_logo_origin(self.page_width, width) - self.left_margin
+            self.canv.drawImage(
+                path,
+                x,
+                0,
+                width=width,
+                height=height,
+                mask="auto",
+                preserveAspectRatio=True,
+            )
+            return
+        text_width = stringWidth(self.text, self.font, self.font_size)
+        x = footer_logo_origin(self.page_width, text_width) - self.left_margin
         self.canv.setFillColor(colors.black)
         self.canv.setFont(self.font, self.font_size)
-        self.canv.drawString(x, baseline, self.text)
+        self.canv.drawString(x, -self._descent, self.text)
 
 
 def training_certificate_response(counselor) -> HttpResponse:
     from apps.counseling.training_certificate import (
         intake_delivery_mode_label,
         journal_delivery_mode_label,
+        certificate_date_for_counselor,
         supervisor_label_for_counselor,
         supervision_attended_time_label,
     )
@@ -366,7 +351,7 @@ def training_certificate_response(counselor) -> HttpResponse:
     context = build_training_certificate_context(
         counselor,
         progress,
-        timezone.localdate(),
+        certificate_date_for_counselor(counselor),
         supervisor_label=supervisor_label_for_counselor(counselor),
         intake_mode=intake_delivery_mode_label(counselor),
         journal_mode=journal_delivery_mode_label(counselor),
