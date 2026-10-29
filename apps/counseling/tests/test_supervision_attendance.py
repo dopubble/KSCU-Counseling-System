@@ -1,5 +1,7 @@
 """수퍼비전 회차·출석 권한."""
 
+import re
+
 from django.core.exceptions import PermissionDenied
 from django.db import IntegrityError, transaction
 from django.test import Client as HttpClient, TestCase
@@ -285,17 +287,28 @@ class AdminSupervisionRosterTests(TestCase):
             _counselor(name, 4) for name in ("가상담", "나상담", "다상담")
         ]
 
-    def test_admin_attendance_links_back_to_the_session_list(self):
+    def test_admin_attendance_actions_sit_under_the_roster(self):
         http = HttpClient()
         http.force_login(self.admin)
         response = http.get(
             reverse("admin_panel:supervision_attendance", args=[self.session.pk])
         )
+        body = response.content.decode()
         list_url = reverse("admin_panel:supervision_sessions", args=[4])
-        self.assertContains(response, "← 목록으로")
-        self.assertContains(response, list_url)
-        self.assertContains(response, "회차 수정")
-        self.assertNotContains(response, "history.back")
+        edit_url = reverse("admin_panel:supervision_session_edit", args=[self.session.pk])
+        above_form = body.split("<form", 1)[0]
+        self.assertNotIn("← 목록으로", above_form)
+        self.assertNotIn("회차 수정", above_form)
+        self.assertNotIn("history.back", body)
+        list_button = f'<a class="btn btn-outline-secondary" href="{list_url}">← 목록으로</a>'
+        save_button = '<button type="submit" class="btn btn-primary">출석 저장</button>'
+        edit_button = f'<a class="btn btn-outline-primary" href="{edit_url}">회차 수정</a>'
+        self.assertIn(list_button, body)
+        self.assertIn(save_button, body)
+        self.assertIn(edit_button, body)
+        self.assertLess(body.index(list_button), body.index(save_button))
+        self.assertLess(body.index(save_button), body.index(edit_button))
+        self.assertIn("d-flex flex-wrap align-items-center gap-2", body)
 
     def test_admin_roster_shows_numbers_and_total_without_extra_queries(self):
         from django.db import connection
@@ -318,19 +331,32 @@ class AdminSupervisionRosterTests(TestCase):
             page = http.get(url)
         self.assertEqual(one.status_code, 200)
         self.assertEqual(len(single), len(several))
-        self.assertContains(page, "상담사 (총 3명)")
         body = page.content.decode()
+        self.assertNotIn("상담사 (총", body)
+        self.assertNotIn("총 3명", body)
         self.assertIn(">1<", body)
         self.assertIn(">2<", body)
         self.assertIn(">3<", body)
-        self.assertContains(page, "전체 출석")
+        self.assertEqual(body.count("text-center align-middle"), 12)
+        self.assertIn("<th class=\"text-center align-middle\">번호</th>", body)
+        self.assertIn("<th class=\"text-center align-middle\">상담사</th>", body)
+        self.assertIn("<span>출석</span>", body)
+        self.assertIsNone(re.search(r">\s*전체 출석", body))
+        self.assertIn('aria-label="전체 출석"', body)
+        self.assertIn('title="전체 출석"', body)
+        self.assertIn('id="supervision-attendance-all"', body)
+        self.assertIn("box.checked = all.checked", body)
         supervisor = HttpClient()
         supervisor.force_login(self.supervisor)
         supervisor_page = supervisor.get(
             reverse("supervisor:supervision_attendance", args=[self.session.pk])
         )
+        supervisor_body = supervisor_page.content.decode()
         self.assertNotContains(supervisor_page, "← 목록으로")
+        self.assertNotContains(supervisor_page, "회차 수정")
         self.assertNotContains(supervisor_page, "총 3명")
+        self.assertNotIn("text-center align-middle", supervisor_body)
+        self.assertIn("전체 출석", supervisor_body)
 
     def test_session_list_offers_a_confirmed_delete(self):
         http = HttpClient()

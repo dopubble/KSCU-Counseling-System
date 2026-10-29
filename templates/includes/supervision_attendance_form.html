@@ -4,10 +4,17 @@
         <table class="table align-middle">
             <thead>
                 <tr>
-                    {% if show_roster_index %}<th>번호</th>{% endif %}
-                    <th>{% if show_roster_index %}상담사 (총 {{ roster|length }}명){% else %}상담사{% endif %}</th>
-                    <th>
-                        {% if roster %}
+                    {% if show_roster_index %}<th class="text-center align-middle">번호</th>{% endif %}
+                    <th{% if show_roster_index %} class="text-center align-middle"{% endif %}>상담사</th>
+                    <th{% if show_roster_index %} class="text-center align-middle"{% endif %}>
+                        {% if show_roster_index %}
+                        <div class="d-inline-flex align-items-center justify-content-center gap-2">
+                            <span>출석</span>
+                            {% if roster %}
+                            <input class="form-check-input m-0" type="checkbox" id="supervision-attendance-all" aria-label="전체 출석" title="전체 출석">
+                            {% endif %}
+                        </div>
+                        {% elif roster %}
                         <label class="form-check mb-0">
                             <input class="form-check-input" type="checkbox" id="supervision-attendance-all">
                             전체 출석
@@ -21,10 +28,10 @@
             <tbody>
                 {% for row in roster %}
                 <tr>
-                    {% if show_roster_index %}<td>{{ forloop.counter }}</td>{% endif %}
-                    <td>{{ row.name }}</td>
-                    <td>
-                        <input class="form-check-input supervision-attendance-box"
+                    {% if show_roster_index %}<td class="text-center align-middle">{{ forloop.counter }}</td>{% endif %}
+                    <td{% if show_roster_index %} class="text-center align-middle"{% endif %}>{{ row.name }}</td>
+                    <td{% if show_roster_index %} class="text-center align-middle"{% endif %}>
+                        <input class="form-check-input supervision-attendance-box{% if show_roster_index %} m-0{% endif %}"
                                type="checkbox"
                                name="attendance_{{ row.profile.pk }}"
                                value="PRESENT"
@@ -38,7 +45,15 @@
             </tbody>
         </table>
     </div>
-    {% if roster %}
+    {% if show_roster_index %}
+    <div class="d-flex flex-wrap align-items-center gap-2">
+        <a class="btn btn-outline-secondary" href="{% url 'admin_panel:supervision_sessions' session.cohort %}">← 목록으로</a>
+        {% if roster %}
+        <button type="submit" class="btn btn-primary">출석 저장</button>
+        {% endif %}
+        <a class="btn btn-outline-primary" href="{% url 'admin_panel:supervision_session_edit' session.pk %}">회차 수정</a>
+    </div>
+    {% elif roster %}
     <button type="submit" class="btn btn-primary">출석 저장</button>
     {% endif %}
 </form>

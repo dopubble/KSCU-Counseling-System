@@ -5,10 +5,7 @@
 
 {% block content %}
 {% page_header show_heading=False c1_label="대시보드" c1_url_name="admin_panel:dashboard" c1_icon="bi-speedometer2" c2_label="수퍼비전 회차" c2_url_name="admin_panel:supervision_sessions" c2_url_arg=session.cohort c3_label="출석" %}
-<div class="mt-4 mb-2">
-    <a class="btn btn-outline-secondary btn-sm" href="{% url 'admin_panel:supervision_sessions' session.cohort %}">← 목록으로</a>
-</div>
-<h2 class="h4 mb-2">{{ session.cohort }}기 {{ session.session_number }}회차 출석</h2>
-<p class="text-muted">{{ session.scheduled_at|date:"Y-m-d H:i" }} · {{ session.get_status_display }}{% if can_manage_sessions %} · <a href="{% url 'admin_panel:supervision_session_edit' session.pk %}">회차 수정</a>{% endif %}</p>
+<h2 class="h4 mt-4 mb-2">{{ session.cohort }}기 {{ session.session_number }}회차 출석</h2>
+<p class="text-muted">{{ session.scheduled_at|date:"Y-m-d H:i" }} · {{ session.get_status_display }}</p>
 {% include "includes/supervision_attendance_form.html" %}
 {% endblock %}
