@@ -183,7 +183,9 @@ class SupervisionAttendanceCheckboxTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, "미체크")
-        self.assertContains(response, "전체 출석")
+        self.assertIsNone(re.search(r">\s*전체 출석", body))
+        self.assertIn('aria-label="전체 출석"', body)
+        self.assertIn('title="전체 출석"', body)
         self.assertContains(response, "출석 저장")
         self.assertIn("checked", _attendance_tag(body, self.present.counselor_profile))
         self.assertNotIn("checked", _attendance_tag(body, self.absent.counselor_profile))
@@ -366,15 +368,36 @@ class AdminSupervisionRosterTests(TestCase):
             reverse("supervisor:supervision_attendance", args=[self.session.pk])
         )
         supervisor_body = supervisor_page.content.decode()
-        self.assertNotContains(supervisor_page, "← 목록으로")
-        self.assertNotContains(supervisor_page, "회차 수정")
-        self.assertNotContains(supervisor_page, "총 3명")
-        self.assertNotIn("supervision-attendance-actions", supervisor_body)
-        self.assertNotIn("justify-content-center", supervisor_body)
-        self.assertNotIn("gap-3 mt-4 mb-5", supervisor_body)
-        self.assertNotIn("table align-middle mb-0", supervisor_body)
-        self.assertNotIn("text-center align-middle", supervisor_body)
-        self.assertIn("전체 출석", supervisor_body)
+        when = timezone.localtime(self.session.scheduled_at).strftime("%Y-%m-%d %H:%M")
+        list_url = reverse("supervisor:supervision_sessions", args=[4])
+        above_form = supervisor_body.split('id="supervision-attendance-form"', 1)[0]
+        form = supervisor_body.split('id="supervision-attendance-form"', 1)[1]
+        self.assertIn("d-flex flex-wrap align-items-center gap-3 mt-4 mb-5", above_form)
+        self.assertIn("<h2 class=\"h4 mb-0\">4기 1회차 출석</h2>", above_form)
+        self.assertIn(f"<p class=\"text-muted mb-0\">{when} · 예정</p>", above_form)
+        self.assertEqual(supervisor_body.count(f"{when} · 예정"), 1)
+        self.assertEqual(form.count("text-center align-middle"), 12)
+        self.assertIn(">1<", form)
+        self.assertIn(">2<", form)
+        self.assertIn(">3<", form)
+        self.assertIsNone(re.search(r">\s*전체 출석", supervisor_body))
+        self.assertIn('aria-label="전체 출석"', supervisor_body)
+        self.assertIn('title="전체 출석"', supervisor_body)
+        self.assertIn("box.checked = all.checked", supervisor_body)
+        self.assertIn("table align-middle mb-0", form)
+        list_button = f'<a class="btn btn-outline-secondary" href="{list_url}">← 목록으로</a>'
+        save_button = '<button type="submit" class="btn btn-primary">출석 저장</button>'
+        self.assertIn(list_button, form)
+        self.assertIn(save_button, form)
+        self.assertLess(form.index(list_button), form.index(save_button))
+        self.assertIn(
+            "supervision-attendance-actions d-flex flex-wrap align-items-center justify-content-center gap-2 mt-5",
+            form,
+        )
+        self.assertNotIn("회차 수정", supervisor_body)
+        self.assertNotIn("admin-panel/supervision/sessions/", supervisor_body)
+        self.assertNotIn("history.back", supervisor_body)
+        self.assertNotIn("총 3명", supervisor_body)
 
     def test_session_list_offers_a_confirmed_delete(self):
         http = HttpClient()

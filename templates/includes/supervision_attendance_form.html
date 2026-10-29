@@ -47,11 +47,17 @@
     </div>
     {% if show_roster_index %}
     <div class="supervision-attendance-actions d-flex flex-wrap align-items-center justify-content-center gap-2 mt-5">
+        {% if can_manage_sessions %}
         <a class="btn btn-outline-secondary" href="{% url 'admin_panel:supervision_sessions' session.cohort %}">← 목록으로</a>
+        {% else %}
+        <a class="btn btn-outline-secondary" href="{% url 'supervisor:supervision_sessions' session.cohort %}">← 목록으로</a>
+        {% endif %}
         {% if roster %}
         <button type="submit" class="btn btn-primary">출석 저장</button>
         {% endif %}
+        {% if can_manage_sessions %}
         <a class="btn btn-outline-primary" href="{% url 'admin_panel:supervision_session_edit' session.pk %}">회차 수정</a>
+        {% endif %}
     </div>
     {% elif roster %}
     <button type="submit" class="btn btn-primary">출석 저장</button>
