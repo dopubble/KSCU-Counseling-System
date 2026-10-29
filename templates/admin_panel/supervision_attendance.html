@@ -22,7 +22,7 @@
 
 {% block content %}
 {% page_header show_heading=False c1_label="대시보드" c1_url_name="admin_panel:dashboard" c1_icon="bi-speedometer2" c2_label="수퍼비전 회차" c2_url_name="admin_panel:supervision_sessions" c2_url_arg=session.cohort c3_label="출석" %}
-<div class="d-flex flex-wrap align-items-center gap-3 mt-4 mb-3">
+<div class="d-flex flex-wrap align-items-center gap-3 mt-4 mb-4">
     <h2 class="h4 mb-0">{{ session.cohort }}기 {{ session.session_number }}회차 출석</h2>
     <p class="text-muted mb-0">{{ session.scheduled_at|date:"Y-m-d H:i" }} · {{ session.get_status_display }}</p>
 </div>

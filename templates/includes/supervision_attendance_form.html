@@ -1,7 +1,7 @@
 <form method="post" id="supervision-attendance-form">
     {% csrf_token %}
     <div class="table-responsive">
-        <table class="table align-middle">
+        <table class="table align-middle{% if show_roster_index %} mb-0{% endif %}">
             <thead>
                 <tr>
                     {% if show_roster_index %}<th class="text-center align-middle">번호</th>{% endif %}
@@ -46,7 +46,7 @@
         </table>
     </div>
     {% if show_roster_index %}
-    <div class="supervision-attendance-actions d-flex flex-wrap align-items-center justify-content-center gap-2">
+    <div class="supervision-attendance-actions d-flex flex-wrap align-items-center justify-content-center gap-2 mt-4">
         <a class="btn btn-outline-secondary" href="{% url 'admin_panel:supervision_sessions' session.cohort %}">← 목록으로</a>
         {% if roster %}
         <button type="submit" class="btn btn-primary">출석 저장</button>
