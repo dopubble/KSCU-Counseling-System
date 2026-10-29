@@ -30,7 +30,7 @@
 </li>
 
 <li class="nav-item dropdown">
-    <a class="nav-link dropdown-toggle admin-nav-dropdown-toggle {% if ns == 'admin_panel' and url_name == 'counselor_list' or ns == 'admin_panel' and url_name == 'consent_submissions' or ns == 'admin_panel' and url_name == 'supervision_cohorts' or ns == 'admin_panel' and url_name == 'supervision_sessions' or ns == 'admin_panel' and url_name == 'supervision_session_create' or ns == 'admin_panel' and url_name == 'supervision_session_edit' or ns == 'admin_panel' and url_name == 'supervision_attendance' %}active{% endif %}"
+    <a class="nav-link dropdown-toggle admin-nav-dropdown-toggle {% if ns == 'admin_panel' and url_name == 'counselor_list' or ns == 'admin_panel' and url_name == 'training_progress' or ns == 'admin_panel' and url_name == 'counselor_training_progress_detail' or ns == 'admin_panel' and url_name == 'consent_submissions' or ns == 'admin_panel' and url_name == 'supervision_cohorts' or ns == 'admin_panel' and url_name == 'supervision_sessions' or ns == 'admin_panel' and url_name == 'supervision_session_create' or ns == 'admin_panel' and url_name == 'supervision_session_edit' or ns == 'admin_panel' and url_name == 'supervision_attendance' %}active{% endif %}"
        href="#"
        id="adminCounselorMenu"
        role="button"
@@ -42,6 +42,10 @@
         <li>
             <a class="dropdown-item {% if ns == 'admin_panel' and url_name == 'counselor_list' %}active{% endif %}"
                href="{% url 'admin_panel:counselor_list' %}">상담사 명단</a>
+        </li>
+        <li>
+            <a class="dropdown-item {% if ns == 'admin_panel' and url_name == 'training_progress' or ns == 'admin_panel' and url_name == 'counselor_training_progress_detail' %}active{% endif %}"
+               href="{% url 'admin_panel:training_progress' %}">수련현황</a>
         </li>
         <li>
             <a class="dropdown-item {% if ns == 'admin_panel' and url_name == 'consent_submissions' %}active{% endif %}"

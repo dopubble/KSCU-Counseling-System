@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% load ui_tags %}
+
+{% block title %}수련현황{% endblock %}
+
+{% block content %}
+{% page_header show_heading=False c1_label="대시보드" c1_url_name="admin_panel:dashboard" c1_icon="bi-speedometer2" c2_label="수련현황" %}
+<div class="site-page-heading mt-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+        <div>
+            <h2 class="site-page-title mb-0">
+                수련현황
+                {% if selected_cohort %}
+                <span class="badge bg-primary align-middle">{{ selected_cohort }}기</span>
+                {% endif %}
+            </h2>
+            <p class="text-muted small mt-2 mb-0">기수별 상담사 수련 진행상황을 한 화면에서 비교·점검합니다.</p>
+        </div>
+        {% if cohorts %}
+        <form method="get" class="d-flex flex-wrap align-items-end gap-2 mb-0">
+            <div>
+                <label for="cohortFilter" class="form-label small fw-semibold mb-1">기수 선택</label>
+                <select name="cohort" id="cohortFilter" class="form-select form-select-sm" onchange="this.form.submit()">
+                    {% for c in cohorts %}
+                    <option value="{{ c }}" {% if selected_cohort == c %}selected{% endif %}>{{ c }}기</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </form>
+        {% endif %}
+    </div>
+</div>
+
+{% if not cohorts %}
+<p class="text-muted section-spacing mb-0">등록된 기수가 없습니다.</p>
+{% elif not rows %}
+<p class="text-muted section-spacing mb-0">해당 기수에 등록된 상담사가 없습니다.</p>
+{% else %}
+<div class="card shadow-sm border-0 section-spacing">
+    <div class="card-body p-0">
+        <div class="table-responsive table-container">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col" class="text-nowrap">번호</th>
+                        <th scope="col" class="text-nowrap">상담사</th>
+                        <th scope="col" class="text-nowrap">접수면접</th>
+                        <th scope="col" class="text-nowrap">상담자 경험</th>
+                        <th scope="col" class="text-nowrap">종결기록지</th>
+                        <th scope="col" class="text-nowrap">수퍼비전</th>
+                        <th scope="col" class="text-nowrap">사례보고서</th>
+                        <th scope="col" class="text-nowrap">공개사례발표</th>
+                        <th scope="col" class="text-nowrap">수련시간</th>
+                        <th scope="col" class="text-nowrap">수련확인증</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                    <tr>
+                        <td class="text-muted">{{ forloop.counter }}</td>
+                        <td class="fw-semibold text-nowrap">
+                            <a href="{% url 'admin_panel:counselor_training_progress_detail' row.counselor.pk %}{% if selected_cohort %}?cohort={{ selected_cohort }}{% endif %}">
+                                {{ row.counselor.name }}
+                            </a>
+                        </td>
+                        <td class="text-nowrap {% if row.display.intake_done %}text-success{% endif %}">
+                            {{ row.display.intake_label }}
+                        </td>
+                        <td class="text-nowrap {% if row.display.counseling_done %}text-success{% endif %}">
+                            {{ row.display.counseling_label }}
+                        </td>
+                        <td class="text-nowrap {% if row.display.termination_done %}text-success{% endif %}">
+                            {{ row.display.termination_label }}
+                        </td>
+                        <td class="text-nowrap"
+                            title="출석률 {{ row.display.supervision_attendance_percent }}%">
+                            {{ row.display.supervision_label }}
+                        </td>
+                        <td class="text-nowrap {% if row.display.case_report_done %}text-success{% endif %}">
+                            {{ row.display.case_report_label }}
+                        </td>
+                        <td class="text-nowrap">{{ row.display.public_presentation_label }}</td>
+                        <td class="text-nowrap fw-semibold">{{ row.display.training_time_label }}</td>
+                        <td class="text-nowrap">
+                            <a href="{% url 'admin_panel:counselor_training_certificate' row.counselor.pk %}"
+                               class="btn btn-sm btn-outline-primary"
+                               target="_blank"
+                               rel="noopener">출력</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<p class="text-muted small mb-0">총 {{ counselors_count }}명</p>
+{% endif %}
+{% endblock %}

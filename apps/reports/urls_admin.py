@@ -1,6 +1,10 @@
 from django.urls import path
 
-from apps.counseling import views_supervision, views_training_certificate
+from apps.counseling import (
+    views_admin_training_progress,
+    views_supervision,
+    views_training_certificate,
+)
 
 from . import views
 
@@ -25,6 +29,16 @@ urlpatterns = [
         name="appointment_calendar_events",
     ),
     path("counselors/", views.counselor_list, name="counselor_list"),
+    path(
+        "training-progress/",
+        views_admin_training_progress.admin_training_progress,
+        name="training_progress",
+    ),
+    path(
+        "training-progress/counselors/<uuid:counselor_id>/",
+        views_admin_training_progress.admin_counselor_training_progress_detail,
+        name="counselor_training_progress_detail",
+    ),
     path(
         "counselors/<uuid:counselor_id>/training-certificate/",
         views_training_certificate.admin_counselor_training_certificate,
