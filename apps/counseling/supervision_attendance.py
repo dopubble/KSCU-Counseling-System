@@ -79,6 +79,14 @@ def user_can_edit_supervision_sessions(user) -> bool:
     return user_is_platform_admin(user)
 
 
+def session_has_recorded_attendance(session: SupervisionSession) -> bool:
+    """출석 또는 결석이 저장됐거나, 확인 시각이 있으면 회차를 지울 수 없다."""
+    return session.attendances.exclude(
+        status=SupervisionAttendanceStatus.UNCHECKED,
+        checked_at__isnull=True,
+    ).exists()
+
+
 def attendance_cohorts_for_user(user) -> list[int]:
     """관리자는 회차·상담사 기수를 모두, 수퍼바이저는 담당 기수만."""
     if user_is_platform_admin(user):

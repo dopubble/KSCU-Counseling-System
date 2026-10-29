@@ -16,5 +16,31 @@
     </div>
     {% endfor %}
     <button type="submit" class="btn btn-primary">저장</button>
+    {% if is_edit %}
+    <button type="button" class="btn btn-outline-danger ms-2" data-bs-toggle="modal" data-bs-target="#delete-session-modal">삭제</button>
+    {% endif %}
 </form>
+{% if is_edit %}
+<div class="modal fade" id="delete-session-modal" tabindex="-1" aria-labelledby="delete-session-modal-label" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="post" action="{% url 'admin_panel:supervision_session_delete' session.pk %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title" id="delete-session-modal-label">수퍼비전 회차 삭제</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2">이 수퍼비전 회차를 삭제하시겠습니까? 삭제한 회차는 복구할 수 없습니다.</p>
+                    <p class="mb-0 fw-semibold">{{ session.cohort }}기 {{ session.session_number }}회차<br>{{ session.scheduled_at|date:"Y-m-d H:i" }}</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-danger">삭제</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
 {% endblock %}

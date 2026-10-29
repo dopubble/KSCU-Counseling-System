@@ -18,11 +18,39 @@
         <a href="{% url 'admin_panel:supervision_attendance' session.pk %}">{{ session.session_number }}회차 {% if session.title %}{{ session.title }}{% endif %}</a>
         <span class="text-muted small">{{ session.scheduled_at|date:"Y-m-d H:i" }} · {{ session.duration_minutes }}분 · {{ session.get_status_display }}</span>
         {% if can_manage_sessions %}
-        <a class="btn btn-sm btn-outline-secondary" href="{% url 'admin_panel:supervision_session_edit' session.pk %}">수정</a>
+        <span class="d-flex gap-2">
+            <a class="btn btn-sm btn-outline-secondary" href="{% url 'admin_panel:supervision_session_edit' session.pk %}">수정</a>
+            <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#delete-session-{{ session.pk }}">삭제</button>
+        </span>
         {% endif %}
     </div>
     {% endfor %}
 </div>
+{% if can_manage_sessions %}
+{% for session in sessions %}
+<div class="modal fade" id="delete-session-{{ session.pk }}" tabindex="-1" aria-labelledby="delete-session-label-{{ session.pk }}" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="post" action="{% url 'admin_panel:supervision_session_delete' session.pk %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title" id="delete-session-label-{{ session.pk }}">수퍼비전 회차 삭제</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2">이 수퍼비전 회차를 삭제하시겠습니까? 삭제한 회차는 복구할 수 없습니다.</p>
+                    <p class="mb-0 fw-semibold">{{ session.cohort }}기 {{ session.session_number }}회차<br>{{ session.scheduled_at|date:"Y-m-d H:i" }}</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-danger">삭제</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% endif %}
 {% else %}
 <p class="text-muted mb-0">등록된 수퍼비전 회차가 없습니다.</p>
 {% endif %}

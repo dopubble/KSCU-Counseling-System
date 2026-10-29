@@ -51,6 +51,11 @@ urlpatterns = [
         name="supervision_session_edit",
     ),
     path(
+        "supervision/sessions/<uuid:pk>/delete/",
+        views_supervision.admin_supervision_session_delete,
+        name="supervision_session_delete",
+    ),
+    path(
         "supervision/sessions/<uuid:pk>/",
         views_supervision.admin_supervision_attendance,
         name="supervision_attendance",

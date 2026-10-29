@@ -4,7 +4,8 @@
         <table class="table align-middle">
             <thead>
                 <tr>
-                    <th>상담사</th>
+                    {% if show_roster_index %}<th>번호</th>{% endif %}
+                    <th>{% if show_roster_index %}상담사 (총 {{ roster|length }}명){% else %}상담사{% endif %}</th>
                     <th>
                         {% if roster %}
                         <label class="form-check mb-0">
@@ -20,6 +21,7 @@
             <tbody>
                 {% for row in roster %}
                 <tr>
+                    {% if show_roster_index %}<td>{{ forloop.counter }}</td>{% endif %}
                     <td>{{ row.name }}</td>
                     <td>
                         <input class="form-check-input supervision-attendance-box"
@@ -31,7 +33,7 @@
                     </td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="2" class="text-muted">이 기수에 등록된 상담사가 없습니다.</td></tr>
+                <tr><td colspan="{% if show_roster_index %}3{% else %}2{% endif %}" class="text-muted">이 기수에 등록된 상담사가 없습니다.</td></tr>
                 {% endfor %}
             </tbody>
         </table>

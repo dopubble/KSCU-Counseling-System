@@ -274,3 +274,178 @@ class SupervisionAttendanceCheckboxTests(TestCase):
             ).status,
             SupervisionAttendanceStatus.UNCHECKED,
         )
+
+
+class AdminSupervisionRosterTests(TestCase):
+    def setUp(self):
+        self.admin = _user("연번관리@example.com", "연번관리", UserRole.ADMIN)
+        self.supervisor = _supervisor("연번수퍼", [4])
+        self.session = _session(4, 1, SupervisionSessionStatus.SCHEDULED)
+        self.counselors = [
+            _counselor(name, 4) for name in ("가상담", "나상담", "다상담")
+        ]
+
+    def test_admin_attendance_links_back_to_the_session_list(self):
+        http = HttpClient()
+        http.force_login(self.admin)
+        response = http.get(
+            reverse("admin_panel:supervision_attendance", args=[self.session.pk])
+        )
+        list_url = reverse("admin_panel:supervision_sessions", args=[4])
+        self.assertContains(response, "← 목록으로")
+        self.assertContains(response, list_url)
+        self.assertContains(response, "회차 수정")
+        self.assertNotContains(response, "history.back")
+
+    def test_admin_roster_shows_numbers_and_total_without_extra_queries(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        http = HttpClient()
+        http.force_login(self.admin)
+        url = reverse("admin_panel:supervision_attendance", args=[self.session.pk])
+        self.counselors[1].counselor_profile.cohort = 9
+        self.counselors[1].counselor_profile.save(update_fields=["cohort"])
+        self.counselors[2].counselor_profile.cohort = 9
+        self.counselors[2].counselor_profile.save(update_fields=["cohort"])
+        with CaptureQueriesContext(connection) as single:
+            one = http.get(url)
+        self.counselors[1].counselor_profile.cohort = 4
+        self.counselors[1].counselor_profile.save(update_fields=["cohort"])
+        self.counselors[2].counselor_profile.cohort = 4
+        self.counselors[2].counselor_profile.save(update_fields=["cohort"])
+        with CaptureQueriesContext(connection) as several:
+            page = http.get(url)
+        self.assertEqual(one.status_code, 200)
+        self.assertEqual(len(single), len(several))
+        self.assertContains(page, "상담사 (총 3명)")
+        body = page.content.decode()
+        self.assertIn(">1<", body)
+        self.assertIn(">2<", body)
+        self.assertIn(">3<", body)
+        self.assertContains(page, "전체 출석")
+        supervisor = HttpClient()
+        supervisor.force_login(self.supervisor)
+        supervisor_page = supervisor.get(
+            reverse("supervisor:supervision_attendance", args=[self.session.pk])
+        )
+        self.assertNotContains(supervisor_page, "← 목록으로")
+        self.assertNotContains(supervisor_page, "총 3명")
+
+    def test_session_list_offers_a_confirmed_delete(self):
+        http = HttpClient()
+        http.force_login(self.admin)
+        page = http.get(reverse("admin_panel:supervision_sessions", args=[4]))
+        delete_url = reverse("admin_panel:supervision_session_delete", args=[self.session.pk])
+        self.assertContains(page, "이 수퍼비전 회차를 삭제하시겠습니까? 삭제한 회차는 복구할 수 없습니다.")
+        self.assertContains(page, delete_url)
+        self.assertContains(page, "4기 1회차")
+
+
+class AdminSupervisionDeleteTests(TestCase):
+    def setUp(self):
+        self.admin = _user("삭제관리@example.com", "삭제관리", UserRole.ADMIN)
+        self.supervisor = _supervisor("삭제수퍼", [5])
+        self.counselor = _counselor("삭제상담", 5)
+        self.client_user = _user("삭제내담@example.com", "삭제내담", UserRole.CLIENT)
+        self.session = _session(5, 5, SupervisionSessionStatus.SCHEDULED)
+
+    def _delete(self):
+        http = HttpClient()
+        http.force_login(self.admin)
+        return http.post(
+            reverse("admin_panel:supervision_session_delete", args=[self.session.pk]),
+            follow=True,
+        )
+
+    def test_admin_can_delete_a_session_without_attendance(self):
+        response = self._delete()
+        self.assertContains(response, "수퍼비전 회차를 삭제했습니다.")
+        self.assertFalse(SupervisionSession.objects.filter(pk=self.session.pk).exists())
+        self.assertEqual(
+            response.request["PATH_INFO"],
+            reverse("admin_panel:supervision_sessions", args=[5]),
+        )
+
+    def test_unchecked_rows_without_confirmation_can_be_deleted(self):
+        SupervisionAttendance.objects.create(
+            session=self.session,
+            counselor=self.counselor.counselor_profile,
+            status=SupervisionAttendanceStatus.UNCHECKED,
+        )
+        response = self._delete()
+        self.assertContains(response, "수퍼비전 회차를 삭제했습니다.")
+        self.assertFalse(SupervisionSession.objects.filter(pk=self.session.pk).exists())
+        self.assertFalse(
+            SupervisionAttendance.objects.filter(
+                counselor=self.counselor.counselor_profile
+            ).exists()
+        )
+
+    def test_present_attendance_blocks_deletion(self):
+        attendance = SupervisionAttendance.objects.create(
+            session=self.session,
+            counselor=self.counselor.counselor_profile,
+            status=SupervisionAttendanceStatus.PRESENT,
+            checked_at=timezone.now(),
+        )
+        response = self._delete()
+        self.assertContains(response, "출석 기록이 있는 수퍼비전 회차는 삭제할 수 없습니다.")
+        self.assertTrue(SupervisionSession.objects.filter(pk=self.session.pk).exists())
+        attendance.refresh_from_db()
+        self.assertEqual(attendance.status, SupervisionAttendanceStatus.PRESENT)
+
+    def test_absent_attendance_blocks_deletion(self):
+        SupervisionAttendance.objects.create(
+            session=self.session,
+            counselor=self.counselor.counselor_profile,
+            status=SupervisionAttendanceStatus.ABSENT,
+            checked_at=timezone.now(),
+        )
+        response = self._delete()
+        self.assertContains(response, "출석 기록이 있는 수퍼비전 회차는 삭제할 수 없습니다.")
+        self.assertTrue(SupervisionSession.objects.filter(pk=self.session.pk).exists())
+        self.assertTrue(SupervisionAttendance.objects.filter(session=self.session).exists())
+
+    def test_get_does_not_delete(self):
+        http = HttpClient()
+        http.force_login(self.admin)
+        response = http.get(
+            reverse("admin_panel:supervision_session_delete", args=[self.session.pk])
+        )
+        self.assertEqual(response.status_code, 405)
+        self.assertTrue(SupervisionSession.objects.filter(pk=self.session.pk).exists())
+
+    def test_non_admins_cannot_delete(self):
+        for user in (self.counselor, self.supervisor, self.client_user):
+            http = HttpClient()
+            http.force_login(user)
+            response = http.post(
+                reverse("admin_panel:supervision_session_delete", args=[self.session.pk])
+            )
+            self.assertEqual(response.status_code, 403)
+        self.assertTrue(SupervisionSession.objects.filter(pk=self.session.pk).exists())
+
+    def test_unknown_session_is_404(self):
+        import uuid
+
+        http = HttpClient()
+        http.force_login(self.admin)
+        response = http.post(
+            reverse("admin_panel:supervision_session_delete", args=[uuid.uuid4()])
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_cancelled_session_without_recorded_attendance_can_be_deleted(self):
+        self.session.status = SupervisionSessionStatus.CANCELLED
+        self.session.save(update_fields=["status"])
+        response = self._delete()
+        self.assertContains(response, "수퍼비전 회차를 삭제했습니다.")
+        self.assertFalse(SupervisionSession.objects.filter(pk=self.session.pk).exists())
+
+    def test_completed_session_without_recorded_attendance_can_be_deleted(self):
+        self.session.status = SupervisionSessionStatus.COMPLETED
+        self.session.save(update_fields=["status"])
+        response = self._delete()
+        self.assertContains(response, "수퍼비전 회차를 삭제했습니다.")
+        self.assertFalse(SupervisionSession.objects.filter(pk=self.session.pk).exists())

@@ -13,6 +13,7 @@ from apps.counseling.supervision_attendance import (
     assert_cohort_access,
     attendance_cohorts_for_user,
     save_session_attendance,
+    session_has_recorded_attendance,
     session_roster,
     user_can_edit_supervision_sessions,
 )
@@ -74,6 +75,7 @@ def _render_attendance(request, session: SupervisionSession, *, manage: bool):
             "session": session,
             "roster": session_roster(session),
             "can_manage_sessions": manage and user_can_edit_supervision_sessions(request.user),
+            "show_roster_index": manage,
         },
     )
 
@@ -149,6 +151,26 @@ def admin_supervision_session_edit(request, pk):
         "admin_panel/supervision_session_form.html",
         {"form": form, "cohort": session.cohort, "is_edit": True, "session": session},
     )
+
+
+@role_required(UserRole.ADMIN)
+@require_http_methods(["POST"])
+def admin_supervision_session_delete(request, pk):
+    if not user_can_edit_supervision_sessions(request.user):
+        raise PermissionDenied("수퍼비전 회차를 삭제할 권한이 없습니다.")
+    session = get_object_or_404(SupervisionSession, pk=pk)
+    assert_cohort_access(request.user, session.cohort)
+    cohort = session.cohort
+    if session_has_recorded_attendance(session):
+        messages.error(
+            request,
+            "출석 기록이 있는 수퍼비전 회차는 삭제할 수 없습니다. "
+            "필요한 경우 회차를 취소 처리해 주세요.",
+        )
+        return redirect("admin_panel:supervision_sessions", cohort=cohort)
+    session.delete()
+    messages.success(request, "수퍼비전 회차를 삭제했습니다.")
+    return redirect("admin_panel:supervision_sessions", cohort=cohort)
 
 
 @role_required(UserRole.ADMIN)
