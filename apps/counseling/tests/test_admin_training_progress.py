@@ -238,6 +238,43 @@ class AdminTrainingProgressListTests(TestCase):
         self.assertContains(response, "수련현황")
         self.assertContains(response, reverse("admin_panel:training_progress"))
 
+    def test_admin_dashboard_shows_training_progress_card(self):
+        response = self.http.get(reverse("admin_panel:dashboard"))
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        training_url = reverse("admin_panel:training_progress")
+        self.assertIn("수련현황", body)
+        self.assertIn("기수별 상담사 수련 진행상황 · 수련시간 확인", body)
+        self.assertIn(f'href="{training_url}"', body)
+        self.assertIn("사례발표 게시판", body)
+        self.assertIn("상담사 명단", body)
+        self.assertLess(
+            body.index("수련현황"),
+            body.index("사례발표 게시판"),
+        )
+        listing = self.http.get(training_url)
+        self.assertEqual(listing.status_code, 200)
+
+    def test_non_admin_home_hides_admin_training_progress_card(self):
+        card_blurb = "기수별 상담사 수련 진행상황 · 수련시간 확인"
+        for role, name in (
+            (UserRole.COUNSELOR, "카드숨김상담"),
+            (UserRole.SUPERVISOR, "카드숨김수퍼"),
+            (UserRole.CLIENT, "카드숨김내담"),
+        ):
+            user = _user(f"{name}@example.com", name, role)
+            if role == UserRole.COUNSELOR:
+                CounselorProfile.objects.update_or_create(
+                    user=user, defaults={"cohort": 1, "is_approved": True}
+                )
+            http = HttpClient()
+            http.force_login(user)
+            home = http.get(reverse("home"))
+            self.assertEqual(home.status_code, 200)
+            self.assertNotContains(home, card_blurb)
+            denied = http.get(reverse("admin_panel:dashboard"))
+            self.assertEqual(denied.status_code, 403)
+
 
 class AdminTrainingProgressBatchParityTests(TestCase):
     def setUp(self):
