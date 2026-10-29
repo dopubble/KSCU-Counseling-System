@@ -3,6 +3,23 @@
 
 {% block title %}수퍼비전 출석{% endblock %}
 
+{% block extra_css %}
+<style>
+.supervision-attendance-actions .btn-outline-primary {
+    --bs-btn-color: var(--kscu-primary);
+    --bs-btn-border-color: var(--kscu-primary);
+    --bs-btn-hover-color: #fff;
+    --bs-btn-hover-bg: var(--kscu-primary);
+    --bs-btn-hover-border-color: var(--kscu-primary);
+    --bs-btn-active-color: #fff;
+    --bs-btn-active-bg: var(--kscu-primary);
+    --bs-btn-active-border-color: var(--kscu-primary);
+    --bs-btn-disabled-color: var(--kscu-primary);
+    --bs-btn-disabled-border-color: var(--kscu-primary);
+}
+</style>
+{% endblock %}
+
 {% block content %}
 {% page_header show_heading=False c1_label="대시보드" c1_url_name="admin_panel:dashboard" c1_icon="bi-speedometer2" c2_label="수퍼비전 회차" c2_url_name="admin_panel:supervision_sessions" c2_url_arg=session.cohort c3_label="출석" %}
 <h2 class="h4 mt-4 mb-2">{{ session.cohort }}기 {{ session.session_number }}회차 출석</h2>

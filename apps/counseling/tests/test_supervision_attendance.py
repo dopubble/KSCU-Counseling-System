@@ -308,7 +308,12 @@ class AdminSupervisionRosterTests(TestCase):
         self.assertIn(edit_button, body)
         self.assertLess(body.index(list_button), body.index(save_button))
         self.assertLess(body.index(save_button), body.index(edit_button))
-        self.assertIn("d-flex flex-wrap align-items-center gap-2", body)
+        self.assertIn(
+            "supervision-attendance-actions d-flex flex-wrap align-items-center justify-content-end gap-2",
+            body,
+        )
+        self.assertIn("--bs-btn-color: var(--kscu-primary)", body)
+        self.assertIn("--bs-btn-border-color: var(--kscu-primary)", body)
 
     def test_admin_roster_shows_numbers_and_total_without_extra_queries(self):
         from django.db import connection
@@ -355,6 +360,8 @@ class AdminSupervisionRosterTests(TestCase):
         self.assertNotContains(supervisor_page, "← 목록으로")
         self.assertNotContains(supervisor_page, "회차 수정")
         self.assertNotContains(supervisor_page, "총 3명")
+        self.assertNotIn("supervision-attendance-actions", supervisor_body)
+        self.assertNotIn("justify-content-end", supervisor_body)
         self.assertNotIn("text-center align-middle", supervisor_body)
         self.assertIn("전체 출석", supervisor_body)
 
