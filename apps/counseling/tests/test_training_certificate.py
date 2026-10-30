@@ -41,10 +41,12 @@ from apps.counseling.training_certificate_pdf import (
     _TOP_MARGIN,
     FOOTER_LOGO_FILENAME,
     _FooterMark,
+    _certificate_time_rows,
     build_training_certificate_context,
     build_training_certificate_pdf,
     footer_logo_origin,
     footer_logo_size,
+    item_column_span_commands,
     training_certificate_response,
 )
 from apps.counseling.training_progress import get_counselor_training_progress
@@ -444,6 +446,79 @@ def _attend(session, counselor, status):
     )
 
 
+class CertificateItemSpanTests(TestCase):
+    def test_two_method_rows_span_item_column(self):
+        rows = _certificate_time_rows(
+            "상담자 경험",
+            in_person=240,
+            remote=360,
+            unknown=0,
+        )
+        self.assertEqual(
+            rows,
+            [
+                ["상담자 경험", "4시간", "대면"],
+                ["", "6시간", "비대면"],
+            ],
+        )
+        self.assertEqual(
+            item_column_span_commands(rows),
+            [("SPAN", (0, 1), (0, 2))],
+        )
+
+    def test_three_method_rows_span_three_body_rows(self):
+        rows = _certificate_time_rows(
+            "상담자 경험",
+            in_person=240,
+            remote=300,
+            unknown=60,
+        )
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(rows[0][0], "상담자 경험")
+        self.assertEqual(rows[1][0], "")
+        self.assertEqual(rows[2][0], "")
+        self.assertEqual(
+            item_column_span_commands(rows),
+            [("SPAN", (0, 1), (0, 3))],
+        )
+
+    def test_single_method_has_no_span(self):
+        rows = _certificate_time_rows(
+            "상담자 경험",
+            in_person=600,
+            remote=0,
+            unknown=0,
+        )
+        self.assertEqual(rows, [["상담자 경험", "10시간", "대면"]])
+        self.assertEqual(item_column_span_commands(rows), [])
+
+    def test_mixed_pdf_builds_with_spans(self):
+        counselor = _counselor("병합확인증", cohort=11)
+        in_person = _case(
+            counselor,
+            _user("병합내담1@example.com", "병합내담1", UserRole.CLIENT),
+            "SPAN-IP",
+            CounselingMethod.IN_PERSON,
+        )
+        remote = _case(
+            counselor,
+            _user("병합내담2@example.com", "병합내담2", UserRole.CLIENT),
+            "SPAN-RM",
+            CounselingMethod.REMOTE,
+        )
+        for number in range(1, 5):
+            _journal(in_person, number, counseling_method=None)
+        for number in range(1, 7):
+            _journal(remote, number, counseling_method=None)
+        context = _certificate_context(
+            counselor, get_counselor_training_progress(counselor)
+        )
+        spans = item_column_span_commands(context["rows"])
+        self.assertIn(("SPAN", (0, 2), (0, 3)), spans)
+        pdf_bytes = build_training_certificate_pdf(context)
+        self.assertTrue(pdf_bytes.startswith(b"%PDF"))
+
+
 class TrainingCertificateRecordTests(TestCase):
     def test_legacy_mixed_cases_split_pdf_rows_by_case_fallback(self):
         counselor = _counselor("혼합확인증", cohort=8)
@@ -482,8 +557,10 @@ class TrainingCertificateRecordTests(TestCase):
             progress["training_completed_minutes"],
         )
         self.assertIn(["상담자 경험", "5시간", "대면"], context["rows"])
-        self.assertIn(["상담자 경험", "6시간", "비대면"], context["rows"])
-        self.assertNotIn("방식 미확인", [row[2] for row in context["rows"] if row[0] == "상담자 경험"])
+        self.assertIn(["", "6시간", "비대면"], context["rows"])
+        self.assertNotIn(["", "방식 미확인"], [[row[0], row[2]] for row in context["rows"]])
+        spans = item_column_span_commands(context["rows"])
+        self.assertTrue(any(cmd[0] == "SPAN" for cmd in spans))
 
     def test_legacy_supervision_null_pdf_row_is_remote(self):
         counselor = _counselor("수퍼확인증", cohort=9)
@@ -507,7 +584,7 @@ class TrainingCertificateRecordTests(TestCase):
         self.assertIn(["수퍼비전", "7시간", "비대면"], context["rows"])
         self.assertNotIn(
             "방식 미확인",
-            [row[2] for row in context["rows"] if row[0] == "수퍼비전"],
+            [row[2] for row in context["rows"] if row[0] in ("수퍼비전", "")],
         )
 
     def test_credit_hours_and_case_report_counts(self):

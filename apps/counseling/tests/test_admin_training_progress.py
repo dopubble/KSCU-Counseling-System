@@ -367,9 +367,12 @@ class AdminTrainingProgressBatchParityTests(TestCase):
         self.assertNotContains(response, "1/2사례")
         self.assertNotContains(response, "공개사례발표")
         self.assertContains(response, 'title="출석률 88%"')
-        # intake+journals Case=IN_PERSON fallback → 대면 4시간; legacy supervision NULL → REMOTE 7시간
-        self.assertContains(response, "대면 4시간 / 비대면 7시간")
+        # 목록은 총시간만 표시 (대면 4 + 비대면 7 = 11시간). 방식별 분리는 상세에서만.
+        self.assertContains(response, "총 수련시간")
+        self.assertContains(response, "11시간")
+        self.assertNotContains(response, "대면 4시간 / 비대면 7시간")
         progress = response.context["rows"][0]["progress"]
+        self.assertEqual(response.context["rows"][0]["display"]["training_time_label"], "11시간")
         self.assertEqual(progress["supervision_attendance_percent"], 88)
         self.assertEqual(progress["training_in_person_minutes"], 240)
         self.assertEqual(progress["training_remote_minutes"], 420)
@@ -466,6 +469,33 @@ class AdminTrainingProgressDetailTests(TestCase):
         )
         progress = get_counselor_training_progress(self.counselor)
         self.assertEqual(response.context["training_progress"], progress)
+        self.assertNotContains(response, "접수면접·상담자 경험·수퍼비전 출석 합계")
+        self.assertNotContains(response, "회기·세션에 저장된 방식 기준")
+        self.assertNotContains(response, "미확인은 방식 미확인")
+
+    def test_detail_shows_method_breakdown_and_total(self):
+        in_person = _case(
+            self.counselor, _client_user("상세대면"), "CASE-DET-IP"
+        )
+        remote = _case(
+            self.counselor,
+            _client_user("상세비대면"),
+            "CASE-DET-RM",
+        )
+        Case = type(in_person)
+        Case.objects.filter(pk=remote.pk).update(counseling_method=CounselingMethod.REMOTE)
+        remote.refresh_from_db()
+        for number in range(1, 5):
+            _journal(in_person, number, counseling_method=None)
+        for number in range(1, 7):
+            _journal(remote, number, counseling_method=None)
+        response = self.http.get(self.url, {"cohort": "6"})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "대면 4시간")
+        self.assertContains(response, "비대면 6시간")
+        self.assertContains(response, "총 10시간")
+        self.assertNotContains(response, "접수면접·상담자 경험·수퍼비전 출석 합계")
+        self.assertNotContains(response, "회기·세션에 저장된 방식 기준")
 
     def test_case_report_detail_matches_list_meaning(self):
         cases = [

@@ -121,9 +121,19 @@
                 <div class="col-md-6 col-xl-4">
                     <div class="border rounded p-3 h-100">
                         <h3 class="h6 fw-semibold mb-2">수련시간</h3>
-                        <p class="h5 fw-semibold text-counselor mb-1">{{ training_progress.training_method_summary_label }}</p>
+                        {% if training_progress.training_in_person_minutes %}
+                        <p class="h5 fw-semibold text-counselor mb-1">대면 {{ training_progress.training_in_person_label }}</p>
+                        {% endif %}
+                        {% if training_progress.training_remote_minutes %}
+                        <p class="h5 fw-semibold text-counselor mb-1">비대면 {{ training_progress.training_remote_label }}</p>
+                        {% endif %}
+                        {% if training_progress.training_unknown_minutes %}
+                        <p class="h5 fw-semibold text-counselor mb-1">방식 미확인 {{ training_progress.training_unknown_label }}</p>
+                        {% endif %}
+                        {% if not training_progress.training_in_person_minutes and not training_progress.training_remote_minutes and not training_progress.training_unknown_minutes %}
+                        <p class="h5 fw-semibold text-counselor mb-1">{{ training_progress.training_completed_label }}</p>
+                        {% endif %}
                         <p class="text-muted small mb-0">총 {{ training_progress.training_completed_label }}</p>
-                        <p class="text-muted small mb-0">회기·세션에 저장된 방식 기준 · 미확인은 방식 미확인</p>
                     </div>
                 </div>
             </div>

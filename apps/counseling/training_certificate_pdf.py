@@ -61,19 +61,48 @@ def format_certificate_date(day) -> str:
 
 
 def _certificate_time_rows(item_name: str, *, in_person: int, remote: int, unknown: int):
-    """방식별 분이 있으면 행을 나눈다. 전부 0이면 0분 한 행."""
+    """방식별 분이 있으면 행을 나눈다. 전부 0이면 0분 한 행.
+
+    같은 수련항목의 이어지는 행은 첫 열을 비워 PDF에서 rowspan(SPAN)한다.
+    """
     from apps.counseling.training_progress import format_training_minutes
 
-    rows: list[list[str]] = []
+    parts: list[tuple[int, str]] = []
     if in_person:
-        rows.append([item_name, format_training_minutes(in_person), "대면"])
+        parts.append((in_person, "대면"))
     if remote:
-        rows.append([item_name, format_training_minutes(remote), "비대면"])
+        parts.append((remote, "비대면"))
     if unknown:
-        rows.append([item_name, format_training_minutes(unknown), "방식 미확인"])
-    if not rows:
-        rows.append([item_name, format_training_minutes(0), _EMPTY])
+        parts.append((unknown, "방식 미확인"))
+    if not parts:
+        return [[item_name, format_training_minutes(0), _EMPTY]]
+    rows: list[list[str]] = []
+    for index, (minutes, method) in enumerate(parts):
+        label = item_name if index == 0 else ""
+        rows.append([label, format_training_minutes(minutes), method])
     return rows
+
+
+def item_column_span_commands(rows: list[list[str]], *, header_rows: int = 1):
+    """동일 수련항목의 빈 첫 칸 연속 행에 대해 ReportLab SPAN 명령을 만든다.
+
+    rows는 PDF body 행(헤더 제외). 반환 좌표는 헤더를 포함한 table 행 번호다.
+    """
+    commands: list[tuple] = []
+    index = 0
+    while index < len(rows):
+        if not (rows[index][0] or "").strip():
+            index += 1
+            continue
+        end = index + 1
+        while end < len(rows) and not (rows[end][0] or "").strip():
+            end += 1
+        if end - index > 1:
+            start_row = header_rows + index
+            end_row = header_rows + end - 1
+            commands.append(("SPAN", (0, start_row), (0, end_row)))
+        index = end
+    return commands
 
 
 def build_training_certificate_context(
@@ -263,9 +292,10 @@ def build_training_certificate_pdf(context: dict) -> bytes:
     story.extend([identity, Spacer(1, _SPACE_AFTER_IDENTITY)])
 
     header = [Paragraph(column, cell_style) for column in context["columns"]]
+    body_rows = context["rows"]
     body = [
         [Paragraph(str(cell), cell_style) for cell in row]
-        for row in context["rows"]
+        for row in body_rows
     ]
     item_width = _CONTENT_WIDTH * 0.30
     time_width = _CONTENT_WIDTH * 0.30
@@ -287,6 +317,7 @@ def build_training_certificate_pdf(context: dict) -> bytes:
                 ("RIGHTPADDING", (0, 0), (-1, -1), 4),
                 ("TOPPADDING", (0, 0), (-1, -1), 6),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                *item_column_span_commands(body_rows),
             ]
         )
     )
