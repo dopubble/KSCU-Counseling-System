@@ -30,19 +30,19 @@ def _parse_required_cohort(raw, cohorts: list[int]) -> int | None:
 def _list_display(progress: dict) -> dict:
     return {
         "intake_label": (
-            f"{progress['intake_completed_count']}/{progress['intake_required_count']}건"
+            f"{progress['intake_required_count']}/{progress['intake_completed_count']}건"
         ),
         "counseling_label": (
-            f"{progress['journal_completed_count']}/"
-            f"{progress['counseling_assigned_count']}시간"
+            f"{progress['counseling_assigned_count']}/"
+            f"{progress['journal_completed_count']}시간"
         ),
         "termination_label": (
-            f"{progress['termination_completed_count']}/"
-            f"{progress['termination_required_count']}건"
+            f"{progress['termination_required_count']}/"
+            f"{progress['termination_completed_count']}건"
         ),
         "supervision_label": (
-            f"{progress['supervision_attended_count']}/"
-            f"{progress['supervision_total_count']}회"
+            f"{progress['supervision_total_count']}/"
+            f"{progress['supervision_attended_count']}회"
         ),
         "case_report_label": (
             f"{progress['case_report_submitted_count']}사례 완료"

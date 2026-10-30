@@ -348,14 +348,19 @@ class AdminTrainingProgressBatchParityTests(TestCase):
             reverse("admin_panel:training_progress"), {"cohort": "3"}
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "1/2건")
-        self.assertContains(response, "3/18시간")
-        self.assertContains(response, "1/2건")
-        self.assertContains(response, "7/9회")
+        self.assertContains(response, "2/1건", count=2)
+        self.assertContains(response, "18/3시간")
+        self.assertNotContains(response, "3/18시간")
+        self.assertContains(response, "9/7회")
+        self.assertNotContains(response, "7/9회")
         self.assertContains(response, "1사례 완료")
         self.assertNotContains(response, "1/2사례")
         self.assertNotContains(response, "공개사례발표")
         self.assertContains(response, 'title="출석률 88%"')
+        self.assertEqual(
+            response.context["rows"][0]["progress"]["supervision_attendance_percent"],
+            88,
+        )
 
 
 class AdminTrainingProgressQueryBudgetTests(TestCase):
