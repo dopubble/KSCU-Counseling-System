@@ -493,7 +493,7 @@ class SupervisorTrainingCertificateReuseTests(TestCase):
             counseling_cases_5plus_count=counseling_cases_5plus_count(counselor),
         )
         self.assertEqual(context["columns"], ["수련항목", "수련시간", "진행방식", "비고"])
-        self.assertEqual(context["rows"][1][3], "5회기 이상 사례 1건")
+        self.assertEqual(context["rows"][1][3], "5회기 이상 지속된 사례 총 1건")
         self.assertEqual(context["rows"][1][1], "5시간")
         self.assertEqual(context["rows"][1][2], "대면")
         self.assertEqual(context["rows"][0][0], "접수면접")

@@ -48,7 +48,7 @@ def counseling_cases_5plus_count(counselor) -> int:
 
 
 def counseling_cases_5plus_label(count: int) -> str:
-    return f"5회기 이상 사례 {count}건"
+    return f"5회기 이상 지속된 사례 총 {count}건"
 
 
 def supervisor_label_for_counselor(counselor) -> str:
