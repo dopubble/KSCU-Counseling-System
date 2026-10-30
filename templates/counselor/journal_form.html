@@ -110,7 +110,7 @@
                 <div class="journal-section mb-4">
                     <h3 class="journal-section-title">기본 회기 정보</h3>
                     <div class="row g-3">
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <label for="id_session_number" class="form-label fw-semibold">
                                 {{ form.session_number.label }} <span class="text-danger">*</span>
                             </label>
@@ -120,7 +120,7 @@
                             <div class="text-danger small mt-1">{{ form.session_number.errors.0 }}</div>
                             {% endif %}
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <span class="form-label fw-semibold d-block">상담 구분</span>
                             <div class="d-flex flex-wrap gap-1 pt-1">
                                 {% for category in session_categories %}
@@ -131,7 +131,17 @@
                             </div>
                             <div class="form-text">상담 신청 시 선택한 상담 구분 · 수정 불가</div>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-3">
+                            <label for="id_counseling_method" class="form-label fw-semibold">
+                                {{ form.counseling_method.label }} <span class="text-danger">*</span>
+                            </label>
+                            {{ form.counseling_method }}
+                            <div class="form-text">기본값은 사례의 현재 상담방식입니다. 해당 회기가 다르면 수정하세요.</div>
+                            {% if form.counseling_method.errors %}
+                            <div class="text-danger small mt-1">{{ form.counseling_method.errors.0 }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-3">
                             <label for="id_session_datetime" class="form-label fw-semibold">
                                 {{ form.session_datetime.label }} <span class="text-danger">*</span>
                             </label>

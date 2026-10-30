@@ -3,6 +3,8 @@ import uuid
 from django.conf import settings
 from django.db import models
 
+from apps.counseling.models import CounselingMethod
+
 
 def normalize_session_categories(raw) -> list[str]:
     """상담 구분 목록 정규화 — 공백 제거·중복 제거·순서 유지."""
@@ -55,6 +57,14 @@ class CounselingJournal(models.Model):
         help_text="신규 작성 시점의 상담 신청 상담 구분 스냅샷",
     )
     session_datetime = models.DateTimeField("상담 일시", null=True, blank=True)
+    counseling_method = models.CharField(
+        "상담 방식",
+        max_length=20,
+        choices=CounselingMethod.choices,
+        null=True,
+        blank=True,
+        help_text="해당 회기 작성 시점의 상담방식 스냅샷. 과거 데이터는 비어 있을 수 있습니다.",
+    )
     subjective = models.TextField("S (주관적)", blank=True)
     objective = models.TextField("O (객관적)", blank=True)
     assessment = models.TextField("A (평가)", blank=True)

@@ -1,8 +1,7 @@
 """수련확인증에 그릴 진행방식·수퍼바이저 이름.
 
 수련 건수·시간은 get_counselor_training_progress()를 그대로 쓴다.
-진행방식은 사례에 현재 저장된 counseling_method의 종류만 표시한다.
-회기 수나 일지 수로 대면/비대면을 나누지 않는다.
+진행방식 요약 라벨은 회기/세션 스냅샷 종류만 표시한다.
 """
 
 from django.db.models import Exists, OuterRef, Sum
@@ -18,6 +17,7 @@ from apps.counseling.models import (
 )
 from apps.counseling.training_progress import format_training_minutes
 from apps.documents.models import ConsentDocType, ConsentDocument
+from apps.sessions_app.models import CounselingJournal
 
 _UNKNOWN = "UNKNOWN"
 
@@ -65,7 +65,7 @@ def _bucket(raw) -> str:
 
 
 def format_case_method_kinds(methods) -> str:
-    """사례별 현재 방식의 종류. 건수와 회기 수는 붙이지 않는다."""
+    """스냅샷 방식 종류. 건수와 회기 수는 붙이지 않는다."""
     kinds = {_bucket(value) for value in methods}
     if not kinds:
         return "—"
@@ -95,13 +95,13 @@ def _intake_case_methods(counselor):
     return (
         Case.objects.filter(counselor_id=counselor.pk)
         .filter(Exists(submitted))
-        .values_list("counseling_method", flat=True)
+        .values_list("intake_counseling_method", flat=True)
         .distinct()
     )
 
 
 def intake_delivery_mode_label(counselor) -> str:
-    """접수면접지 파일이 있는 담당 사례의 현재 상담방식 종류."""
+    """접수면접지가 있는 담당 사례의 접수면접 스냅샷 방식 종류."""
     return format_case_method_kinds(_intake_case_methods(counselor))
 
 
@@ -144,12 +144,12 @@ def certificate_date_for_counselor(counselor):
 
 
 def journal_delivery_mode_label(counselor) -> str:
-    """작성완료 일지가 있는 담당 사례의 현재 상담방식 종류."""
+    """작성완료 일지의 회기 스냅샷 방식 종류."""
     methods = (
-        Case.objects.filter(
+        CounselingJournal.objects.filter(
             counselor_id=counselor.pk,
-            journals__counselor_id=counselor.pk,
-            journals__is_draft=False,
+            case__counselor_id=counselor.pk,
+            is_draft=False,
         )
         .values_list("counseling_method", flat=True)
         .distinct()

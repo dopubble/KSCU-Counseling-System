@@ -50,7 +50,7 @@ def _list_display(progress: dict) -> dict:
         "public_presentation_label": (
             f"{progress['public_presentation_participation_count']}회"
         ),
-        "training_time_label": progress["training_completed_label"],
+        "training_time_label": progress["training_method_summary_label"],
         "supervision_attendance_percent": progress["supervision_attendance_percent"],
         "intake_done": (
             progress["intake_required_count"] > 0

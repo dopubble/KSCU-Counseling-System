@@ -102,19 +102,16 @@ class TrainingCertificateContextTests(TestCase):
         self.assertEqual(
             context["rows"],
             [
-                ["접수면접", progress["intake_completed_label"], "비대면"],
-                ["상담자 경험", progress["counseling_completed_label"], "대면·비대면 혼합"],
-                ["수퍼비전", "6시간 40분", "비대면"],
+                ["접수면접", "0분", "—"],
+                ["상담자 경험", "0분", "—"],
+                ["수퍼비전", "0분", "—"],
                 ["사례보고서", f"{progress['case_report_submitted_count']}사례", "비대면"],
             ],
         )
         row_names = [row[0] for row in context["rows"]]
         self.assertNotIn("종결기록지", row_names)
         self.assertNotIn("공개사례발표회", row_names)
-        self.assertEqual(
-            context["method_notice"],
-            "※ 접수면접 및 상담자 경험의 진행방식은 현재 사례에 등록된 상담방식을 기준으로 표시합니다.",
-        )
+        self.assertEqual(context["method_notice"], CERTIFICATE_METHOD_NOTICE)
         self.assertEqual(
             context["confirmation"],
             "위와 같이 전문상담사 수련과정의 수련 내역을 확인합니다.",
@@ -213,7 +210,7 @@ class TrainingCertificateAccessTests(TestCase):
 
     def test_one_certificate_does_not_query_per_case(self):
         counselor = User.objects.select_related("counselor_profile").get(pk=self.counselor.pk)
-        with self.assertNumQueries(10):
+        with self.assertNumQueries(13):
             response = training_certificate_response(counselor)
         self.assertEqual(response.status_code, 200)
 
@@ -288,23 +285,28 @@ def _case(counselor, client, number, method):
     )
 
 
-def _intake(case):
-    return ConsentDocument.objects.create(
+def _intake(case, *, method=None):
+    doc = ConsentDocument.objects.create(
         client=case.client,
         application=case.application,
         doc_type=ConsentDocType.INTAKE,
         file="consents/intake.pdf",
         uploaded_by=case.counselor,
     )
+    if method is not None:
+        Case.objects.filter(pk=case.pk).update(intake_counseling_method=method)
+        case.intake_counseling_method = method
+    return doc
 
 
-def _journal(case, session_number, *, appointment=None, is_draft=False):
+def _journal(case, session_number, *, appointment=None, is_draft=False, counseling_method=None):
     return CounselingJournal.objects.create(
         case=case,
         counselor=case.counselor,
         session_number=session_number,
         appointment=appointment,
         is_draft=is_draft,
+        counseling_method=counseling_method,
         subjective="S",
         objective="O",
         assessment="A",
@@ -333,7 +335,7 @@ class TrainingCertificateDetailTests(TestCase):
         alone = _counselor("담당없음", cohort=3)
         self.assertEqual(supervisor_label_for_counselor(alone), "—")
 
-    def test_intake_mode_uses_current_case_kinds_without_counts(self):
+    def test_intake_mode_uses_intake_snapshot_not_current_case_method(self):
         counselor = _counselor("면접상담", cohort=1)
         client_a = _user("면접내담1@example.com", "면접내담1", UserRole.CLIENT)
         client_b = _user("면접내담2@example.com", "면접내담2", UserRole.CLIENT)
@@ -341,17 +343,15 @@ class TrainingCertificateDetailTests(TestCase):
         in_person = _case(counselor, client_a, "INT-1", CounselingMethod.IN_PERSON)
         remote = _case(counselor, client_b, "INT-2", CounselingMethod.REMOTE)
         unknown = _case(counselor, client_c, "INT-3", CounselingMethod.IN_PERSON)
-        _intake(in_person)
+        _intake(in_person, method=CounselingMethod.IN_PERSON)
         self.assertEqual(intake_delivery_mode_label(counselor), "대면")
 
         Case.objects.filter(pk=in_person.pk).update(counseling_method=CounselingMethod.REMOTE)
-        self.assertEqual(intake_delivery_mode_label(counselor), "비대면")
-        Case.objects.filter(pk=in_person.pk).update(counseling_method=CounselingMethod.IN_PERSON)
+        self.assertEqual(intake_delivery_mode_label(counselor), "대면")
 
-        _intake(remote)
+        _intake(remote, method=CounselingMethod.REMOTE)
         self.assertEqual(intake_delivery_mode_label(counselor), "대면·비대면 혼합")
 
-        Case.objects.filter(pk=unknown.pk).update(counseling_method="")
         _intake(unknown)
         self.assertEqual(
             intake_delivery_mode_label(counselor),
@@ -360,26 +360,32 @@ class TrainingCertificateDetailTests(TestCase):
         ConsentDocument.objects.filter(application=remote.application).delete()
         self.assertEqual(intake_delivery_mode_label(counselor), "대면 · 일부 확인불가")
 
-    def test_journal_mode_uses_distinct_cases_not_journal_counts(self):
+    def test_journal_mode_uses_journal_snapshots_not_case_method(self):
         counselor = _counselor("일지상담", cohort=1)
         client = _user("일지내담@example.com", "일지내담", UserRole.CLIENT)
         other_client = _user("다른내담@example.com", "다른내담", UserRole.CLIENT)
         in_person = _case(counselor, client, "JRN-1", CounselingMethod.IN_PERSON)
         for session_number in range(1, 11):
-            _journal(in_person, session_number)
-        _journal(in_person, 11, is_draft=True)
+            _journal(
+                in_person,
+                session_number,
+                counseling_method=CounselingMethod.IN_PERSON,
+            )
+        _journal(in_person, 11, is_draft=True, counseling_method=CounselingMethod.REMOTE)
         label = journal_delivery_mode_label(counselor)
         self.assertEqual(label, "대면")
         self.assertNotIn("10", label)
         self.assertNotIn("회", label)
 
+        Case.objects.filter(pk=in_person.pk).update(counseling_method=CounselingMethod.REMOTE)
+        self.assertEqual(journal_delivery_mode_label(counselor), "대면")
+
         remote = _case(counselor, other_client, "JRN-2", CounselingMethod.REMOTE)
-        _journal(remote, 1)
+        _journal(remote, 1, counseling_method=CounselingMethod.REMOTE)
         self.assertEqual(journal_delivery_mode_label(counselor), "대면·비대면 혼합")
 
         unknown = _case(counselor, client, "JRN-3", CounselingMethod.IN_PERSON)
-        Case.objects.filter(pk=unknown.pk).update(counseling_method="LEGACY")
-        _journal(unknown, 1)
+        _journal(unknown, 1, counseling_method=None)
         self.assertEqual(
             journal_delivery_mode_label(counselor),
             "대면·비대면 혼합 · 일부 확인불가",
@@ -441,14 +447,24 @@ class TrainingCertificateRecordTests(TestCase):
         counselor = _counselor("시간상담", cohort=5)
         client = _user("시간내담@example.com", "시간내담", UserRole.CLIENT)
         case = _case(counselor, client, "TIME-1", CounselingMethod.REMOTE)
-        _intake(case)
+        _intake(case, method=CounselingMethod.REMOTE)
         for session_number in range(1, 6):
-            _journal(case, session_number)
+            _journal(case, session_number, counseling_method=CounselingMethod.REMOTE)
         progress = get_counselor_training_progress(counselor)
         context = _certificate_context(counselor, progress)
-        self.assertEqual(context["rows"][0][1], "1시간")
-        self.assertEqual(context["rows"][1][1], "5시간")
+        self.assertEqual(context["rows"][0], ["접수면접", "1시간", "비대면"])
+        self.assertEqual(context["rows"][1], ["상담자 경험", "5시간", "비대면"])
+        self.assertEqual(context["rows"][2], ["수퍼비전", "0분", "—"])
         self.assertEqual(context["rows"][3], ["사례보고서", "0사례", "비대면"])
+        self.assertEqual(progress["training_remote_minutes"], 360)
+        self.assertEqual(progress["training_in_person_minutes"], 0)
+        self.assertEqual(progress["training_unknown_minutes"], 0)
+        self.assertEqual(
+            progress["training_in_person_minutes"]
+            + progress["training_remote_minutes"]
+            + progress["training_unknown_minutes"],
+            progress["training_completed_minutes"],
+        )
 
         CasePresentationPost.objects.create(
             cohort=5,

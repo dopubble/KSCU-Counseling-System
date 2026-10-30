@@ -7,6 +7,7 @@ from django.utils import timezone
 from apps.documents.models import (
     COUNSELOR_REQUIRED_DOC_TYPES,
     DOC_TYPE_FILENAME_LABEL,
+    ConsentDocType,
     ConsentDocument,
 )
 
@@ -76,6 +77,15 @@ def upsert_counselor_consent(*, case, doc_type: str, file_obj, uploaded_by):
     saved_name = consent.file.storage.save(storage_path, file_obj)
     consent.file.name = saved_name
     consent.save()
+
+    # 접수면접지 최초 제출 시 Case에 진행방식 스냅샷을 남긴다. 이후 Case.counseling_method
+    # 변경이나 재업로드로 덮어쓰지 않는다. ConsentDocument는 파일 저장용으로 유지한다.
+    if doc_type == ConsentDocType.INTAKE and not (case.intake_counseling_method or "").strip():
+        method = (case.counseling_method or "").strip()
+        if method:
+            type(case).objects.filter(pk=case.pk).update(intake_counseling_method=method)
+            case.intake_counseling_method = method
+
     return consent
 
 

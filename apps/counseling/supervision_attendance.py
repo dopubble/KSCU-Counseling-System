@@ -36,6 +36,7 @@ class SupervisionSessionForm(forms.ModelForm):
             "title",
             "scheduled_at",
             "duration_minutes",
+            "counseling_method",
             "status",
         ]
         widgets = {
@@ -43,11 +44,16 @@ class SupervisionSessionForm(forms.ModelForm):
             "session_number": forms.NumberInput(attrs={"class": "form-control", "min": 1}),
             "title": forms.TextInput(attrs={"class": "form-control"}),
             "duration_minutes": forms.NumberInput(attrs={"class": "form-control", "min": 1}),
+            "counseling_method": forms.Select(attrs={"class": "form-select"}),
             "status": forms.Select(attrs={"class": "form-select"}),
+        }
+        labels = {
+            "counseling_method": "진행 방식",
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["counseling_method"].required = True
         if not self.instance.pk:
             self.fields["duration_minutes"].initial = DEFAULT_APPOINTMENT_DURATION_MINUTES
             self.fields["status"].initial = SupervisionSessionStatus.SCHEDULED

@@ -72,22 +72,27 @@ def _case(counselor, client, case_number, *, total_sessions=10, remaining_sessio
     )
 
 
-def _intake(case):
-    return ConsentDocument.objects.create(
+def _intake(case, *, method=None):
+    doc = ConsentDocument.objects.create(
         client=case.client,
         application=case.application,
         doc_type=ConsentDocType.INTAKE,
         file="consents/intake.pdf",
         uploaded_by=case.counselor,
     )
+    if method is not None:
+        Case.objects.filter(pk=case.pk).update(intake_counseling_method=method)
+        case.intake_counseling_method = method
+    return doc
 
 
-def _journal(case, session_number, *, is_draft=False):
+def _journal(case, session_number, *, is_draft=False, counseling_method=None):
     return CounselingJournal.objects.create(
         case=case,
         counselor=case.counselor,
         session_number=session_number,
         is_draft=is_draft,
+        counseling_method=counseling_method,
         subjective="S",
         objective="O",
         assessment="A",
@@ -95,7 +100,7 @@ def _journal(case, session_number, *, is_draft=False):
     )
 
 
-def _sessions(cohort, status, count, *, start=1, duration_minutes=60):
+def _sessions(cohort, status, count, *, start=1, duration_minutes=60, counseling_method=None):
     return [
         SupervisionSession.objects.create(
             cohort=cohort,
@@ -103,6 +108,7 @@ def _sessions(cohort, status, count, *, start=1, duration_minutes=60):
             scheduled_at=timezone.now(),
             status=status,
             duration_minutes=duration_minutes,
+            counseling_method=counseling_method,
         )
         for offset in range(count)
     ]
@@ -135,6 +141,10 @@ PROGRESS_COMPARE_KEYS = (
     "public_presentation_participation_count",
     "training_completed_minutes",
     "training_completed_label",
+    "training_in_person_minutes",
+    "training_remote_minutes",
+    "training_unknown_minutes",
+    "training_method_summary_label",
 )
 
 
@@ -357,9 +367,17 @@ class AdminTrainingProgressBatchParityTests(TestCase):
         self.assertNotContains(response, "1/2사례")
         self.assertNotContains(response, "공개사례발표")
         self.assertContains(response, 'title="출석률 88%"')
+        self.assertContains(response, "방식 미확인 11시간")
+        progress = response.context["rows"][0]["progress"]
+        self.assertEqual(progress["supervision_attendance_percent"], 88)
+        self.assertEqual(progress["training_in_person_minutes"], 0)
+        self.assertEqual(progress["training_remote_minutes"], 0)
+        self.assertEqual(progress["training_unknown_minutes"], 660)
         self.assertEqual(
-            response.context["rows"][0]["progress"]["supervision_attendance_percent"],
-            88,
+            progress["training_in_person_minutes"]
+            + progress["training_remote_minutes"]
+            + progress["training_unknown_minutes"],
+            progress["training_completed_minutes"],
         )
 
 
@@ -407,7 +425,7 @@ class AdminTrainingProgressQueryBudgetTests(TestCase):
 
         self.assertEqual(one_count, five_count)
         self.assertEqual(five_count, twenty_count)
-        self.assertLessEqual(twenty_count, 9)
+        self.assertLessEqual(twenty_count, 12)
 
 
 class AdminTrainingProgressDetailTests(TestCase):

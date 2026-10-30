@@ -88,8 +88,9 @@
             <div class="col-md-6 col-xl-4">
                 <div class="border rounded p-3 h-100">
                     <h3 class="h6 fw-semibold mb-2">수련시간</h3>
-                    <p class="h5 fw-semibold text-primary mb-1">{{ training_progress.training_completed_label }}</p>
-                    <p class="text-muted small mb-0">접수면접·상담자 경험·수퍼비전 출석 합계</p>
+                    <p class="h5 fw-semibold text-primary mb-1">{{ training_progress.training_method_summary_label }}</p>
+                    <p class="text-muted small mb-0">총 {{ training_progress.training_completed_label }} · 접수면접·상담자 경험·수퍼비전 출석 합계</p>
+                    <p class="text-muted small mb-0">회기·세션에 저장된 방식 기준 · 미확인은 방식 미확인</p>
                 </div>
             </div>
         </div>

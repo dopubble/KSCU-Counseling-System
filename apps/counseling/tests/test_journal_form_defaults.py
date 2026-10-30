@@ -81,6 +81,7 @@ def _create_appointment(case, session_number, scheduled_at) -> Appointment:
 def _journal_payload(**overrides) -> dict:
     payload = {
         "session_number": 1,
+        "counseling_method": CounselingMethod.IN_PERSON,
         "session_datetime": timezone.localtime().strftime(DATETIME_LOCAL_FORMAT),
         "counseling_content": "내용",
         "counselor_observation": "관찰",
@@ -199,6 +200,45 @@ class JournalSessionCategorySnapshotTests(TestCase):
             )
         )
         self.assertEqual(response.context["session_categories"], ["자녀관계"])
+
+    def test_new_journal_defaults_method_from_case_and_keeps_snapshot(self):
+        case = _create_case(
+            self.counselor, _create_client("내담자방식"), "CASE-SC-METHOD", ["진로상담"]
+        )
+        create_page = self._open_create(case)
+        self.assertEqual(create_page.status_code, 200)
+        self.assertEqual(
+            create_page.context["form"]["counseling_method"].value(),
+            CounselingMethod.IN_PERSON,
+        )
+        self.assertContains(create_page, "상담 방식")
+
+        self.assertEqual(self._post_create(case).status_code, 302)
+        first = CounselingJournal.objects.get(case=case, session_number=1)
+        self.assertEqual(first.counseling_method, CounselingMethod.IN_PERSON)
+
+        Case.objects.filter(pk=case.pk).update(counseling_method=CounselingMethod.REMOTE)
+        case.refresh_from_db()
+        first.refresh_from_db()
+        self.assertEqual(first.counseling_method, CounselingMethod.IN_PERSON)
+
+        create_remote = self._open_create(case, session_number=2)
+        self.assertEqual(
+            create_remote.context["form"]["counseling_method"].value(),
+            CounselingMethod.REMOTE,
+        )
+        self.assertEqual(
+            self._post_create(
+                case,
+                session_number=2,
+                counseling_method=CounselingMethod.REMOTE,
+            ).status_code,
+            302,
+        )
+        second = CounselingJournal.objects.get(case=case, session_number=2)
+        self.assertEqual(second.counseling_method, CounselingMethod.REMOTE)
+        first.refresh_from_db()
+        self.assertEqual(first.counseling_method, CounselingMethod.IN_PERSON)
 
     def test_legacy_single_value_journal_displays_via_fallback(self):
         case = _create_case(
@@ -393,6 +433,7 @@ class JournalEditTests(TestCase):
             session_category="위기개입",
             session_categories=["위기개입", "대인관계"],
             session_datetime=self.saved_datetime,
+            counseling_method=CounselingMethod.IN_PERSON,
             subjective="S",
             objective="O",
             assessment="A",

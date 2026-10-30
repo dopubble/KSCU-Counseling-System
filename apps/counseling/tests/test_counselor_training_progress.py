@@ -23,6 +23,7 @@ from apps.counseling.models import (
 from apps.counseling.training_progress import (
     TRAINING_CREDIT_MINUTES_PER_SESSION,
     format_training_minutes,
+    get_cohort_counselors_training_progress,
     get_counselor_training_progress,
 )
 from apps.documents.models import ConsentDocType, ConsentDocument
@@ -84,12 +85,13 @@ def _create_case(
     termination_type="",
     total_sessions=10,
     remaining_sessions=10,
+    counseling_method=CounselingMethod.IN_PERSON,
 ):
     application = CounselingApplication.objects.create(
         client=client,
         counseling_types=["진로상담"],
         reason="test",
-        counseling_method=CounselingMethod.IN_PERSON,
+        counseling_method=counseling_method,
         status=ApplicationStatus.IN_PROGRESS,
     )
     return Case.objects.create(
@@ -99,29 +101,40 @@ def _create_case(
         case_number=case_number,
         status=status,
         termination_type=termination_type,
-        counseling_method=CounselingMethod.IN_PERSON,
+        counseling_method=counseling_method,
         total_sessions=total_sessions,
         remaining_sessions=remaining_sessions,
         closed_at=timezone.now() if status == CaseStatus.CLOSED else None,
     )
 
 
-def _submit_intake(case, *, doc_type=ConsentDocType.INTAKE, filename="consents/intake.pdf"):
-    return ConsentDocument.objects.create(
+def _submit_intake(
+    case,
+    *,
+    doc_type=ConsentDocType.INTAKE,
+    filename="consents/intake.pdf",
+    method=None,
+):
+    doc = ConsentDocument.objects.create(
         client=case.client,
         application=case.application,
         doc_type=doc_type,
         file=filename,
         uploaded_by=case.counselor,
     )
+    if doc_type == ConsentDocType.INTAKE and method is not None:
+        Case.objects.filter(pk=case.pk).update(intake_counseling_method=method)
+        case.intake_counseling_method = method
+    return doc
 
 
-def _create_journal(case, session_number, *, is_draft=False):
+def _create_journal(case, session_number, *, is_draft=False, counseling_method=None):
     return CounselingJournal.objects.create(
         case=case,
         counselor=case.counselor,
         session_number=session_number,
         is_draft=is_draft,
+        counseling_method=counseling_method,
         subjective="S",
         objective="O",
         assessment="A",
@@ -470,7 +483,7 @@ class CounselorTrainingProgressTests(TestCase):
     def test_query_count_does_not_grow_with_more_cases(self):
         case = _create_case(self.counselor, _create_client("쿼리내담"), "CASE-TRAIN-Q")
         _create_journal(case, 1)
-        with self.assertNumQueries(5):
+        with self.assertNumQueries(8):
             get_counselor_training_progress(self.counselor)
 
         for index in range(3):
@@ -481,7 +494,7 @@ class CounselorTrainingProgressTests(TestCase):
             )
             _create_journal(extra, 1)
 
-        with self.assertNumQueries(5):
+        with self.assertNumQueries(8):
             get_counselor_training_progress(self.counselor)
 
     def test_case_report_counts_distinct_owned_cases(self):
@@ -524,7 +537,7 @@ class CounselorTrainingProgressTests(TestCase):
 
         linked = _presentation_post(self.counselor, "연결후쿼리", case=None)
         self.assertIsNone(linked.case_id)
-        with self.assertNumQueries(5):
+        with self.assertNumQueries(8):
             counted = get_counselor_training_progress(self.counselor)
         self.assertEqual(counted["case_report_submitted_count"], 2)
 
@@ -577,6 +590,127 @@ class CounselorTrainingProgressTests(TestCase):
         self.assertEqual(progress["case_report_required_count"], 0)
         self.assertEqual(progress["case_report_submitted_count"], 0)
 
+    def test_training_minutes_split_by_session_method_snapshots(self):
+        case = _create_case(
+            self.counselor,
+            _create_client("혼합내담"),
+            "CASE-MIX-1",
+            counseling_method=CounselingMethod.IN_PERSON,
+        )
+        _submit_intake(case, method=CounselingMethod.IN_PERSON)
+        journal_ip = _create_journal(
+            case, 1, counseling_method=CounselingMethod.IN_PERSON
+        )
+        Case.objects.filter(pk=case.pk).update(
+            counseling_method=CounselingMethod.REMOTE
+        )
+        case.refresh_from_db()
+        journal_ip.refresh_from_db()
+        self.assertEqual(journal_ip.counseling_method, CounselingMethod.IN_PERSON)
+        _create_journal(case, 2, counseling_method=CounselingMethod.REMOTE)
+        legacy = _create_journal(case, 3, counseling_method=None)
+        self.assertIsNone(legacy.counseling_method)
+
+        ip_session = SupervisionSession.objects.create(
+            cohort=1,
+            session_number=1,
+            scheduled_at=timezone.now(),
+            status=SupervisionSessionStatus.COMPLETED,
+            duration_minutes=60,
+            counseling_method=CounselingMethod.IN_PERSON,
+        )
+        remote_session = SupervisionSession.objects.create(
+            cohort=1,
+            session_number=2,
+            scheduled_at=timezone.now(),
+            status=SupervisionSessionStatus.COMPLETED,
+            duration_minutes=90,
+            counseling_method=CounselingMethod.REMOTE,
+        )
+        legacy_session = SupervisionSession.objects.create(
+            cohort=1,
+            session_number=3,
+            scheduled_at=timezone.now(),
+            status=SupervisionSessionStatus.COMPLETED,
+            duration_minutes=60,
+            counseling_method=None,
+        )
+        cancelled = SupervisionSession.objects.create(
+            cohort=1,
+            session_number=4,
+            scheduled_at=timezone.now(),
+            status=SupervisionSessionStatus.CANCELLED,
+            duration_minutes=60,
+            counseling_method=CounselingMethod.IN_PERSON,
+        )
+        scheduled = SupervisionSession.objects.create(
+            cohort=1,
+            session_number=5,
+            scheduled_at=timezone.now(),
+            status=SupervisionSessionStatus.SCHEDULED,
+            duration_minutes=60,
+            counseling_method=CounselingMethod.REMOTE,
+        )
+        absent_session = SupervisionSession.objects.create(
+            cohort=1,
+            session_number=6,
+            scheduled_at=timezone.now(),
+            status=SupervisionSessionStatus.COMPLETED,
+            duration_minutes=60,
+            counseling_method=CounselingMethod.IN_PERSON,
+        )
+        profile = self.counselor.counselor_profile
+        for session in (ip_session, remote_session, legacy_session):
+            SupervisionAttendance.objects.create(
+                session=session,
+                counselor=profile,
+                status=SupervisionAttendanceStatus.PRESENT,
+            )
+        SupervisionAttendance.objects.create(
+            session=cancelled,
+            counselor=profile,
+            status=SupervisionAttendanceStatus.PRESENT,
+        )
+        SupervisionAttendance.objects.create(
+            session=scheduled,
+            counselor=profile,
+            status=SupervisionAttendanceStatus.PRESENT,
+        )
+        SupervisionAttendance.objects.create(
+            session=absent_session,
+            counselor=profile,
+            status=SupervisionAttendanceStatus.ABSENT,
+        )
+
+        progress = get_counselor_training_progress(self.counselor)
+        # intake 1h IP; journals 1h IP + 1h RM + 1h unknown; supervision 1h IP + 1.5h RM + 1h unknown
+        self.assertEqual(progress["training_in_person_minutes"], 180)
+        self.assertEqual(progress["training_remote_minutes"], 150)
+        self.assertEqual(progress["training_unknown_minutes"], 120)
+        self.assertEqual(progress["training_completed_minutes"], 450)
+        self.assertEqual(
+            progress["training_in_person_minutes"]
+            + progress["training_remote_minutes"]
+            + progress["training_unknown_minutes"],
+            progress["training_completed_minutes"],
+        )
+        self.assertEqual(
+            progress["training_method_summary_label"],
+            "대면 3시간 / 비대면 2시간 30분 / 방식 미확인 2시간",
+        )
+        batch = get_cohort_counselors_training_progress(1)
+        batch_progress = next(
+            row["progress"] for row in batch if row["counselor"].pk == self.counselor.pk
+        )
+        for key in (
+            "training_in_person_minutes",
+            "training_remote_minutes",
+            "training_unknown_minutes",
+            "training_completed_minutes",
+            "training_method_summary_label",
+        ):
+            self.assertEqual(batch_progress[key], progress[key], key)
+
 
 class CounselorTrainingProgressDashboardTests(TestCase):
     def setUp(self):
@@ -594,6 +728,8 @@ class CounselorTrainingProgressDashboardTests(TestCase):
         self.assertContains(response, "종결기록지")
         self.assertContains(response, "수퍼비전")
         self.assertContains(response, "사례보고서")
+        self.assertContains(response, "수련시간")
+        self.assertContains(response, "총 0분")
         self.assertNotContains(response, "공개사례발표회 참여")
         self.assertNotContains(response, "댓글 참여 기준")
         self.assertContains(response, "총 0건(총 0분) / 0건 완료(0분)")

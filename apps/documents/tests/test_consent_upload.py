@@ -158,6 +158,39 @@ class ConsentUploadTests(TestCase):
         self.assertGreaterEqual(second.updated_at, old_updated)
         self.assertTrue(second.file.name.endswith(".png"))
 
+    def test_intake_upload_snapshots_case_method_once(self):
+        from apps.counseling.models import CounselingMethod
+
+        self.assertFalse(self.case.intake_counseling_method)
+        upsert_counselor_consent(
+            case=self.case,
+            doc_type=ConsentDocType.INTAKE,
+            file_obj=self._pdf_file(),
+            uploaded_by=self.counselor,
+        )
+        self.case.refresh_from_db()
+        self.assertEqual(
+            self.case.intake_counseling_method,
+            self.case.counseling_method,
+        )
+        first_method = self.case.intake_counseling_method
+
+        Case = type(self.case)
+        Case.objects.filter(pk=self.case.pk).update(
+            counseling_method=CounselingMethod.REMOTE
+            if first_method != CounselingMethod.REMOTE
+            else CounselingMethod.IN_PERSON
+        )
+        self.case.refresh_from_db()
+        upsert_counselor_consent(
+            case=self.case,
+            doc_type=ConsentDocType.INTAKE,
+            file_obj=self._pdf_file("intake2.pdf"),
+            uploaded_by=self.counselor,
+        )
+        self.case.refresh_from_db()
+        self.assertEqual(self.case.intake_counseling_method, first_method)
+
     def test_counselor_can_preview_own_consent_inline(self):
         consent = upsert_counselor_consent(
             case=self.case,

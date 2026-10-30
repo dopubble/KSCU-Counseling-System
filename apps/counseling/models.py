@@ -184,6 +184,14 @@ class Case(models.Model):
         choices=CounselingMethod.choices,
         default=CounselingMethod.IN_PERSON,
     )
+    intake_counseling_method = models.CharField(
+        "접수면접 진행 방식",
+        max_length=20,
+        choices=CounselingMethod.choices,
+        null=True,
+        blank=True,
+        help_text="접수면접지 최초 제출 시점의 상담방식 스냅샷. 과거 데이터는 비어 있을 수 있습니다.",
+    )
     total_sessions = models.PositiveIntegerField(
         "총 회기 수",
         default=10,
@@ -490,6 +498,14 @@ class SupervisionSession(models.Model):
     duration_minutes = models.PositiveIntegerField(
         "인정시간(분)",
         default=DEFAULT_APPOINTMENT_DURATION_MINUTES,
+    )
+    counseling_method = models.CharField(
+        "진행 방식",
+        max_length=20,
+        choices=CounselingMethod.choices,
+        null=True,
+        blank=True,
+        help_text="해당 수퍼비전 회차의 진행방식. 과거 데이터는 비어 있을 수 있습니다.",
     )
     status = models.CharField(
         "상태",

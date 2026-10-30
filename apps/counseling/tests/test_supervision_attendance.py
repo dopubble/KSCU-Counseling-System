@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from apps.accounts.models import CounselorProfile, SupervisorProfile, User, UserRole, UserStatus
 from apps.counseling.models import (
+    CounselingMethod,
     SupervisionAttendance,
     SupervisionAttendanceStatus,
     SupervisionSession,
@@ -124,12 +125,14 @@ class SupervisionAttendanceAccessTests(TestCase):
                 "title": "추가회차",
                 "scheduled_at": "2026-11-01T10:00",
                 "duration_minutes": 50,
+                "counseling_method": CounselingMethod.REMOTE,
                 "status": SupervisionSessionStatus.SCHEDULED,
             },
         )
         self.assertEqual(response.status_code, 302)
         created = SupervisionSession.objects.get(cohort=1, session_number=5)
         self.assertEqual(created.status, SupervisionSessionStatus.SCHEDULED)
+        self.assertEqual(created.counseling_method, CounselingMethod.REMOTE)
 
         supervisor_http = HttpClient()
         supervisor_http.force_login(self.other_supervisor)

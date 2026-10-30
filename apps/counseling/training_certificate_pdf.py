@@ -35,7 +35,8 @@ from apps.sessions_app.pdf import _register_korean_font
 CERTIFICATE_TITLE = "수련확인증"
 CERTIFICATE_CONFIRMATION = "위와 같이 전문상담사 수련과정의 수련 내역을 확인합니다."
 CERTIFICATE_METHOD_NOTICE = (
-    "※ 접수면접 및 상담자 경험의 진행방식은 현재 사례에 등록된 상담방식을 기준으로 표시합니다."
+    "※ 진행방식은 각 회기·세션에 저장된 방식을 기준으로 표시합니다. "
+    "방식이 확인되지 않은 과거 기록은 방식 미확인으로 표시합니다."
 )
 CERTIFICATE_ISSUER = "숭실사이버대학교 평생교육원"
 FOOTER_LOGO_FILENAME = "training-certificate-footer-logo.png"
@@ -58,33 +59,75 @@ def format_certificate_date(day) -> str:
     return f"{day.year}년 {day.month}월 {day.day}일"
 
 
+def _certificate_time_rows(item_name: str, *, in_person: int, remote: int, unknown: int):
+    """방식별 분이 있으면 행을 나눈다. 전부 0이면 0분 한 행."""
+    from apps.counseling.training_progress import format_training_minutes
+
+    rows: list[list[str]] = []
+    if in_person:
+        rows.append([item_name, format_training_minutes(in_person), "대면"])
+    if remote:
+        rows.append([item_name, format_training_minutes(remote), "비대면"])
+    if unknown:
+        rows.append([item_name, format_training_minutes(unknown), "방식 미확인"])
+    if not rows:
+        rows.append([item_name, format_training_minutes(0), _EMPTY])
+    return rows
+
+
 def build_training_certificate_context(
     counselor,
     progress: dict,
     issued_on,
     *,
     supervisor_label: str,
-    intake_mode: str,
-    journal_mode: str,
-    supervision_time: str,
+    intake_mode: str = "",
+    journal_mode: str = "",
+    supervision_time: str = "",
 ) -> dict:
-    """확인서에 찍을 값. progress는 수련현황 함수의 반환 그대로다."""
+    """확인서에 찍을 값. progress는 수련현황 함수의 반환 그대로다.
+
+    intake_mode/journal_mode/supervision_time은 하위 호환용이며
+    행 구성은 progress의 방식별 분을 우선한다.
+    """
     profile = getattr(counselor, "counselor_profile", None)
     birth_date = profile.birth_date if profile is not None else None
     identity = [("성명", counselor.name or _EMPTY)]
     if birth_date:
         identity.append(("생년월일", format_certificate_date(birth_date)))
     identity.append(("수퍼바이저", supervisor_label or _EMPTY))
-    rows = [
-        ["접수면접", progress["intake_completed_label"], intake_mode],
-        ["상담자 경험", progress["counseling_completed_label"], journal_mode],
-        ["수퍼비전", supervision_time, "비대면"],
+    rows: list[list[str]] = []
+    rows.extend(
+        _certificate_time_rows(
+            "접수면접",
+            in_person=progress.get("intake_in_person_minutes", 0),
+            remote=progress.get("intake_remote_minutes", 0),
+            unknown=progress.get("intake_unknown_minutes", 0),
+        )
+    )
+    rows.extend(
+        _certificate_time_rows(
+            "상담자 경험",
+            in_person=progress.get("counseling_in_person_minutes", 0),
+            remote=progress.get("counseling_remote_minutes", 0),
+            unknown=progress.get("counseling_unknown_minutes", 0),
+        )
+    )
+    rows.extend(
+        _certificate_time_rows(
+            "수퍼비전",
+            in_person=progress.get("supervision_in_person_minutes", 0),
+            remote=progress.get("supervision_remote_minutes", 0),
+            unknown=progress.get("supervision_unknown_minutes", 0),
+        )
+    )
+    rows.append(
         [
             "사례보고서",
             f"{progress['case_report_submitted_count']}사례",
             "비대면",
-        ],
-    ]
+        ]
+    )
     return {
         "title": CERTIFICATE_TITLE,
         "identity": identity,

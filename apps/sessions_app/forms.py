@@ -1,6 +1,8 @@
 from django import forms
 from django.utils import timezone
 
+from apps.counseling.models import CounselingMethod
+
 from .models import CounselingJournal, normalize_session_categories
 
 
@@ -63,14 +65,16 @@ class CounselingJournalForm(forms.ModelForm):
 
     class Meta:
         model = CounselingJournal
-        fields = ("session_number",)
+        fields = ("session_number", "counseling_method")
         widgets = {
             "session_number": forms.NumberInput(
                 attrs={"class": "form-control", "min": 1, "style": "max-width: 8rem;"}
             ),
+            "counseling_method": forms.Select(attrs={"class": "form-select"}),
         }
         labels = {
             "session_number": "회기",
+            "counseling_method": "상담 방식",
         }
 
     def __init__(self, *args, case=None, **kwargs):
@@ -79,6 +83,8 @@ class CounselingJournalForm(forms.ModelForm):
 
         # UUID 기본값 때문에 신규 인스턴스도 pk가 채워져 있으므로 _state.adding으로 판별한다.
         self.is_new = self.instance._state.adding
+        self.fields["counseling_method"].required = True
+        self.fields["counseling_method"].choices = CounselingMethod.choices
 
         if not self.is_new:
             if self.instance.session_datetime:
@@ -89,6 +95,8 @@ class CounselingJournalForm(forms.ModelForm):
             self.fields["counselor_observation"].initial = self.instance.objective
             self.fields["clinical_assessment"].initial = self.instance.assessment
             self.fields["follow_up_plan"].initial = self.instance.plan
+        elif self.case and not self.initial.get("counseling_method"):
+            self.fields["counseling_method"].initial = self.case.counseling_method
 
         if self.is_bound and self.errors:
             for name, field in self.fields.items():
@@ -127,6 +135,7 @@ class CounselingJournalForm(forms.ModelForm):
             journal.session_categories = categories
             journal.session_category = categories[0] if categories else ""
         journal.session_datetime = self.cleaned_data["session_datetime"]
+        journal.counseling_method = self.cleaned_data["counseling_method"]
         journal.subjective = self.cleaned_data["counseling_content"]
         journal.objective = self.cleaned_data["counselor_observation"]
         journal.assessment = self.cleaned_data["clinical_assessment"]
