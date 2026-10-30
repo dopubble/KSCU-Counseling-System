@@ -21,15 +21,6 @@
     {% page_header title="사례발표 게시판" subtitle=page_subtitle heading_tag="h1" title_class="h3 fw-semibold site-page-title mb-0" header_class="site-page-header mb-4" c1_label="대시보드" c1_url_name="counselor:dashboard" c1_icon="bi-briefcase" c2_label="사례발표 게시판" %}
     {% endif %}
 
-    {% if show_admin_unlinked_presentation_banner %}
-    <div class="alert alert-warning border shadow-sm mb-3 d-flex flex-wrap align-items-center gap-2" role="alert">
-        <span>Case 미연결 게시글 {{ unlinked_presentation_count }}건 — 수련현황 사례보고서 집계에 반영하려면 담당 사례를 연결해 주세요.</span>
-        <a href="{% url 'admin_panel:unlinked_case_presentations' %}" class="btn btn-sm btn-warning ms-auto">
-            미연결 사례 연결
-        </a>
-    </div>
-    {% endif %}
-
     <div class="card border-0 shadow-sm mb-3 presentation-board-toolbar">
         <div class="card-body py-3">
             <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">

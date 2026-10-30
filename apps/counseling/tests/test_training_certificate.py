@@ -213,7 +213,7 @@ class TrainingCertificateAccessTests(TestCase):
 
     def test_one_certificate_does_not_query_per_case(self):
         counselor = User.objects.select_related("counselor_profile").get(pk=self.counselor.pk)
-        with self.assertNumQueries(9):
+        with self.assertNumQueries(10):
             response = training_certificate_response(counselor)
         self.assertEqual(response.status_code, 200)
 

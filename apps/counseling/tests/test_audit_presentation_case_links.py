@@ -37,5 +37,7 @@ class AuditPresentationCaseLinksTests(TestCase):
         self.assertIn("posts_case_linked=0", body)
         self.assertIn("posts_case_null=1", body)
         self.assertIn("null_posts=1", body)
+        self.assertIn("linked distinct Case + case=null", body)
+        self.assertNotIn("포함되지 않습니다", body)
         self.assertEqual(CasePresentationPost.objects.count(), before)
         self.assertIsNone(CasePresentationPost.objects.get().case_id)

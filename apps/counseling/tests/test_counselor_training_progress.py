@@ -470,7 +470,7 @@ class CounselorTrainingProgressTests(TestCase):
     def test_query_count_does_not_grow_with_more_cases(self):
         case = _create_case(self.counselor, _create_client("쿼리내담"), "CASE-TRAIN-Q")
         _create_journal(case, 1)
-        with self.assertNumQueries(4):
+        with self.assertNumQueries(5):
             get_counselor_training_progress(self.counselor)
 
         for index in range(3):
@@ -481,7 +481,7 @@ class CounselorTrainingProgressTests(TestCase):
             )
             _create_journal(extra, 1)
 
-        with self.assertNumQueries(4):
+        with self.assertNumQueries(5):
             get_counselor_training_progress(self.counselor)
 
     def test_case_report_counts_distinct_owned_cases(self):
@@ -506,6 +506,7 @@ class CounselorTrainingProgressTests(TestCase):
         progress = get_counselor_training_progress(self.counselor)
         self.assertEqual(progress["case_report_submitted_count"], 2)
 
+        # linked 2 + null 1 = 3이지만 required=2이므로 cap → 2
         legacy = _presentation_post(self.counselor, "기존글")
         self.assertIsNone(legacy.case_id)
         progress = get_counselor_training_progress(self.counselor)
@@ -523,9 +524,58 @@ class CounselorTrainingProgressTests(TestCase):
 
         linked = _presentation_post(self.counselor, "연결후쿼리", case=None)
         self.assertIsNone(linked.case_id)
-        with self.assertNumQueries(4):
+        with self.assertNumQueries(5):
             counted = get_counselor_training_progress(self.counselor)
         self.assertEqual(counted["case_report_submitted_count"], 2)
+
+    def test_legacy_null_posts_count_toward_case_report(self):
+        for index in range(4):
+            _create_case(
+                self.counselor,
+                _create_client(f"레거시내담{index}"),
+                f"CASE-LEG-{index}",
+            )
+
+        progress = get_counselor_training_progress(self.counselor)
+        self.assertEqual(progress["case_report_required_count"], 4)
+        self.assertEqual(progress["case_report_submitted_count"], 0)
+
+        _presentation_post(self.counselor, "레거시1")
+        progress = get_counselor_training_progress(self.counselor)
+        self.assertEqual(progress["case_report_submitted_count"], 1)
+
+        _presentation_post(self.counselor, "레거시2")
+        progress = get_counselor_training_progress(self.counselor)
+        self.assertEqual(progress["case_report_submitted_count"], 2)
+
+    def test_case_report_combines_linked_and_legacy_with_cap(self):
+        cases = [
+            _create_case(
+                self.counselor,
+                _create_client(f"합산내담{index}"),
+                f"CASE-MIX-{index}",
+            )
+            for index in range(4)
+        ]
+        _presentation_post(self.counselor, "연결A", case=cases[0])
+        _presentation_post(self.counselor, "연결A중복", case=cases[0])
+        _presentation_post(self.counselor, "연결B", case=cases[1])
+        _presentation_post(self.counselor, "레거시합산")
+
+        progress = get_counselor_training_progress(self.counselor)
+        self.assertEqual(progress["case_report_required_count"], 4)
+        self.assertEqual(progress["case_report_submitted_count"], 3)
+
+        _presentation_post(self.counselor, "레거시초과1")
+        _presentation_post(self.counselor, "레거시초과2")
+        capped = get_counselor_training_progress(self.counselor)
+        self.assertEqual(capped["case_report_submitted_count"], 4)
+
+    def test_case_report_submitted_zero_when_required_zero(self):
+        _presentation_post(self.counselor, "사례없음레거시")
+        progress = get_counselor_training_progress(self.counselor)
+        self.assertEqual(progress["case_report_required_count"], 0)
+        self.assertEqual(progress["case_report_submitted_count"], 0)
 
 
 class CounselorTrainingProgressDashboardTests(TestCase):

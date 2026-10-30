@@ -49,7 +49,7 @@ class Command(BaseCommand):
 
         self.stdout.write(
             self.style.NOTICE(
-                "기존 case=null 게시글은 사례보고서 수련실적에 포함되지 않습니다. "
+                "사례보고서 실적은 linked distinct Case + case=null 게시글 수로 집계됩니다. "
                 "이 명령은 데이터를 변경하지 않습니다."
             )
         )

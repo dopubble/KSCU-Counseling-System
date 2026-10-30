@@ -401,7 +401,7 @@ class AdminTrainingProgressQueryBudgetTests(TestCase):
 
         self.assertEqual(one_count, five_count)
         self.assertEqual(five_count, twenty_count)
-        self.assertLessEqual(twenty_count, 8)
+        self.assertLessEqual(twenty_count, 9)
 
 
 class AdminTrainingProgressDetailTests(TestCase):
@@ -456,10 +456,18 @@ class AdminTrainingProgressDetailTests(TestCase):
         report_section = detail_body[
             detail_body.index("사례보고서") : detail_body.index("공개사례발표회 참여")
         ]
-        self.assertContains(listing, "0/4사례")
-        self.assertIn("4건 중 0건 제출", report_section)
-        self.assertNotIn("총 4건 / 0건 제출", report_section)
+        self.assertContains(listing, "1/4사례")
+        self.assertIn("4건 중 1건 제출", report_section)
+        self.assertIn("사례발표 게시글 제출 기준", report_section)
+        self.assertNotIn("담당 사례에 연결된 사례발표 게시글 기준", report_section)
+        self.assertNotIn("총 4건 / 1건 제출", report_section)
         self.assertNotIn("4/0건 제출", report_section)
+        individual = get_counselor_training_progress(self.counselor)
+        batch_rows = get_cohort_counselors_training_progress(6)
+        batch = next(row["progress"] for row in batch_rows if row["counselor"].pk == self.counselor.pk)
+        self.assertEqual(individual["case_report_submitted_count"], 1)
+        self.assertEqual(batch["case_report_submitted_count"], 1)
+        self.assertEqual(detail.context["training_progress"], individual)
 
         _presentation(self.counselor, "연결1", case=cases[0], cohort=6)
         _presentation(self.counselor, "연결1중복", case=cases[0], cohort=6)
@@ -472,11 +480,12 @@ class AdminTrainingProgressDetailTests(TestCase):
         report_section = detail_body[
             detail_body.index("사례보고서") : detail_body.index("공개사례발표회 참여")
         ]
-        self.assertContains(listing, "2/4사례")
-        self.assertIn("4건 중 2건 제출", report_section)
+        # linked distinct 2 + legacy null 1 = 3
+        self.assertContains(listing, "3/4사례")
+        self.assertIn("4건 중 3건 제출", report_section)
         progress = get_counselor_training_progress(self.counselor)
         self.assertEqual(progress["case_report_required_count"], 4)
-        self.assertEqual(progress["case_report_submitted_count"], 2)
+        self.assertEqual(progress["case_report_submitted_count"], 3)
 
     def test_missing_counselor_returns_404(self):
         import uuid

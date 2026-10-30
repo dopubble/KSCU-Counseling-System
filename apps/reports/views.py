@@ -14,7 +14,6 @@ from apps.counseling.application_queries import (
 from apps.counseling.models import (
     ApplicationStatus,
     Case,
-    CasePresentationPost,
     CaseStatus,
     CounselingApplication,
     CounselingMethod,
@@ -158,10 +157,6 @@ def admin_dashboard(request):
         .order_by("scheduled_at")[:10]
     )
 
-    unlinked_presentation_count = CasePresentationPost.objects.filter(
-        case__isnull=True
-    ).count()
-
     return render(
         request,
         "admin_panel/dashboard.html",
@@ -170,7 +165,6 @@ def admin_dashboard(request):
             "waiting_applications": waiting_applications,
             "today_appointments": today_appointments,
             "cancel_pending_count": cancel_pending_count,
-            "unlinked_presentation_count": unlinked_presentation_count,
         },
     )
 

@@ -1,7 +1,6 @@
 from django.urls import path
 
 from apps.counseling import (
-    views_admin_presentation_links,
     views_admin_training_progress,
     views_supervision,
     views_training_certificate,
@@ -39,16 +38,6 @@ urlpatterns = [
         "training-progress/counselors/<uuid:counselor_id>/",
         views_admin_training_progress.admin_counselor_training_progress_detail,
         name="counselor_training_progress_detail",
-    ),
-    path(
-        "case-presentations/unlinked/",
-        views_admin_presentation_links.admin_unlinked_case_presentations,
-        name="unlinked_case_presentations",
-    ),
-    path(
-        "case-presentations/unlinked/<uuid:post_pk>/link/",
-        views_admin_presentation_links.admin_unlinked_case_presentation_link,
-        name="unlinked_case_presentation_link",
     ),
     path(
         "counselors/<uuid:counselor_id>/training-certificate/",

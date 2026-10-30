@@ -21,9 +21,10 @@
 예정·취소 회차는 출석률 분모에서 뺀다.
 
 사례보고서는 담당 사례 1건당 1건이다.
-제출은 이 상담사가 작성하고 본인 담당 사례에 연결된 게시글의 서로 다른 사례 수다.
-CasePresentationPost.case가 null인 기존 글은 제출로 세지 않는다.
-동일 사례에 게시글이 여러 개여도 distinct Case 기준으로 1건이다.
+제출은 (A) 본인 담당 사례에 연결된 게시글의 distinct Case 수와
+(B) case가 null인 레거시 게시글 수(글 1개=1건)의 합이다.
+합산 결과는 required_count(담당 사례 수)를 넘지 않는다.
+동일 사례에 연결된 게시글이 여러 개여도 distinct Case 기준으로 1건이다.
 
 공개사례발표회 참여는 본인이 댓글을 단 서로 다른 게시글 수다.
 
@@ -123,6 +124,27 @@ def _case_report_submitted_exists(counselor_id):
             case_id=OuterRef("pk"),
             author_id=counselor_id,
         )
+    )
+
+
+def _legacy_null_case_report_count(counselor_id) -> int:
+    """case=NULL 레거시 사례발표 게시글 수. 글 1개 = 제출 1건."""
+    return CasePresentationPost.objects.filter(
+        author_id=counselor_id,
+        case__isnull=True,
+    ).count()
+
+
+def _cap_case_report_submitted(raw_submitted: int, required: int) -> int:
+    if required <= 0:
+        return 0
+    return min(max(int(raw_submitted or 0), 0), int(required))
+
+
+def _case_report_submitted_total(*, linked_distinct: int, legacy_null: int, required: int) -> int:
+    return _cap_case_report_submitted(
+        int(linked_distinct or 0) + int(legacy_null or 0),
+        required,
     )
 
 
@@ -334,8 +356,14 @@ def get_counselor_training_progress(counselor) -> dict:
         supervision_attended,
         supervision_attended_minutes,
     ) = _supervision_counts(counselor)
+    required = row["intake_required_count"]
+    case_report_submitted = _case_report_submitted_total(
+        linked_distinct=row["case_report_submitted_count"],
+        legacy_null=_legacy_null_case_report_count(counselor.pk),
+        required=required,
+    )
     return _build_training_progress(
-        intake_required=row["intake_required_count"],
+        intake_required=required,
         intake_completed=row["intake_completed_count"],
         counseling_assigned=row["counseling_assigned_count"],
         journal_completed=row["journal_completed_count"],
@@ -345,7 +373,7 @@ def get_counselor_training_progress(counselor) -> dict:
         supervision_completed=supervision_completed,
         supervision_attended=supervision_attended,
         supervision_attended_minutes=supervision_attended_minutes,
-        case_report_submitted=row["case_report_submitted_count"],
+        case_report_submitted=case_report_submitted,
         public_presentation_participation=_presentation_participation_count(counselor),
     )
 
@@ -460,6 +488,21 @@ def _cohort_presentation_participation_by_author(user_ids: list) -> dict:
     return {row["author_id"]: row["total"] or 0 for row in rows}
 
 
+def _cohort_legacy_null_case_report_counts(user_ids: list) -> dict:
+    """기수 상담사들의 case=NULL 레거시 게시글 수. 한 번의 group by로 집계한다."""
+    if not user_ids:
+        return {}
+    rows = (
+        CasePresentationPost.objects.filter(
+            author_id__in=user_ids,
+            case__isnull=True,
+        )
+        .values("author_id")
+        .annotate(total=Count("pk"))
+    )
+    return {row["author_id"]: row["total"] or 0 for row in rows}
+
+
 def get_cohort_counselors_training_progress(cohort: int) -> list[dict]:
     """기수 상담사 수련현황을 일괄 집계한다. N명에 대해 개인 helper를 반복하지 않는다."""
     try:
@@ -488,13 +531,20 @@ def get_cohort_counselors_training_progress(cohort: int) -> list[dict]:
         cohort_number, profile_ids
     )
     presentation_by_user = _cohort_presentation_participation_by_author(user_ids)
+    legacy_null_by_user = _cohort_legacy_null_case_report_counts(user_ids)
 
     rows: list[dict] = []
     for profile in profiles:
         case_row = case_by_user.get(profile.user_id, {})
         attendance = attendance_by_profile.get(profile.pk, {})
+        required = case_row.get("intake_required_count", 0) or 0
+        case_report_submitted = _case_report_submitted_total(
+            linked_distinct=case_row.get("case_report_submitted_count", 0) or 0,
+            legacy_null=legacy_null_by_user.get(profile.user_id, 0),
+            required=required,
+        )
         progress = _build_training_progress(
-            intake_required=case_row.get("intake_required_count", 0) or 0,
+            intake_required=required,
             intake_completed=case_row.get("intake_completed_count", 0) or 0,
             counseling_assigned=case_row.get("counseling_assigned_count", 0) or 0,
             journal_completed=case_row.get("journal_completed_count", 0) or 0,
@@ -504,7 +554,7 @@ def get_cohort_counselors_training_progress(cohort: int) -> list[dict]:
             supervision_completed=supervision_completed,
             supervision_attended=attendance.get("attended", 0) or 0,
             supervision_attended_minutes=attendance.get("attended_minutes", 0) or 0,
-            case_report_submitted=case_row.get("case_report_submitted_count", 0) or 0,
+            case_report_submitted=case_report_submitted,
             public_presentation_participation=presentation_by_user.get(
                 profile.user_id, 0
             )
