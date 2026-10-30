@@ -45,8 +45,7 @@ def _list_display(progress: dict) -> dict:
             f"{progress['supervision_total_count']}회"
         ),
         "case_report_label": (
-            f"{progress['case_report_submitted_count']}/"
-            f"{progress['case_report_required_count']}사례"
+            f"{progress['case_report_submitted_count']}사례 완료"
         ),
         "public_presentation_label": (
             f"{progress['public_presentation_participation_count']}회"

@@ -605,7 +605,8 @@ class CounselorTrainingProgressDashboardTests(TestCase):
         self.assertNotContains(response, "총 0회 / 중 0회 출석")
         self.assertContains(response, "0회 참여")
         self.assertContains(response, "댓글 참여 기준")
-        self.assertContains(response, "총 0건 / 0건 제출", count=2)
+        self.assertContains(response, "총 0건 / 0건 제출", count=1)
+        self.assertContains(response, "0사례 완료")
         self.assertNotContains(
             response,
             "게시글이 사례와 연결되어 있지 않아 제출 수를 집계하지 않습니다.",
@@ -647,7 +648,11 @@ class CounselorTrainingProgressDashboardTests(TestCase):
         self.assertIn("총 20시간 / 3시간 완료", body)
         self.assertEqual(progress["termination_required_count"], 1)
         self.assertEqual(progress["termination_completed_count"], 0)
+        self.assertEqual(progress["case_report_required_count"], 1)
+        self.assertEqual(progress["case_report_submitted_count"], 0)
         self.assertIn("총 1건 / 0건 제출", body)
+        self.assertIn("0사례 완료", body)
+        self.assertNotIn("총 1건 / 0건 제출", body[body.index("사례보고서"):body.index("공개사례발표회 참여")])
         self.assertNotIn("완료 회기", body)
         self.assertNotIn("작성완료", body)
         self.assertNotIn("게시글이 사례와 연결되어 있지 않아", body)
@@ -679,7 +684,12 @@ class CounselorTrainingProgressDashboardTests(TestCase):
 
         response = self.http.get(self.url)
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "총 2건 / 1건 제출")
+        progress = response.context["training_progress"]
+        self.assertEqual(progress["case_report_required_count"], 2)
+        self.assertEqual(progress["case_report_submitted_count"], 1)
+        self.assertContains(response, "1사례 완료")
+        self.assertNotContains(response, "총 2건 / 1건 제출")
+        self.assertNotContains(response, "1/2사례")
         self.assertNotContains(
             response,
             "게시글이 사례와 연결되어 있지 않아 제출 수를 집계하지 않습니다.",

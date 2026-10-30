@@ -352,7 +352,8 @@ class AdminTrainingProgressBatchParityTests(TestCase):
         self.assertContains(response, "3/18시간")
         self.assertContains(response, "1/2건")
         self.assertContains(response, "7/9회")
-        self.assertContains(response, "1/2사례")
+        self.assertContains(response, "1사례 완료")
+        self.assertNotContains(response, "1/2사례")
         self.assertContains(response, "2회")
         self.assertContains(response, 'title="출석률 88%"')
 
@@ -456,15 +457,16 @@ class AdminTrainingProgressDetailTests(TestCase):
         report_section = detail_body[
             detail_body.index("사례보고서") : detail_body.index("공개사례발표회 참여")
         ]
-        self.assertContains(listing, "1/4사례")
-        self.assertIn("4건 중 1건 제출", report_section)
+        self.assertContains(listing, "1사례 완료")
+        self.assertNotContains(listing, "1/4사례")
+        self.assertIn("1사례 완료", report_section)
+        self.assertNotIn("4건 중 1건 제출", report_section)
         self.assertIn("사례발표 게시글 제출 기준", report_section)
         self.assertNotIn("담당 사례에 연결된 사례발표 게시글 기준", report_section)
-        self.assertNotIn("총 4건 / 1건 제출", report_section)
-        self.assertNotIn("4/0건 제출", report_section)
         individual = get_counselor_training_progress(self.counselor)
         batch_rows = get_cohort_counselors_training_progress(6)
         batch = next(row["progress"] for row in batch_rows if row["counselor"].pk == self.counselor.pk)
+        self.assertEqual(individual["case_report_required_count"], 4)
         self.assertEqual(individual["case_report_submitted_count"], 1)
         self.assertEqual(batch["case_report_submitted_count"], 1)
         self.assertEqual(detail.context["training_progress"], individual)
@@ -481,8 +483,10 @@ class AdminTrainingProgressDetailTests(TestCase):
             detail_body.index("사례보고서") : detail_body.index("공개사례발표회 참여")
         ]
         # linked distinct 2 + legacy null 1 = 3
-        self.assertContains(listing, "3/4사례")
-        self.assertIn("4건 중 3건 제출", report_section)
+        self.assertContains(listing, "3사례 완료")
+        self.assertNotContains(listing, "3/4사례")
+        self.assertIn("3사례 완료", report_section)
+        self.assertNotIn("4건 중 3건 제출", report_section)
         progress = get_counselor_training_progress(self.counselor)
         self.assertEqual(progress["case_report_required_count"], 4)
         self.assertEqual(progress["case_report_submitted_count"], 3)
