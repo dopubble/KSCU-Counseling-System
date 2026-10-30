@@ -34,18 +34,18 @@ TRAINING_CREDIT_MINUTES_PER_SESSION이다.
 
 수련시간(표기용)은 접수면접 완료분 + 상담자 경험 완료분 + 수퍼비전 출석 인정분의 합이다.
 
-대면/비대면 분리는 회기·세션 스냅샷을 쓴다.
-접수면접: Case.intake_counseling_method
-상담자 경험: CounselingJournal.counseling_method
-수퍼비전: SupervisionSession.counseling_method
-스냅샷이 없으면 UNKNOWN(방식 미확인)이다.
-Case.counseling_method(현재값)로 과거 회기를 추정하지 않는다.
+대면/비대면 분리는 회기·세션 스냅샷을 우선한다.
+접수면접: Case.intake_counseling_method → NULL이면 Case.counseling_method
+상담자 경험: CounselingJournal.counseling_method → NULL이면 Case.counseling_method
+수퍼비전: SupervisionSession.counseling_method → NULL이면 REMOTE
+(운영 정책: migration 이전 수퍼비전은 비대면. DB는 채우지 않고 집계만 fallback.)
 """
 
 from collections import defaultdict
 
 from django.db.models import (
     Case as SqlCase,
+    CharField,
     Count,
     Exists,
     F,
@@ -57,7 +57,7 @@ from django.db.models import (
     Value,
     When,
 )
-from django.db.models.functions import Coalesce
+from django.db.models.functions import Coalesce, NullIf
 
 from apps.accounts.models import CounselorProfile, UserRole
 from apps.counseling.models import (
@@ -444,17 +444,33 @@ def _empty_case_metric_totals() -> dict:
     }
 
 
+def _effective_method_expr(*, snapshot_field: str, fallback_field: str):
+    """snapshot이 있으면 우선, 비어 있으면 fallback. DB를 채우지 않고 집계만 한다."""
+    return Coalesce(
+        NullIf(F(snapshot_field), Value("")),
+        NullIf(F(fallback_field), Value("")),
+        Value(""),
+        output_field=CharField(),
+    )
+
+
 def _intake_method_minutes_for_counselor(counselor_id) -> dict[str, int]:
     rows = (
         Case.objects.filter(counselor_id=counselor_id)
         .annotate(intake_submitted=_intake_submitted_exists())
         .filter(intake_submitted=True)
-        .values("intake_counseling_method")
+        .annotate(
+            effective_method=_effective_method_expr(
+                snapshot_field="intake_counseling_method",
+                fallback_field="counseling_method",
+            )
+        )
+        .values("effective_method")
         .annotate(total=Count("pk"))
     )
     return _fold_method_count_rows(
         rows,
-        method_key="intake_counseling_method",
+        method_key="effective_method",
         count_key="total",
         minutes_per=TRAINING_CREDIT_MINUTES_PER_SESSION,
     )
@@ -467,14 +483,29 @@ def _journal_method_minutes_for_counselor(counselor_id) -> dict[str, int]:
             case__counselor_id=counselor_id,
             is_draft=False,
         )
-        .values("counseling_method")
+        .annotate(
+            effective_method=_effective_method_expr(
+                snapshot_field="counseling_method",
+                fallback_field="case__counseling_method",
+            )
+        )
+        .values("effective_method")
         .annotate(total=Count("pk"))
     )
     return _fold_method_count_rows(
         rows,
-        method_key="counseling_method",
+        method_key="effective_method",
         count_key="total",
         minutes_per=TRAINING_CREDIT_MINUTES_PER_SESSION,
+    )
+
+
+def _supervision_effective_method_expr():
+    """snapshot이 있으면 우선, legacy NULL/빈값은 운영정책상 REMOTE."""
+    return Coalesce(
+        NullIf(F("session__counseling_method"), Value("")),
+        Value(CounselingMethod.REMOTE),
+        output_field=CharField(),
     )
 
 
@@ -487,12 +518,13 @@ def _supervision_method_minutes_for_profile(profile_id) -> dict[str, int]:
             status=SupervisionAttendanceStatus.PRESENT,
             session__status=SupervisionSessionStatus.COMPLETED,
         )
-        .values("session__counseling_method")
+        .annotate(effective_method=_supervision_effective_method_expr())
+        .values("effective_method")
         .annotate(minutes=Coalesce(Sum("session__duration_minutes"), Value(0)))
     )
     return _fold_method_sum_rows(
         rows,
-        method_key="session__counseling_method",
+        method_key="effective_method",
         minutes_key="minutes",
     )
 
@@ -638,7 +670,13 @@ def _cohort_intake_method_minutes(user_ids: list) -> dict[int, dict[str, int]]:
         Case.objects.filter(counselor_id__in=user_ids)
         .annotate(intake_submitted=_intake_submitted_exists())
         .filter(intake_submitted=True)
-        .values("counselor_id", "intake_counseling_method")
+        .annotate(
+            effective_method=_effective_method_expr(
+                snapshot_field="intake_counseling_method",
+                fallback_field="counseling_method",
+            )
+        )
+        .values("counselor_id", "effective_method")
         .annotate(total=Count("pk"))
     )
     grouped: dict[int, list] = defaultdict(list)
@@ -647,7 +685,7 @@ def _cohort_intake_method_minutes(user_ids: list) -> dict[int, dict[str, int]]:
     return {
         counselor_id: _fold_method_count_rows(
             method_rows,
-            method_key="intake_counseling_method",
+            method_key="effective_method",
             count_key="total",
             minutes_per=TRAINING_CREDIT_MINUTES_PER_SESSION,
         )
@@ -664,7 +702,13 @@ def _cohort_journal_method_minutes(user_ids: list) -> dict[int, dict[str, int]]:
             is_draft=False,
             case__counselor_id=F("counselor_id"),
         )
-        .values("counselor_id", "counseling_method")
+        .annotate(
+            effective_method=_effective_method_expr(
+                snapshot_field="counseling_method",
+                fallback_field="case__counseling_method",
+            )
+        )
+        .values("counselor_id", "effective_method")
         .annotate(total=Count("pk"))
     )
     grouped: dict[int, list] = defaultdict(list)
@@ -673,7 +717,7 @@ def _cohort_journal_method_minutes(user_ids: list) -> dict[int, dict[str, int]]:
     return {
         counselor_id: _fold_method_count_rows(
             method_rows,
-            method_key="counseling_method",
+            method_key="effective_method",
             count_key="total",
             minutes_per=TRAINING_CREDIT_MINUTES_PER_SESSION,
         )
@@ -734,7 +778,8 @@ def _cohort_supervision_method_minutes(
             session__cohort=cohort,
             session__status=SupervisionSessionStatus.COMPLETED,
         )
-        .values("counselor_id", "session__counseling_method")
+        .annotate(effective_method=_supervision_effective_method_expr())
+        .values("counselor_id", "effective_method")
         .annotate(minutes=Coalesce(Sum("session__duration_minutes"), Value(0)))
     )
     grouped: dict[int, list] = defaultdict(list)
@@ -743,7 +788,7 @@ def _cohort_supervision_method_minutes(
     return {
         profile_id: _fold_method_sum_rows(
             method_rows,
-            method_key="session__counseling_method",
+            method_key="effective_method",
             minutes_key="minutes",
         )
         for profile_id, method_rows in grouped.items()

@@ -352,6 +352,7 @@ class TrainingCertificateDetailTests(TestCase):
         _intake(remote, method=CounselingMethod.REMOTE)
         self.assertEqual(intake_delivery_mode_label(counselor), "대면·비대면 혼합")
 
+        Case.objects.filter(pk=unknown.pk).update(counseling_method="")
         _intake(unknown)
         self.assertEqual(
             intake_delivery_mode_label(counselor),
@@ -385,6 +386,7 @@ class TrainingCertificateDetailTests(TestCase):
         self.assertEqual(journal_delivery_mode_label(counselor), "대면·비대면 혼합")
 
         unknown = _case(counselor, client, "JRN-3", CounselingMethod.IN_PERSON)
+        Case.objects.filter(pk=unknown.pk).update(counseling_method="")
         _journal(unknown, 1, counseling_method=None)
         self.assertEqual(
             journal_delivery_mode_label(counselor),
@@ -443,6 +445,71 @@ def _attend(session, counselor, status):
 
 
 class TrainingCertificateRecordTests(TestCase):
+    def test_legacy_mixed_cases_split_pdf_rows_by_case_fallback(self):
+        counselor = _counselor("혼합확인증", cohort=8)
+        in_person = _case(
+            counselor,
+            _user("혼합내담1@example.com", "혼합내담1", UserRole.CLIENT),
+            "PDF-IP",
+            CounselingMethod.IN_PERSON,
+        )
+        remote = _case(
+            counselor,
+            _user("혼합내담2@example.com", "혼합내담2", UserRole.CLIENT),
+            "PDF-RM",
+            CounselingMethod.REMOTE,
+        )
+        for number in range(1, 5):
+            _journal(in_person, number, counseling_method=None)
+        for number in range(1, 7):
+            _journal(remote, number, counseling_method=None)
+        # snapshot beats Case fallback
+        snap_case = _case(
+            counselor,
+            _user("혼합내담3@example.com", "혼합내담3", UserRole.CLIENT),
+            "PDF-SNAP",
+            CounselingMethod.REMOTE,
+        )
+        _journal(snap_case, 1, counseling_method=CounselingMethod.IN_PERSON)
+
+        progress = get_counselor_training_progress(counselor)
+        context = _certificate_context(counselor, progress)
+        self.assertEqual(progress["training_completed_minutes"], 660)
+        self.assertEqual(
+            progress["training_in_person_minutes"]
+            + progress["training_remote_minutes"]
+            + progress["training_unknown_minutes"],
+            progress["training_completed_minutes"],
+        )
+        self.assertIn(["상담자 경험", "5시간", "대면"], context["rows"])
+        self.assertIn(["상담자 경험", "6시간", "비대면"], context["rows"])
+        self.assertNotIn("방식 미확인", [row[2] for row in context["rows"] if row[0] == "상담자 경험"])
+
+    def test_legacy_supervision_null_pdf_row_is_remote(self):
+        counselor = _counselor("수퍼확인증", cohort=9)
+        case = _case(
+            counselor,
+            _user("수퍼내담@example.com", "수퍼내담", UserRole.CLIENT),
+            "PDF-SUP",
+            CounselingMethod.IN_PERSON,
+        )
+        for number in range(1, 5):
+            _journal(case, number, counseling_method=None)
+        session = _supervision_session(9, 1, SupervisionSessionStatus.COMPLETED, 420)
+        self.assertIsNone(session.counseling_method)
+        _attend(session, counselor, SupervisionAttendanceStatus.PRESENT)
+
+        progress = get_counselor_training_progress(counselor)
+        context = _certificate_context(counselor, progress)
+        self.assertEqual(progress["training_unknown_minutes"], 0)
+        self.assertEqual(progress["training_completed_minutes"], 660)
+        self.assertIn(["상담자 경험", "4시간", "대면"], context["rows"])
+        self.assertIn(["수퍼비전", "7시간", "비대면"], context["rows"])
+        self.assertNotIn(
+            "방식 미확인",
+            [row[2] for row in context["rows"] if row[0] == "수퍼비전"],
+        )
+
     def test_credit_hours_and_case_report_counts(self):
         counselor = _counselor("시간상담", cohort=5)
         client = _user("시간내담@example.com", "시간내담", UserRole.CLIENT)

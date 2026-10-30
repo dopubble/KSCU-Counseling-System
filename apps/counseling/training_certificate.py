@@ -1,7 +1,7 @@
 """수련확인증에 그릴 진행방식·수퍼바이저 이름.
 
 수련 건수·시간은 get_counselor_training_progress()를 그대로 쓴다.
-진행방식 요약 라벨은 회기/세션 스냅샷 종류만 표시한다.
+진행방식 요약 라벨은 snapshot 우선, legacy NULL은 Case.counseling_method fallback이다.
 """
 
 from django.db.models import Exists, OuterRef, Sum
@@ -15,7 +15,10 @@ from apps.counseling.models import (
     SupervisionSession,
     SupervisionSessionStatus,
 )
-from apps.counseling.training_progress import format_training_minutes
+from apps.counseling.training_progress import (
+    _effective_method_expr,
+    format_training_minutes,
+)
 from apps.documents.models import ConsentDocType, ConsentDocument
 from apps.sessions_app.models import CounselingJournal
 
@@ -95,13 +98,19 @@ def _intake_case_methods(counselor):
     return (
         Case.objects.filter(counselor_id=counselor.pk)
         .filter(Exists(submitted))
-        .values_list("intake_counseling_method", flat=True)
+        .annotate(
+            effective_method=_effective_method_expr(
+                snapshot_field="intake_counseling_method",
+                fallback_field="counseling_method",
+            )
+        )
+        .values_list("effective_method", flat=True)
         .distinct()
     )
 
 
 def intake_delivery_mode_label(counselor) -> str:
-    """접수면접지가 있는 담당 사례의 접수면접 스냅샷 방식 종류."""
+    """접수면접지 사례의 effective 방식 종류(snapshot 우선, legacy는 Case fallback)."""
     return format_case_method_kinds(_intake_case_methods(counselor))
 
 
@@ -144,14 +153,20 @@ def certificate_date_for_counselor(counselor):
 
 
 def journal_delivery_mode_label(counselor) -> str:
-    """작성완료 일지의 회기 스냅샷 방식 종류."""
+    """작성완료 일지의 effective 방식 종류(snapshot 우선, legacy는 Case fallback)."""
     methods = (
         CounselingJournal.objects.filter(
             counselor_id=counselor.pk,
             case__counselor_id=counselor.pk,
             is_draft=False,
         )
-        .values_list("counseling_method", flat=True)
+        .annotate(
+            effective_method=_effective_method_expr(
+                snapshot_field="counseling_method",
+                fallback_field="case__counseling_method",
+            )
+        )
+        .values_list("effective_method", flat=True)
         .distinct()
     )
     return format_case_method_kinds(methods)

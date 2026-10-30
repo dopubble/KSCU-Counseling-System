@@ -683,10 +683,11 @@ class CounselorTrainingProgressTests(TestCase):
         )
 
         progress = get_counselor_training_progress(self.counselor)
-        # intake 1h IP; journals 1h IP + 1h RM + 1h unknown; supervision 1h IP + 1.5h RM + 1h unknown
+        # intake 1h IP; journals 1h IP + 1h RM + legacy NULL→Case REMOTE 1h;
+        # supervision 1h IP + 1.5h RM + legacy NULL→REMOTE 1h
         self.assertEqual(progress["training_in_person_minutes"], 180)
-        self.assertEqual(progress["training_remote_minutes"], 150)
-        self.assertEqual(progress["training_unknown_minutes"], 120)
+        self.assertEqual(progress["training_remote_minutes"], 270)
+        self.assertEqual(progress["training_unknown_minutes"], 0)
         self.assertEqual(progress["training_completed_minutes"], 450)
         self.assertEqual(
             progress["training_in_person_minutes"]
@@ -696,7 +697,7 @@ class CounselorTrainingProgressTests(TestCase):
         )
         self.assertEqual(
             progress["training_method_summary_label"],
-            "대면 3시간 / 비대면 2시간 30분 / 방식 미확인 2시간",
+            "대면 3시간 / 비대면 4시간 30분",
         )
         batch = get_cohort_counselors_training_progress(1)
         batch_progress = next(
@@ -710,6 +711,204 @@ class CounselorTrainingProgressTests(TestCase):
             "training_method_summary_label",
         ):
             self.assertEqual(batch_progress[key], progress[key], key)
+
+    def test_legacy_null_journals_fall_back_to_case_method_by_case(self):
+        """운영 회귀: snapshot NULL이어도 Case method가 있으면 방식 미확인이 아니다."""
+        in_person = _create_case(
+            self.counselor,
+            _create_client("레거시대면"),
+            "CASE-LEG-IP",
+            counseling_method=CounselingMethod.IN_PERSON,
+        )
+        remote = _create_case(
+            self.counselor,
+            _create_client("레거시비대면"),
+            "CASE-LEG-RM",
+            counseling_method=CounselingMethod.REMOTE,
+        )
+        for number in range(1, 5):
+            _create_journal(in_person, number, counseling_method=None)
+        for number in range(1, 7):
+            _create_journal(remote, number, counseling_method=None)
+
+        progress = get_counselor_training_progress(self.counselor)
+        self.assertEqual(progress["training_in_person_minutes"], 240)
+        self.assertEqual(progress["training_remote_minutes"], 360)
+        self.assertEqual(progress["training_unknown_minutes"], 0)
+        self.assertEqual(progress["training_completed_minutes"], 600)
+        self.assertEqual(
+            progress["training_method_summary_label"],
+            "대면 4시간 / 비대면 6시간",
+        )
+        batch = get_cohort_counselors_training_progress(1)
+        batch_progress = next(
+            row["progress"] for row in batch if row["counselor"].pk == self.counselor.pk
+        )
+        self.assertEqual(batch_progress["training_in_person_minutes"], 240)
+        self.assertEqual(batch_progress["training_remote_minutes"], 360)
+        self.assertEqual(batch_progress["training_unknown_minutes"], 0)
+
+    def test_journal_snapshot_beats_case_fallback(self):
+        case = _create_case(
+            self.counselor,
+            _create_client("스냅우선"),
+            "CASE-SNAP-1",
+            counseling_method=CounselingMethod.REMOTE,
+        )
+        _create_journal(case, 1, counseling_method=CounselingMethod.IN_PERSON)
+        progress = get_counselor_training_progress(self.counselor)
+        self.assertEqual(progress["counseling_in_person_minutes"], 60)
+        self.assertEqual(progress["counseling_remote_minutes"], 0)
+        self.assertEqual(progress["training_unknown_minutes"], 0)
+
+    def test_intake_falls_back_to_case_method_when_snapshot_null(self):
+        case = _create_case(
+            self.counselor,
+            _create_client("접수폴백"),
+            "CASE-INT-FB",
+            counseling_method=CounselingMethod.IN_PERSON,
+        )
+        _submit_intake(case)  # intake_counseling_method stays NULL
+        self.assertIsNone(case.intake_counseling_method)
+        progress = get_counselor_training_progress(self.counselor)
+        self.assertEqual(progress["intake_in_person_minutes"], 60)
+        self.assertEqual(progress["intake_remote_minutes"], 0)
+        self.assertEqual(progress["intake_unknown_minutes"], 0)
+
+        Case.objects.filter(pk=case.pk).update(
+            intake_counseling_method=CounselingMethod.REMOTE,
+            counseling_method=CounselingMethod.IN_PERSON,
+        )
+        snapped = get_counselor_training_progress(self.counselor)
+        self.assertEqual(snapped["intake_remote_minutes"], 60)
+        self.assertEqual(snapped["intake_in_person_minutes"], 0)
+
+    def test_truly_unknown_when_journal_and_case_method_missing(self):
+        case = _create_case(
+            self.counselor,
+            _create_client("진짜미확인"),
+            "CASE-UNK-1",
+            counseling_method=CounselingMethod.IN_PERSON,
+        )
+        Case.objects.filter(pk=case.pk).update(counseling_method="")
+        _create_journal(case, 1, counseling_method=None)
+        progress = get_counselor_training_progress(self.counselor)
+        self.assertEqual(progress["training_unknown_minutes"], 60)
+        self.assertEqual(progress["training_in_person_minutes"], 0)
+        self.assertEqual(progress["training_remote_minutes"], 0)
+        self.assertEqual(
+            progress["training_method_summary_label"],
+            "방식 미확인 1시간",
+        )
+
+    def test_legacy_supervision_null_falls_back_to_remote_policy(self):
+        in_person = _create_case(
+            self.counselor,
+            _create_client("수퍼폴백대면"),
+            "CASE-SUP-IP",
+            counseling_method=CounselingMethod.IN_PERSON,
+        )
+        remote = _create_case(
+            self.counselor,
+            _create_client("수퍼폴백비대면"),
+            "CASE-SUP-RM",
+            counseling_method=CounselingMethod.REMOTE,
+        )
+        for number in range(1, 5):
+            _create_journal(in_person, number, counseling_method=None)
+        for number in range(1, 7):
+            _create_journal(remote, number, counseling_method=None)
+
+        profile = self.counselor.counselor_profile
+        legacy = SupervisionSession.objects.create(
+            cohort=1,
+            session_number=1,
+            scheduled_at=timezone.now(),
+            status=SupervisionSessionStatus.COMPLETED,
+            duration_minutes=420,
+            counseling_method=None,
+        )
+        new_ip = SupervisionSession.objects.create(
+            cohort=1,
+            session_number=2,
+            scheduled_at=timezone.now(),
+            status=SupervisionSessionStatus.COMPLETED,
+            duration_minutes=60,
+            counseling_method=CounselingMethod.IN_PERSON,
+        )
+        new_rm = SupervisionSession.objects.create(
+            cohort=1,
+            session_number=3,
+            scheduled_at=timezone.now(),
+            status=SupervisionSessionStatus.COMPLETED,
+            duration_minutes=30,
+            counseling_method=CounselingMethod.REMOTE,
+        )
+        absent = SupervisionSession.objects.create(
+            cohort=1,
+            session_number=4,
+            scheduled_at=timezone.now(),
+            status=SupervisionSessionStatus.COMPLETED,
+            duration_minutes=60,
+            counseling_method=None,
+        )
+        cancelled = SupervisionSession.objects.create(
+            cohort=1,
+            session_number=5,
+            scheduled_at=timezone.now(),
+            status=SupervisionSessionStatus.CANCELLED,
+            duration_minutes=60,
+            counseling_method=None,
+        )
+        scheduled = SupervisionSession.objects.create(
+            cohort=1,
+            session_number=6,
+            scheduled_at=timezone.now(),
+            status=SupervisionSessionStatus.SCHEDULED,
+            duration_minutes=60,
+            counseling_method=None,
+        )
+        for session in (legacy, new_ip, new_rm):
+            SupervisionAttendance.objects.create(
+                session=session,
+                counselor=profile,
+                status=SupervisionAttendanceStatus.PRESENT,
+            )
+        SupervisionAttendance.objects.create(
+            session=absent,
+            counselor=profile,
+            status=SupervisionAttendanceStatus.ABSENT,
+        )
+        SupervisionAttendance.objects.create(
+            session=cancelled,
+            counselor=profile,
+            status=SupervisionAttendanceStatus.PRESENT,
+        )
+        SupervisionAttendance.objects.create(
+            session=scheduled,
+            counselor=profile,
+            status=SupervisionAttendanceStatus.PRESENT,
+        )
+        legacy.refresh_from_db()
+        self.assertIsNone(legacy.counseling_method)
+
+        progress = get_counselor_training_progress(self.counselor)
+        # counseling 4h IP + 6h RM; supervision legacy 7h RM + 1h IP + 0.5h RM
+        self.assertEqual(progress["training_in_person_minutes"], 300)
+        self.assertEqual(progress["training_remote_minutes"], 810)
+        self.assertEqual(progress["training_unknown_minutes"], 0)
+        self.assertEqual(progress["training_completed_minutes"], 1110)
+        self.assertEqual(
+            progress["training_method_summary_label"],
+            "대면 5시간 / 비대면 13시간 30분",
+        )
+        batch = get_cohort_counselors_training_progress(1)
+        batch_progress = next(
+            row["progress"] for row in batch if row["counselor"].pk == self.counselor.pk
+        )
+        self.assertEqual(batch_progress["training_in_person_minutes"], 300)
+        self.assertEqual(batch_progress["training_remote_minutes"], 810)
+        self.assertEqual(batch_progress["training_unknown_minutes"], 0)
 
 
 class CounselorTrainingProgressDashboardTests(TestCase):

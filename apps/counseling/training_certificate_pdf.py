@@ -35,8 +35,9 @@ from apps.sessions_app.pdf import _register_korean_font
 CERTIFICATE_TITLE = "수련확인증"
 CERTIFICATE_CONFIRMATION = "위와 같이 전문상담사 수련과정의 수련 내역을 확인합니다."
 CERTIFICATE_METHOD_NOTICE = (
-    "※ 진행방식은 각 회기·세션에 저장된 방식을 기준으로 표시합니다. "
-    "방식이 확인되지 않은 과거 기록은 방식 미확인으로 표시합니다."
+    "※ 진행방식은 회기·세션 스냅샷을 우선합니다. "
+    "스냅샷이 없는 과거 접수면접·상담일지는 사례의 현재 상담방식을, "
+    "스냅샷이 없는 과거 수퍼비전은 비대면으로 참고합니다."
 )
 CERTIFICATE_ISSUER = "숭실사이버대학교 평생교육원"
 FOOTER_LOGO_FILENAME = "training-certificate-footer-logo.png"

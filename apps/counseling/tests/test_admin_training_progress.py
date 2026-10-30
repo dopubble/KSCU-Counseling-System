@@ -367,12 +367,13 @@ class AdminTrainingProgressBatchParityTests(TestCase):
         self.assertNotContains(response, "1/2사례")
         self.assertNotContains(response, "공개사례발표")
         self.assertContains(response, 'title="출석률 88%"')
-        self.assertContains(response, "방식 미확인 11시간")
+        # intake+journals Case=IN_PERSON fallback → 대면 4시간; legacy supervision NULL → REMOTE 7시간
+        self.assertContains(response, "대면 4시간 / 비대면 7시간")
         progress = response.context["rows"][0]["progress"]
         self.assertEqual(progress["supervision_attendance_percent"], 88)
-        self.assertEqual(progress["training_in_person_minutes"], 0)
-        self.assertEqual(progress["training_remote_minutes"], 0)
-        self.assertEqual(progress["training_unknown_minutes"], 660)
+        self.assertEqual(progress["training_in_person_minutes"], 240)
+        self.assertEqual(progress["training_remote_minutes"], 420)
+        self.assertEqual(progress["training_unknown_minutes"], 0)
         self.assertEqual(
             progress["training_in_person_minutes"]
             + progress["training_remote_minutes"]
