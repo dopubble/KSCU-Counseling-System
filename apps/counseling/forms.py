@@ -625,6 +625,12 @@ def case_report_choice_label(case) -> str:
     return " · ".join(parts)
 
 
+def admin_case_link_choice_label(case) -> str:
+    """관리자 미연결 정리용: 사례번호 · 가린 내담자 이름 · 상태."""
+    client_name = mask_client_name(case.client.name) if case.client_id else "—"
+    return f"{case.case_number} · {client_name} · {case.get_status_display()}"
+
+
 class PresentationBoardPostCaseForm(forms.Form):
     """기존 사례발표 글에 담당 사례를 연결한다."""
 
@@ -649,6 +655,41 @@ class PresentationBoardPostCaseForm(forms.Form):
             return case
         if case.counselor_id != self.author.pk:
             raise forms.ValidationError("본인 담당 사례만 연결할 수 있습니다.")
+        return case
+
+
+class AdminUnlinkedPresentationCaseForm(forms.Form):
+    """관리자가 레거시 case=NULL 게시글에 작성자 본인 Case를 연결한다."""
+
+    case = forms.ModelChoiceField(
+        label="담당 사례",
+        queryset=Case.objects.none(),
+        required=True,
+        empty_label="연결할 사례를 선택해 주세요",
+        error_messages={"required": "연결할 사례를 선택해 주세요."},
+        widget=forms.Select(attrs={"class": "form-select form-select-sm"}),
+    )
+
+    def __init__(self, *args, author=None, cases=None, **kwargs):
+        self.author = author
+        super().__init__(*args, **kwargs)
+        field = self.fields["case"]
+        field.label_from_instance = admin_case_link_choice_label
+        if cases is not None:
+            # 목록 화면: 이미 prefetch된 Case로 choices를 채워 N+1을 피한다.
+            field.queryset = Case.objects.filter(pk__in=[c.pk for c in cases])
+            field.choices = [("", field.empty_label)] + [
+                (c.pk, admin_case_link_choice_label(c)) for c in cases
+            ]
+        else:
+            field.queryset = counselor_case_queryset(author)
+
+    def clean_case(self):
+        case = self.cleaned_data.get("case")
+        if case is None or self.author is None:
+            return case
+        if case.counselor_id != self.author.pk:
+            raise forms.ValidationError("작성자에게 배정된 사례만 연결할 수 있습니다.")
         return case
 
 

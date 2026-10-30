@@ -48,6 +48,19 @@
     </div>
 </div>
 
+{% if unlinked_presentation_count %}
+<div class="alert alert-warning border-0 shadow-sm section-spacing d-flex flex-wrap align-items-center gap-2" role="alert">
+    <i class="bi bi-link-45deg me-1" aria-hidden="true"></i>
+    <span>
+        <strong>Case 미연결 사례발표 게시글 {{ unlinked_presentation_count }}건</strong>
+        — 수련현황 사례보고서 실적에 반영하려면 담당 사례를 직접 연결해 주세요.
+    </span>
+    <a href="{% url 'admin_panel:unlinked_case_presentations' %}" class="btn btn-sm btn-warning ms-auto">
+        미연결 사례 연결
+    </a>
+</div>
+{% endif %}
+
 <div class="row g-3 section-spacing">
     <div class="col-lg-6">
         <div class="card shadow-sm h-100">

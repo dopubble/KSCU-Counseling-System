@@ -254,6 +254,17 @@ def presentation_board(request):
         page_subtitle = f"{cohort_filter}기 동기 수퍼비전 · 사례발표 자료 공유"
         list_heading = f"{cohort_filter}기 게시글"
 
+    is_staff = user_is_platform_staff(request.user)
+    unlinked_presentation_count = 0
+    if is_staff:
+        unlinked_presentation_count = CasePresentationPost.objects.filter(
+            case__isnull=True
+        ).count()
+    # ADMIN 전용. 수퍼바이저는 게시판 열람 가능해도 이 배너를 보지 않는다.
+    show_admin_unlinked_presentation_banner = bool(
+        is_staff and unlinked_presentation_count
+    )
+
     return render(
         request,
         "counselor/presentation_board.html",
@@ -270,10 +281,14 @@ def presentation_board(request):
                 cohort_filter is not None
                 and user_can_create_presentation_post(request.user, cohort_filter)
             ),
-            "is_staff_viewer": user_is_platform_staff(request.user),
+            "is_staff_viewer": is_staff,
             "is_supervisor_viewer": user_is_supervisor_viewer(request.user),
             "can_filter_cohorts": can_filter,
             "cohort_options": presentation_board_cohort_options() if can_filter else [],
+            "unlinked_presentation_count": unlinked_presentation_count,
+            "show_admin_unlinked_presentation_banner": (
+                show_admin_unlinked_presentation_banner
+            ),
             "page_subtitle": page_subtitle,
             "list_heading": list_heading,
             "show_cohort_column": can_filter and cohort_filter is None,
