@@ -111,7 +111,7 @@ class TrainingCertificateContextTests(TestCase):
             context["rows"],
             [
                 ["접수면접", "0분", "—", ""],
-                ["상담자 경험", "0분", "—", "5회기 이상 지속된 사례 총 0건"],
+                ["상담자 경험", "0분", "—", "5회기 이상 사례 0건"],
                 ["수퍼비전", "0분", "—", ""],
                 ["사례보고서", f"{progress['case_report_submitted_count']}사례", "비대면", ""],
             ],
@@ -460,12 +460,12 @@ class CertificateItemSpanTests(TestCase):
             in_person=240,
             remote=360,
             unknown=0,
-            remark="5회기 이상 지속된 사례 총 2건",
+            remark="5회기 이상 사례 2건",
         )
         self.assertEqual(
             rows,
             [
-                ["상담자 경험", "4시간", "대면", "5회기 이상 지속된 사례 총 2건"],
+                ["상담자 경험", "4시간", "대면", "5회기 이상 사례 2건"],
                 ["", "6시간", "비대면", ""],
             ],
         )
@@ -483,11 +483,11 @@ class CertificateItemSpanTests(TestCase):
             in_person=240,
             remote=300,
             unknown=60,
-            remark="5회기 이상 지속된 사례 총 1건",
+            remark="5회기 이상 사례 1건",
         )
         self.assertEqual(len(rows), 3)
         self.assertEqual(rows[0][0], "상담자 경험")
-        self.assertEqual(rows[0][3], "5회기 이상 지속된 사례 총 1건")
+        self.assertEqual(rows[0][3], "5회기 이상 사례 1건")
         self.assertEqual(rows[1][0], "")
         self.assertEqual(rows[1][3], "")
         self.assertEqual(rows[2][0], "")
@@ -506,11 +506,11 @@ class CertificateItemSpanTests(TestCase):
             in_person=600,
             remote=0,
             unknown=0,
-            remark="5회기 이상 지속된 사례 총 2건",
+            remark="5회기 이상 사례 2건",
         )
         self.assertEqual(
             rows,
-            [["상담자 경험", "10시간", "대면", "5회기 이상 지속된 사례 총 2건"]],
+            [["상담자 경험", "10시간", "대면", "5회기 이상 사례 2건"]],
         )
         self.assertEqual(item_column_span_commands(rows), [])
 
@@ -539,7 +539,7 @@ class CertificateItemSpanTests(TestCase):
         self.assertIn(("SPAN", (0, 2), (0, 3)), spans)
         self.assertIn(("SPAN", (3, 2), (3, 3)), spans)
         # 접수면접 0분 한 행 뒤 상담자 경험 2행 (원격 6회만 5회기 이상)
-        self.assertEqual(context["rows"][1][3], "5회기 이상 지속된 사례 총 1건")
+        self.assertEqual(context["rows"][1][3], "5회기 이상 사례 1건")
         self.assertEqual(context["rows"][2][3], "")
         pdf_bytes = build_training_certificate_pdf(context)
         self.assertTrue(pdf_bytes.startswith(b"%PDF"))
@@ -583,7 +583,7 @@ class TrainingCertificateRecordTests(TestCase):
             progress["training_completed_minutes"],
         )
         self.assertIn(
-            ["상담자 경험", "5시간", "대면", "5회기 이상 지속된 사례 총 1건"],
+            ["상담자 경험", "5시간", "대면", "5회기 이상 사례 1건"],
             context["rows"],
         )
         self.assertIn(["", "6시간", "비대면", ""], context["rows"])
@@ -611,7 +611,7 @@ class TrainingCertificateRecordTests(TestCase):
         self.assertEqual(progress["training_unknown_minutes"], 0)
         self.assertEqual(progress["training_completed_minutes"], 660)
         self.assertIn(
-            ["상담자 경험", "4시간", "대면", "5회기 이상 지속된 사례 총 0건"],
+            ["상담자 경험", "4시간", "대면", "5회기 이상 사례 0건"],
             context["rows"],
         )
         self.assertIn(["수퍼비전", "7시간", "비대면", ""], context["rows"])
@@ -632,7 +632,7 @@ class TrainingCertificateRecordTests(TestCase):
         self.assertEqual(context["rows"][0], ["접수면접", "1시간", "비대면", ""])
         self.assertEqual(
             context["rows"][1],
-            ["상담자 경험", "5시간", "비대면", "5회기 이상 지속된 사례 총 1건"],
+            ["상담자 경험", "5시간", "비대면", "5회기 이상 사례 1건"],
         )
         self.assertEqual(context["rows"][2], ["수퍼비전", "0분", "—", ""])
         self.assertEqual(context["rows"][3], ["사례보고서", "0사례", "비대면", ""])
@@ -765,7 +765,7 @@ class FooterLogoLayoutTests(TestCase):
             "columns": ["수련항목", "수련시간", "진행방식", "비고"],
             "rows": [
                 ["접수면접", "1시간", "비대면", ""],
-                ["상담자 경험", "5시간", "비대면", "5회기 이상 지속된 사례 총 1건"],
+                ["상담자 경험", "5시간", "비대면", "5회기 이상 사례 1건"],
                 ["수퍼비전", "8시간", "비대면", ""],
                 ["사례보고서", "1사례", "비대면", ""],
             ],
@@ -866,7 +866,7 @@ class CounselingCases5PlusTests(TestCase):
         self.assertEqual(counseling_cases_5plus_count(counselor), 2)
         self.assertEqual(
             counseling_cases_5plus_label(2),
-            "5회기 이상 지속된 사례 총 2건",
+            "5회기 이상 사례 2건",
         )
 
     def test_draft_journals_are_excluded(self):
@@ -942,7 +942,7 @@ class CounselingCases5PlusTests(TestCase):
             counselor, get_counselor_training_progress(counselor)
         )
         self.assertEqual(context["counseling_cases_5plus_count"], 0)
-        self.assertEqual(context["rows"][1][3], "5회기 이상 지속된 사례 총 0건")
+        self.assertEqual(context["rows"][1][3], "5회기 이상 사례 0건")
         self.assertEqual(context["rows"][0][3], "")
         self.assertEqual(context["rows"][2][3], "")
         self.assertEqual(context["rows"][3][3], "")
@@ -1018,7 +1018,7 @@ class CounselingCases5PlusTests(TestCase):
         context = _certificate_context(counselor, progress)
         self.assertEqual(context["columns"], ["수련항목", "수련시간", "진행방식", "비고"])
         self.assertEqual(context["counseling_cases_5plus_count"], 1)
-        self.assertEqual(context["rows"][1][3], "5회기 이상 지속된 사례 총 1건")
+        self.assertEqual(context["rows"][1][3], "5회기 이상 사례 1건")
         self.assertEqual(context["rows"][2][3], "")
         spans = item_column_span_commands(context["rows"])
         self.assertIn(("SPAN", (0, 2), (0, 3)), spans)
@@ -1034,11 +1034,11 @@ class CounselingCases5PlusTests(TestCase):
         from apps.sessions_app.pdf import _register_korean_font
         from reportlab.pdfbase.pdfmetrics import stringWidth
 
-        remark_width = _CONTENT_WIDTH * 0.30
+        remark_width = _CONTENT_WIDTH * 0.26
         font = _register_korean_font()
-        widest = stringWidth("5회기 이상 지속된 사례 총 12건", font, 9)
+        widest = stringWidth("5회기 이상 사례 12건", font, 9)
         self.assertLessEqual(widest + 8, remark_width)
-        self.assertAlmostEqual(remark_width / _CONTENT_WIDTH, 0.30, places=2)
+        self.assertAlmostEqual(remark_width / _CONTENT_WIDTH, 0.26, places=2)
 
 
 def _dated_session(cohort, number, status, when):

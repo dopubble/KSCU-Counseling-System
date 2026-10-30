@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% load static ui_tags %}
+
+{% block title %}{{ counselor.name }} 수련현황{% endblock %}
+
+{% block extra_css %}
+<link href="{% static 'css/counselor.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block layout %}
+<div class="site-page counselor-page py-4 py-lg-5">
+    <div class="container site-container">
+{% block content %}
+{% page_header show_heading=False c1_label="수퍼비전" c1_url_name="supervisor:dashboard" c1_icon="bi-eye" c2_label="기수별 수련현황" c2_url_name="supervisor:training_progress" c3_label=counselor.name %}
+
+<div class="site-page-heading mt-4 mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+        <div>
+            <h2 class="site-page-title mb-1">{{ counselor.name }} 상담사 수련현황</h2>
+            <p class="text-muted small mb-0">
+                기수:
+                {% if cohort %}{{ cohort }}기{% else %}—{% endif %}
+            </p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{% url 'supervisor:training_progress' %}{% if list_cohort %}?cohort={{ list_cohort }}{% endif %}"
+               class="btn btn-sm btn-outline-secondary">← 수련현황 목록</a>
+            <a href="{% url 'supervisor:counselor_training_certificate' counselor.pk %}"
+               class="btn btn-sm btn-outline-primary"
+               target="_blank"
+               rel="noopener">수련확인증 출력</a>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm" id="supervisor-counselor-training-progress">
+    <div class="card-header bg-white border-bottom py-3">
+        <h2 class="h6 fw-semibold mb-0">
+            <i class="bi bi-mortarboard me-2 text-primary" aria-hidden="true"></i>수련 현황
+        </h2>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-6 col-xl-4">
+                <div class="border rounded p-3 h-100">
+                    <h3 class="h6 fw-semibold mb-2">접수면접</h3>
+                    <p class="mb-0">총 {{ training_progress.intake_required_count }}건(총 {{ training_progress.intake_required_label }}) / {{ training_progress.intake_completed_count }}건 완료({{ training_progress.intake_completed_label }})</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-xl-4">
+                <div class="border rounded p-3 h-100">
+                    <h3 class="h6 fw-semibold mb-2">상담자 경험</h3>
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <div class="progress flex-grow-1" role="progressbar"
+                             aria-valuenow="{{ training_progress.counseling_progress_percent }}"
+                             aria-valuemin="0"
+                             aria-valuemax="100"
+                             aria-label="상담자 경험 {{ training_progress.counseling_progress_percent }}%">
+                            <div class="progress-bar" style="width: {{ training_progress.counseling_progress_percent }}%;"></div>
+                        </div>
+                        <span class="small text-muted">{{ training_progress.counseling_progress_percent }}%</span>
+                    </div>
+                    <p class="text-muted small mb-0">총 {{ training_progress.counseling_assigned_label }} / {{ training_progress.counseling_completed_label }} 완료</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-xl-4">
+                <div class="border rounded p-3 h-100">
+                    <h3 class="h6 fw-semibold mb-2">종결기록지</h3>
+                    <p class="mb-0">총 {{ training_progress.termination_required_count }}건 / {{ training_progress.termination_completed_count }}건 제출</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-xl-4">
+                <div class="border rounded p-3 h-100">
+                    <h3 class="h6 fw-semibold mb-2">수퍼비전</h3>
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <div class="progress flex-grow-1" role="progressbar"
+                             aria-valuenow="{{ training_progress.supervision_attendance_percent }}"
+                             aria-valuemin="0"
+                             aria-valuemax="100"
+                             aria-label="수퍼비전 출석 {{ training_progress.supervision_attendance_percent }}%">
+                            <div class="progress-bar" style="width: {{ training_progress.supervision_attendance_percent }}%;"></div>
+                        </div>
+                        <span class="small text-muted">{{ training_progress.supervision_attendance_percent }}%</span>
+                    </div>
+                    <p class="mb-0">총 {{ training_progress.supervision_total_count }}회 / {{ training_progress.supervision_attended_count }}회 출석</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-xl-4">
+                <div class="border rounded p-3 h-100">
+                    <h3 class="h6 fw-semibold mb-2">사례보고서</h3>
+                    <p class="mb-0">{{ training_progress.case_report_submitted_count }}사례 완료</p>
+                    <p class="text-muted small mb-0">사례발표 게시글 제출 기준</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-xl-4">
+                <div class="border rounded p-3 h-100">
+                    <h3 class="h6 fw-semibold mb-2">수련시간</h3>
+                    <p class="mb-0">{{ training_progress.training_method_summary_label }}</p>
+                    <p class="text-muted small mb-0">총 {{ training_progress.training_completed_label }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+    </div>
+</div>
+{% endblock %}

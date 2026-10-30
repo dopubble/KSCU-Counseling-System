@@ -1,6 +1,11 @@
 from django.urls import path
 
-from . import views_supervision, views_supervisor
+from . import (
+    views_supervision,
+    views_supervisor,
+    views_supervisor_training_progress,
+    views_training_certificate,
+)
 
 app_name = "supervisor"
 
@@ -31,6 +36,21 @@ urlpatterns = [
         "initial-records/<uuid:record_pk>/pdf/",
         views_supervisor.supervisor_initial_record_pdf,
         name="initial_record_pdf",
+    ),
+    path(
+        "training-progress/",
+        views_supervisor_training_progress.supervisor_training_progress,
+        name="training_progress",
+    ),
+    path(
+        "training-progress/counselors/<uuid:counselor_id>/",
+        views_supervisor_training_progress.supervisor_counselor_training_progress_detail,
+        name="counselor_training_progress_detail",
+    ),
+    path(
+        "training-progress/counselors/<uuid:counselor_id>/certificate/",
+        views_training_certificate.supervisor_counselor_training_certificate,
+        name="counselor_training_certificate",
     ),
     path(
         "supervision/",
