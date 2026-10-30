@@ -60,10 +60,17 @@ def format_certificate_date(day) -> str:
     return f"{day.year}년 {day.month}월 {day.day}일"
 
 
-def _certificate_time_rows(item_name: str, *, in_person: int, remote: int, unknown: int):
+def _certificate_time_rows(
+    item_name: str,
+    *,
+    in_person: int,
+    remote: int,
+    unknown: int,
+    remark: str = "",
+):
     """방식별 분이 있으면 행을 나눈다. 전부 0이면 0분 한 행.
 
-    같은 수련항목의 이어지는 행은 첫 열을 비워 PDF에서 rowspan(SPAN)한다.
+    같은 수련항목의 이어지는 행은 첫·비고 열을 비워 PDF에서 rowspan(SPAN)한다.
     """
     from apps.counseling.training_progress import format_training_minutes
 
@@ -75,18 +82,25 @@ def _certificate_time_rows(item_name: str, *, in_person: int, remote: int, unkno
     if unknown:
         parts.append((unknown, "방식 미확인"))
     if not parts:
-        return [[item_name, format_training_minutes(0), _EMPTY]]
+        return [[item_name, format_training_minutes(0), _EMPTY, remark]]
     rows: list[list[str]] = []
     for index, (minutes, method) in enumerate(parts):
         label = item_name if index == 0 else ""
-        rows.append([label, format_training_minutes(minutes), method])
+        note = remark if index == 0 else ""
+        rows.append([label, format_training_minutes(minutes), method, note])
     return rows
 
 
-def item_column_span_commands(rows: list[list[str]], *, header_rows: int = 1):
+def item_column_span_commands(
+    rows: list[list[str]],
+    *,
+    header_rows: int = 1,
+    remark_column: int = 3,
+):
     """동일 수련항목의 빈 첫 칸 연속 행에 대해 ReportLab SPAN 명령을 만든다.
 
     rows는 PDF body 행(헤더 제외). 반환 좌표는 헤더를 포함한 table 행 번호다.
+    비고 column이 있으면 같은 행 범위로 함께 SPAN한다.
     """
     commands: list[tuple] = []
     index = 0
@@ -101,6 +115,10 @@ def item_column_span_commands(rows: list[list[str]], *, header_rows: int = 1):
             start_row = header_rows + index
             end_row = header_rows + end - 1
             commands.append(("SPAN", (0, start_row), (0, end_row)))
+            if remark_column is not None and len(rows[index]) > remark_column:
+                commands.append(
+                    ("SPAN", (remark_column, start_row), (remark_column, end_row))
+                )
         index = end
     return commands
 
@@ -111,6 +129,7 @@ def build_training_certificate_context(
     issued_on,
     *,
     supervisor_label: str,
+    counseling_cases_5plus_count: int = 0,
     intake_mode: str = "",
     journal_mode: str = "",
     supervision_time: str = "",
@@ -120,12 +139,15 @@ def build_training_certificate_context(
     intake_mode/journal_mode/supervision_time은 하위 호환용이며
     행 구성은 progress의 방식별 분을 우선한다.
     """
+    from apps.counseling.training_certificate import counseling_cases_5plus_label
+
     profile = getattr(counselor, "counselor_profile", None)
     birth_date = profile.birth_date if profile is not None else None
     identity = [("성명", counselor.name or _EMPTY)]
     if birth_date:
         identity.append(("생년월일", format_certificate_date(birth_date)))
     identity.append(("수퍼바이저", supervisor_label or _EMPTY))
+    counseling_remark = counseling_cases_5plus_label(counseling_cases_5plus_count)
     rows: list[list[str]] = []
     rows.extend(
         _certificate_time_rows(
@@ -141,6 +163,7 @@ def build_training_certificate_context(
             in_person=progress.get("counseling_in_person_minutes", 0),
             remote=progress.get("counseling_remote_minutes", 0),
             unknown=progress.get("counseling_unknown_minutes", 0),
+            remark=counseling_remark,
         )
     )
     rows.extend(
@@ -156,14 +179,16 @@ def build_training_certificate_context(
             "사례보고서",
             f"{progress['case_report_submitted_count']}사례",
             "비대면",
+            "",
         ]
     )
     return {
         "title": CERTIFICATE_TITLE,
         "identity": identity,
-        "columns": ["수련항목", "수련시간", "진행방식"],
+        "columns": ["수련항목", "수련시간", "진행방식", "비고"],
         "rows": rows,
         "progress": progress,
+        "counseling_cases_5plus_count": counseling_cases_5plus_count,
         "method_notice": CERTIFICATE_METHOD_NOTICE,
         "confirmation": CERTIFICATE_CONFIRMATION,
         "issued_on_label": format_certificate_date(issued_on) if issued_on else _EMPTY,
@@ -297,11 +322,14 @@ def build_training_certificate_pdf(context: dict) -> bytes:
         [Paragraph(str(cell), cell_style) for cell in row]
         for row in body_rows
     ]
-    item_width = _CONTENT_WIDTH * 0.30
-    time_width = _CONTENT_WIDTH * 0.30
+    # 비고에 "5회기 이상 사례 00건"이 한 줄로 들어가도록 배분.
+    item_width = _CONTENT_WIDTH * 0.20
+    time_width = _CONTENT_WIDTH * 0.16
+    method_width = _CONTENT_WIDTH * 0.20
+    remark_width = _CONTENT_WIDTH - item_width - time_width - method_width
     table = Table(
         [header, *body],
-        colWidths=[item_width, time_width, _CONTENT_WIDTH - item_width - time_width],
+        colWidths=[item_width, time_width, method_width, remark_width],
     )
     table.hAlign = "CENTER"
     table.setStyle(
@@ -414,6 +442,7 @@ class _FooterMark(Flowable):
 
 def training_certificate_response(counselor) -> HttpResponse:
     from apps.counseling.training_certificate import (
+        counseling_cases_5plus_count,
         intake_delivery_mode_label,
         journal_delivery_mode_label,
         certificate_date_for_counselor,
@@ -428,6 +457,7 @@ def training_certificate_response(counselor) -> HttpResponse:
         progress,
         certificate_date_for_counselor(counselor),
         supervisor_label=supervisor_label_for_counselor(counselor),
+        counseling_cases_5plus_count=counseling_cases_5plus_count(counselor),
         intake_mode=intake_delivery_mode_label(counselor),
         journal_mode=journal_delivery_mode_label(counselor),
         supervision_time=supervision_attended_time_label(counselor),

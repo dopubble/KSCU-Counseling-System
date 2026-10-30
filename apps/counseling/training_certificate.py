@@ -4,7 +4,7 @@
 진행방식 요약 라벨은 snapshot 우선, legacy NULL은 Case.counseling_method fallback이다.
 """
 
-from django.db.models import Exists, OuterRef, Sum
+from django.db.models import Count, Exists, OuterRef, Q, Sum
 from django.utils import timezone
 
 from apps.accounts.models import SupervisorProfile
@@ -23,6 +23,32 @@ from apps.documents.models import ConsentDocType, ConsentDocument
 from apps.sessions_app.models import CounselingJournal
 
 _UNKNOWN = "UNKNOWN"
+_CASES_5PLUS_MIN_JOURNALS = 5
+
+
+def counseling_cases_5plus_count(counselor) -> int:
+    """작성완료 상담일지 5개 이상인 Case 건수(Case 단위, draft 제외).
+
+    Count 경로는 Case.journals related_name 기준이며,
+    filter는 부모 Case 기준으로 journals__is_draft를 쓴다.
+    distinct=True로 journal 행 중복 집계를 막는다.
+    """
+    return (
+        Case.objects.filter(counselor_id=counselor.pk)
+        .annotate(
+            completed_journal_count=Count(
+                "journals",
+                filter=Q(journals__is_draft=False),
+                distinct=True,
+            )
+        )
+        .filter(completed_journal_count__gte=_CASES_5PLUS_MIN_JOURNALS)
+        .count()
+    )
+
+
+def counseling_cases_5plus_label(count: int) -> str:
+    return f"5회기 이상 사례 {count}건"
 
 
 def supervisor_label_for_counselor(counselor) -> str:

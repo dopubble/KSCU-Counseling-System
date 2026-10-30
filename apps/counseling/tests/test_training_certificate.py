@@ -19,6 +19,7 @@ from apps.counseling.models import (
     ApplicationStatus,
     Case,
     CasePresentationPost,
+    CaseStatus,
     CounselingApplication,
     CounselingMethod,
     SupervisionAttendance,
@@ -28,6 +29,8 @@ from apps.counseling.models import (
 )
 from apps.counseling.training_certificate import (
     certificate_date_for_counselor,
+    counseling_cases_5plus_count,
+    counseling_cases_5plus_label,
     intake_delivery_mode_label,
     journal_delivery_mode_label,
     supervisor_label_for_counselor,
@@ -99,15 +102,18 @@ class TrainingCertificateContextTests(TestCase):
             ],
         )
         self.assertNotIn("기수", [label for label, _value in context["identity"]])
-        self.assertEqual(context["columns"], ["수련항목", "수련시간", "진행방식"])
+        self.assertEqual(
+            context["columns"], ["수련항목", "수련시간", "진행방식", "비고"]
+        )
         self.assertNotIn("인정시간", context["columns"])
+        self.assertEqual(context["counseling_cases_5plus_count"], 0)
         self.assertEqual(
             context["rows"],
             [
-                ["접수면접", "0분", "—"],
-                ["상담자 경험", "0분", "—"],
-                ["수퍼비전", "0분", "—"],
-                ["사례보고서", f"{progress['case_report_submitted_count']}사례", "비대면"],
+                ["접수면접", "0분", "—", ""],
+                ["상담자 경험", "0분", "—", "5회기 이상 사례 0건"],
+                ["수퍼비전", "0분", "—", ""],
+                ["사례보고서", f"{progress['case_report_submitted_count']}사례", "비대면", ""],
             ],
         )
         row_names = [row[0] for row in context["rows"]]
@@ -212,7 +218,7 @@ class TrainingCertificateAccessTests(TestCase):
 
     def test_one_certificate_does_not_query_per_case(self):
         counselor = User.objects.select_related("counselor_profile").get(pk=self.counselor.pk)
-        with self.assertNumQueries(13):
+        with self.assertNumQueries(14):
             response = training_certificate_response(counselor)
         self.assertEqual(response.status_code, 200)
 
@@ -422,6 +428,7 @@ def _certificate_context(counselor, progress):
         progress,
         date(2026, 10, 28),
         supervisor_label="—",
+        counseling_cases_5plus_count=counseling_cases_5plus_count(counselor),
         intake_mode="비대면",
         journal_mode="비대면",
         supervision_time=supervision_attended_time_label(counselor),
@@ -447,23 +454,27 @@ def _attend(session, counselor, status):
 
 
 class CertificateItemSpanTests(TestCase):
-    def test_two_method_rows_span_item_column(self):
+    def test_two_method_rows_span_item_and_remark_columns(self):
         rows = _certificate_time_rows(
             "상담자 경험",
             in_person=240,
             remote=360,
             unknown=0,
+            remark="5회기 이상 사례 2건",
         )
         self.assertEqual(
             rows,
             [
-                ["상담자 경험", "4시간", "대면"],
-                ["", "6시간", "비대면"],
+                ["상담자 경험", "4시간", "대면", "5회기 이상 사례 2건"],
+                ["", "6시간", "비대면", ""],
             ],
         )
         self.assertEqual(
             item_column_span_commands(rows),
-            [("SPAN", (0, 1), (0, 2))],
+            [
+                ("SPAN", (0, 1), (0, 2)),
+                ("SPAN", (3, 1), (3, 2)),
+            ],
         )
 
     def test_three_method_rows_span_three_body_rows(self):
@@ -472,14 +483,21 @@ class CertificateItemSpanTests(TestCase):
             in_person=240,
             remote=300,
             unknown=60,
+            remark="5회기 이상 사례 1건",
         )
         self.assertEqual(len(rows), 3)
         self.assertEqual(rows[0][0], "상담자 경험")
+        self.assertEqual(rows[0][3], "5회기 이상 사례 1건")
         self.assertEqual(rows[1][0], "")
+        self.assertEqual(rows[1][3], "")
         self.assertEqual(rows[2][0], "")
+        self.assertEqual(rows[2][3], "")
         self.assertEqual(
             item_column_span_commands(rows),
-            [("SPAN", (0, 1), (0, 3))],
+            [
+                ("SPAN", (0, 1), (0, 3)),
+                ("SPAN", (3, 1), (3, 3)),
+            ],
         )
 
     def test_single_method_has_no_span(self):
@@ -488,8 +506,12 @@ class CertificateItemSpanTests(TestCase):
             in_person=600,
             remote=0,
             unknown=0,
+            remark="5회기 이상 사례 2건",
         )
-        self.assertEqual(rows, [["상담자 경험", "10시간", "대면"]])
+        self.assertEqual(
+            rows,
+            [["상담자 경험", "10시간", "대면", "5회기 이상 사례 2건"]],
+        )
         self.assertEqual(item_column_span_commands(rows), [])
 
     def test_mixed_pdf_builds_with_spans(self):
@@ -515,6 +537,10 @@ class CertificateItemSpanTests(TestCase):
         )
         spans = item_column_span_commands(context["rows"])
         self.assertIn(("SPAN", (0, 2), (0, 3)), spans)
+        self.assertIn(("SPAN", (3, 2), (3, 3)), spans)
+        # 접수면접 0분 한 행 뒤 상담자 경험 2행 (원격 6회만 5회기 이상)
+        self.assertEqual(context["rows"][1][3], "5회기 이상 사례 1건")
+        self.assertEqual(context["rows"][2][3], "")
         pdf_bytes = build_training_certificate_pdf(context)
         self.assertTrue(pdf_bytes.startswith(b"%PDF"))
 
@@ -556,11 +582,15 @@ class TrainingCertificateRecordTests(TestCase):
             + progress["training_unknown_minutes"],
             progress["training_completed_minutes"],
         )
-        self.assertIn(["상담자 경험", "5시간", "대면"], context["rows"])
-        self.assertIn(["", "6시간", "비대면"], context["rows"])
+        self.assertIn(
+            ["상담자 경험", "5시간", "대면", "5회기 이상 사례 1건"],
+            context["rows"],
+        )
+        self.assertIn(["", "6시간", "비대면", ""], context["rows"])
         self.assertNotIn(["", "방식 미확인"], [[row[0], row[2]] for row in context["rows"]])
         spans = item_column_span_commands(context["rows"])
         self.assertTrue(any(cmd[0] == "SPAN" for cmd in spans))
+        self.assertIn(("SPAN", (3, 2), (3, 3)), spans)
 
     def test_legacy_supervision_null_pdf_row_is_remote(self):
         counselor = _counselor("수퍼확인증", cohort=9)
@@ -580,8 +610,11 @@ class TrainingCertificateRecordTests(TestCase):
         context = _certificate_context(counselor, progress)
         self.assertEqual(progress["training_unknown_minutes"], 0)
         self.assertEqual(progress["training_completed_minutes"], 660)
-        self.assertIn(["상담자 경험", "4시간", "대면"], context["rows"])
-        self.assertIn(["수퍼비전", "7시간", "비대면"], context["rows"])
+        self.assertIn(
+            ["상담자 경험", "4시간", "대면", "5회기 이상 사례 0건"],
+            context["rows"],
+        )
+        self.assertIn(["수퍼비전", "7시간", "비대면", ""], context["rows"])
         self.assertNotIn(
             "방식 미확인",
             [row[2] for row in context["rows"] if row[0] in ("수퍼비전", "")],
@@ -596,10 +629,13 @@ class TrainingCertificateRecordTests(TestCase):
             _journal(case, session_number, counseling_method=CounselingMethod.REMOTE)
         progress = get_counselor_training_progress(counselor)
         context = _certificate_context(counselor, progress)
-        self.assertEqual(context["rows"][0], ["접수면접", "1시간", "비대면"])
-        self.assertEqual(context["rows"][1], ["상담자 경험", "5시간", "비대면"])
-        self.assertEqual(context["rows"][2], ["수퍼비전", "0분", "—"])
-        self.assertEqual(context["rows"][3], ["사례보고서", "0사례", "비대면"])
+        self.assertEqual(context["rows"][0], ["접수면접", "1시간", "비대면", ""])
+        self.assertEqual(
+            context["rows"][1],
+            ["상담자 경험", "5시간", "비대면", "5회기 이상 사례 1건"],
+        )
+        self.assertEqual(context["rows"][2], ["수퍼비전", "0분", "—", ""])
+        self.assertEqual(context["rows"][3], ["사례보고서", "0사례", "비대면", ""])
         self.assertEqual(progress["training_remote_minutes"], 360)
         self.assertEqual(progress["training_in_person_minutes"], 0)
         self.assertEqual(progress["training_unknown_minutes"], 0)
@@ -726,12 +762,12 @@ class FooterLogoLayoutTests(TestCase):
         context = {
             "title": "수련확인증",
             "identity": [("성명", "홍길동"), ("수퍼바이저", "김규리 교수")],
-            "columns": ["수련항목", "수련시간", "진행방식"],
+            "columns": ["수련항목", "수련시간", "진행방식", "비고"],
             "rows": [
-                ["접수면접", "1시간", "비대면"],
-                ["상담자 경험", "5시간", "비대면"],
-                ["수퍼비전", "8시간", "비대면"],
-                ["사례보고서", "1사례", "비대면"],
+                ["접수면접", "1시간", "비대면", ""],
+                ["상담자 경험", "5시간", "비대면", "5회기 이상 사례 1건"],
+                ["수퍼비전", "8시간", "비대면", ""],
+                ["사례보고서", "1사례", "비대면", ""],
             ],
             "method_notice": CERTIFICATE_METHOD_NOTICE,
             "confirmation": CERTIFICATE_CONFIRMATION,
@@ -798,6 +834,210 @@ class FooterLogoLayoutTests(TestCase):
 
         text_width = stringWidth(CERTIFICATE_ISSUER, "Helvetica", 11)
         self.assertAlmostEqual(62.36 + x + text_width / 2, 595.27 / 2)
+
+
+class CounselingCases5PlusTests(TestCase):
+    def test_counts_cases_with_five_or_more_completed_journals(self):
+        counselor = _counselor("5회이상", cohort=12)
+        case_a = _case(
+            counselor,
+            _user("5회내담A@example.com", "5회내담A", UserRole.CLIENT),
+            "FIVE-A",
+            CounselingMethod.IN_PERSON,
+        )
+        case_b = _case(
+            counselor,
+            _user("5회내담B@example.com", "5회내담B", UserRole.CLIENT),
+            "FIVE-B",
+            CounselingMethod.REMOTE,
+        )
+        case_c = _case(
+            counselor,
+            _user("5회내담C@example.com", "5회내담C", UserRole.CLIENT),
+            "FIVE-C",
+            CounselingMethod.IN_PERSON,
+        )
+        for number in range(1, 6):
+            _journal(case_a, number)
+        for number in range(1, 8):
+            _journal(case_b, number)
+        for number in range(1, 5):
+            _journal(case_c, number)
+        self.assertEqual(counseling_cases_5plus_count(counselor), 2)
+        self.assertEqual(
+            counseling_cases_5plus_label(2),
+            "5회기 이상 사례 2건",
+        )
+
+    def test_draft_journals_are_excluded(self):
+        counselor = _counselor("초안제외", cohort=12)
+        short = _case(
+            counselor,
+            _user("초안내담1@example.com", "초안내담1", UserRole.CLIENT),
+            "DRF-1",
+            CounselingMethod.IN_PERSON,
+        )
+        ready = _case(
+            counselor,
+            _user("초안내담2@example.com", "초안내담2", UserRole.CLIENT),
+            "DRF-2",
+            CounselingMethod.REMOTE,
+        )
+        for number in range(1, 5):
+            _journal(short, number)
+        for number in range(5, 8):
+            _journal(short, number, is_draft=True)
+        for number in range(1, 6):
+            _journal(ready, number)
+        for number in range(6, 8):
+            _journal(ready, number, is_draft=True)
+        self.assertEqual(counseling_cases_5plus_count(counselor), 1)
+
+    def test_total_sessions_does_not_affect_count(self):
+        counselor = _counselor("총회무관", cohort=13)
+        low_journals = _case(
+            counselor,
+            _user("총회내담1@example.com", "총회내담1", UserRole.CLIENT),
+            "TOT-1",
+            CounselingMethod.IN_PERSON,
+        )
+        Case.objects.filter(pk=low_journals.pk).update(total_sessions=10)
+        exact = _case(
+            counselor,
+            _user("총회내담2@example.com", "총회내담2", UserRole.CLIENT),
+            "TOT-2",
+            CounselingMethod.REMOTE,
+        )
+        Case.objects.filter(pk=exact.pk).update(total_sessions=5)
+        for number in range(1, 5):
+            _journal(low_journals, number)
+        for number in range(1, 6):
+            _journal(exact, number)
+        self.assertEqual(counseling_cases_5plus_count(counselor), 1)
+
+    def test_case_status_does_not_exclude(self):
+        counselor = _counselor("상태무관", cohort=14)
+        active = _case(
+            counselor,
+            _user("상태내담1@example.com", "상태내담1", UserRole.CLIENT),
+            "ST-A",
+            CounselingMethod.IN_PERSON,
+        )
+        closed = _case(
+            counselor,
+            _user("상태내담2@example.com", "상태내담2", UserRole.CLIENT),
+            "ST-C",
+            CounselingMethod.REMOTE,
+        )
+        Case.objects.filter(pk=closed.pk).update(status=CaseStatus.CLOSED)
+        for number in range(1, 6):
+            _journal(active, number)
+        for number in range(1, 7):
+            _journal(closed, number)
+        self.assertEqual(counseling_cases_5plus_count(counselor), 2)
+
+    def test_zero_cases_label_and_certificate_remark(self):
+        counselor = _counselor("영건비고", cohort=15)
+        context = _certificate_context(
+            counselor, get_counselor_training_progress(counselor)
+        )
+        self.assertEqual(context["counseling_cases_5plus_count"], 0)
+        self.assertEqual(context["rows"][1][3], "5회기 이상 사례 0건")
+        self.assertEqual(context["rows"][0][3], "")
+        self.assertEqual(context["rows"][2][3], "")
+        self.assertEqual(context["rows"][3][3], "")
+
+    def test_count_query_is_constant_for_many_cases(self):
+        counselor = _counselor("질의상수", cohort=16)
+        for index in range(6):
+            case = _case(
+                counselor,
+                _user(f"상수내담{index}@example.com", f"상수내담{index}", UserRole.CLIENT),
+                f"N1-{index}",
+                CounselingMethod.IN_PERSON,
+            )
+            for number in range(1, 6 if index % 2 == 0 else 3):
+                _journal(case, number)
+        with self.assertNumQueries(1):
+            count = counseling_cases_5plus_count(counselor)
+        self.assertEqual(count, 3)
+
+    def test_ten_journals_on_one_case_count_as_one(self):
+        counselor = _counselor("한사례십회", cohort=17)
+        case = _case(
+            counselor,
+            _user("십회내담@example.com", "십회내담", UserRole.CLIENT),
+            "TEN-1",
+            CounselingMethod.IN_PERSON,
+        )
+        for number in range(1, 11):
+            _journal(case, number)
+        self.assertEqual(counseling_cases_5plus_count(counselor), 1)
+
+    def test_other_counselor_cases_are_excluded(self):
+        counselor = _counselor("본인집계", cohort=18)
+        other = _counselor("타인집계", cohort=18)
+        own = _case(
+            counselor,
+            _user("본인내담@example.com", "본인내담", UserRole.CLIENT),
+            "OWN-1",
+            CounselingMethod.IN_PERSON,
+        )
+        foreign = _case(
+            other,
+            _user("타인내담@example.com", "타인내담", UserRole.CLIENT),
+            "OTH-1",
+            CounselingMethod.REMOTE,
+        )
+        for number in range(1, 6):
+            _journal(own, number)
+        for number in range(1, 8):
+            _journal(foreign, number)
+        self.assertEqual(counseling_cases_5plus_count(counselor), 1)
+        self.assertEqual(counseling_cases_5plus_count(other), 1)
+
+    def test_mixed_certificate_pdf_renders_remark_on_one_page(self):
+        counselor = _counselor("비고PDF", cohort=19, birth_date=date(1990, 5, 1))
+        in_person = _case(
+            counselor,
+            _user("비고내담1@example.com", "비고내담1", UserRole.CLIENT),
+            "RMK-IP",
+            CounselingMethod.IN_PERSON,
+        )
+        remote = _case(
+            counselor,
+            _user("비고내담2@example.com", "비고내담2", UserRole.CLIENT),
+            "RMK-RM",
+            CounselingMethod.REMOTE,
+        )
+        for number in range(1, 5):
+            _journal(in_person, number, counseling_method=None)
+        for number in range(1, 7):
+            _journal(remote, number, counseling_method=None)
+        progress = get_counselor_training_progress(counselor)
+        context = _certificate_context(counselor, progress)
+        self.assertEqual(context["columns"], ["수련항목", "수련시간", "진행방식", "비고"])
+        self.assertEqual(context["counseling_cases_5plus_count"], 1)
+        self.assertEqual(context["rows"][1][3], "5회기 이상 사례 1건")
+        self.assertEqual(context["rows"][2][3], "")
+        spans = item_column_span_commands(context["rows"])
+        self.assertIn(("SPAN", (0, 2), (0, 3)), spans)
+        self.assertIn(("SPAN", (3, 2), (3, 3)), spans)
+        pdf_bytes = build_training_certificate_pdf(context)
+        self.assertTrue(pdf_bytes.startswith(b"%PDF"))
+        with pikepdf.open(BytesIO(pdf_bytes)) as pdf:
+            self.assertEqual(len(pdf.pages), 1)
+            box = pdf.pages[0].MediaBox
+            self.assertAlmostEqual(float(box[2]), 595.27, places=1)
+            self.assertAlmostEqual(float(box[3]), 841.89, places=1)
+        from apps.counseling.training_certificate_pdf import _CONTENT_WIDTH
+        from apps.sessions_app.pdf import _register_korean_font
+        from reportlab.pdfbase.pdfmetrics import stringWidth
+
+        remark_width = _CONTENT_WIDTH * 0.44
+        font = _register_korean_font()
+        widest = stringWidth("5회기 이상 사례 12건", font, 9)
+        self.assertLessEqual(widest + 8, remark_width)
 
 
 def _dated_session(cohort, number, status, when):
