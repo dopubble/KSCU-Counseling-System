@@ -1034,10 +1034,11 @@ class CounselingCases5PlusTests(TestCase):
         from apps.sessions_app.pdf import _register_korean_font
         from reportlab.pdfbase.pdfmetrics import stringWidth
 
-        remark_width = _CONTENT_WIDTH * 0.44
+        remark_width = _CONTENT_WIDTH * 0.26
         font = _register_korean_font()
         widest = stringWidth("5회기 이상 사례 12건", font, 9)
         self.assertLessEqual(widest + 8, remark_width)
+        self.assertAlmostEqual(remark_width / _CONTENT_WIDTH, 0.26, places=2)
 
 
 def _dated_session(cohort, number, status, when):
