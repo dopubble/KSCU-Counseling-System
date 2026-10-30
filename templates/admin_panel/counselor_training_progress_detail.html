@@ -89,16 +89,16 @@
                 <div class="border rounded p-3 h-100">
                     <h3 class="h6 fw-semibold mb-2">수련시간</h3>
                     {% if training_progress.training_in_person_minutes %}
-                    <p class="h5 fw-semibold text-primary mb-1">대면 {{ training_progress.training_in_person_label }}</p>
+                    <p class="mb-0">대면 {{ training_progress.training_in_person_label }}</p>
                     {% endif %}
                     {% if training_progress.training_remote_minutes %}
-                    <p class="h5 fw-semibold text-primary mb-1">비대면 {{ training_progress.training_remote_label }}</p>
+                    <p class="mb-0">비대면 {{ training_progress.training_remote_label }}</p>
                     {% endif %}
                     {% if training_progress.training_unknown_minutes %}
-                    <p class="h5 fw-semibold text-primary mb-1">방식 미확인 {{ training_progress.training_unknown_label }}</p>
+                    <p class="mb-0">방식 미확인 {{ training_progress.training_unknown_label }}</p>
                     {% endif %}
                     {% if not training_progress.training_in_person_minutes and not training_progress.training_remote_minutes and not training_progress.training_unknown_minutes %}
-                    <p class="h5 fw-semibold text-primary mb-1">{{ training_progress.training_completed_label }}</p>
+                    <p class="mb-0">{{ training_progress.training_completed_label }}</p>
                     {% endif %}
                     <p class="text-muted small mb-0">총 {{ training_progress.training_completed_label }}</p>
                 </div>
