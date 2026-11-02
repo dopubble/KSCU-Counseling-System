@@ -193,7 +193,9 @@ def build_training_certificate_context(
         "counseling_cases_5plus_count": counseling_cases_5plus_count,
         "method_notice": CERTIFICATE_METHOD_NOTICE,
         "confirmation": CERTIFICATE_CONFIRMATION,
+        "issued_on": issued_on,
         "issued_on_label": format_certificate_date(issued_on) if issued_on else _EMPTY,
+        "supervisor_label": supervisor_label or _EMPTY,
         "issuer": CERTIFICATE_ISSUER,
     }
 

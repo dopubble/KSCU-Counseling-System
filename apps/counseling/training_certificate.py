@@ -13,7 +13,7 @@ from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, Q, Sum
 from django.utils import timezone
 
-from apps.accounts.models import SupervisorProfile, UserRole
+from apps.accounts.models import CounselorProfile, SupervisorProfile, UserRole
 from apps.counseling.journal_permissions import user_can_browse_counselor_journals
 from apps.counseling.models import (
     Case,
@@ -349,36 +349,144 @@ def build_counselor_training_certificate_context(counselor) -> dict:
     )
 
 
-def build_training_certificate_approval_payload(counselor, context: dict) -> dict:
-    """PDF에 찍히는 논리 데이터. 생성 시각·PDF bytes는 넣지 않는다."""
-    progress = context["progress"]
+# 승인 도입(37b9e4a) 이후 저장된 hash는 화면 문장을 포함한 문서다.
+# 두 템플릿만 당시 문서로 재현할 수 있다. 그 외 hash는 실적을 확인할 수 없다.
+_LEGACY_REMARK_TEMPLATES = (
+    "5회기 이상 지속된 사례 총 {count}건",
+    "5회기 이상 지속된 사례 총 {count}건 포함",
+)
+
+
+def _counselor_profile(counselor):
+    try:
+        return counselor.counselor_profile
+    except CounselorProfile.DoesNotExist:
+        return None
+
+
+def _minute_buckets(progress: dict, prefix: str) -> dict:
     return {
-        "counselor_id": str(counselor.pk),
-        "identity": [[label, value] for label, value in context["identity"]],
-        "rows": context["rows"],
-        "issued_on": context["issued_on_label"],
-        "cases_5plus": int(context["counseling_cases_5plus_count"]),
-        "case_report_count": int(progress["case_report_submitted_count"]),
-        "intake_minutes": {
-            "in_person": int(progress["intake_in_person_minutes"]),
-            "remote": int(progress["intake_remote_minutes"]),
-            "unknown": int(progress["intake_unknown_minutes"]),
-        },
-        "counseling_minutes": {
-            "in_person": int(progress["counseling_in_person_minutes"]),
-            "remote": int(progress["counseling_remote_minutes"]),
-            "unknown": int(progress["counseling_unknown_minutes"]),
-        },
-        "supervision_minutes": {
-            "in_person": int(progress["supervision_in_person_minutes"]),
-            "remote": int(progress["supervision_remote_minutes"]),
-            "unknown": int(progress["supervision_unknown_minutes"]),
-        },
+        "in_person": int(progress.get(f"{prefix}_in_person_minutes", 0) or 0),
+        "remote": int(progress.get(f"{prefix}_remote_minutes", 0) or 0),
+        "unknown": int(progress.get(f"{prefix}_unknown_minutes", 0) or 0),
     }
 
 
-def calculate_training_certificate_hash(counselor, context: dict) -> str:
-    payload = build_training_certificate_approval_payload(counselor, context)
+def _frozen_minutes_label(total_minutes: int) -> str:
+    """승인 당시 수련시간 표기. 이후 화면 서식 변경과 분리한다."""
+    minutes = max(int(total_minutes or 0), 0)
+    hours, remainder = divmod(minutes, 60)
+    if hours and remainder:
+        return f"{hours}시간 {remainder}분"
+    if hours:
+        return f"{hours}시간"
+    return f"{remainder}분"
+
+
+def _frozen_date_label(day) -> str:
+    if not day:
+        return "—"
+    return f"{day.year}년 {day.month}월 {day.day}일"
+
+
+def _frozen_time_rows(item_name, in_person, remote, unknown, remark=""):
+    parts: list[tuple[int, str]] = []
+    if in_person:
+        parts.append((int(in_person), "대면"))
+    if remote:
+        parts.append((int(remote), "비대면"))
+    if unknown:
+        parts.append((int(unknown), "방식 미확인"))
+    if not parts:
+        return [[item_name, _frozen_minutes_label(0), "—", remark]]
+    rows: list[list[str]] = []
+    for index, (minutes, method) in enumerate(parts):
+        rows.append(
+            [
+                item_name if index == 0 else "",
+                _frozen_minutes_label(minutes),
+                method,
+                remark if index == 0 else "",
+            ]
+        )
+    return rows
+
+
+def _supervisor_label(context: dict) -> str:
+    if "supervisor_label" in context:
+        return context.get("supervisor_label") or "—"
+    for label, value in context.get("identity") or []:
+        if label == "수퍼바이저":
+            return value or "—"
+    return "—"
+
+
+def _issued_on_label(context: dict) -> str:
+    issued_on = context.get("issued_on")
+    if issued_on:
+        return _frozen_date_label(issued_on)
+    return context.get("issued_on_label") or "—"
+
+
+def build_training_certificate_approval_payload(counselor, context: dict) -> dict:
+    """새로 저장하는 승인 실적. 화면 문장과 표 서식은 넣지 않는다."""
+    progress = context["progress"]
+    profile = _counselor_profile(counselor)
+    birth_date = profile.birth_date if profile is not None else None
+    issued_on = context.get("issued_on")
+    return {
+        "schema": "certificate-metrics-v1",
+        "counselor_id": str(counselor.pk),
+        "name": getattr(counselor, "name", "") or "",
+        "birth_date": birth_date.isoformat() if birth_date else "",
+        "supervisor": _supervisor_label(context),
+        "issued_on": issued_on.isoformat() if issued_on else "",
+        "cases_5plus": int(context["counseling_cases_5plus_count"]),
+        "case_report_count": int(progress["case_report_submitted_count"]),
+        "intake_minutes": _minute_buckets(progress, "intake"),
+        "counseling_minutes": _minute_buckets(progress, "counseling"),
+        "supervision_minutes": _minute_buckets(progress, "supervision"),
+    }
+
+
+def legacy_display_approval_payload(counselor, context: dict, remark: str) -> dict:
+    """승인 도입 당시의 확정 문서. 비고 문장만 인자로 받고 나머지 실적은 그대로 넣는다."""
+    progress = context["progress"]
+    profile = _counselor_profile(counselor)
+    birth_date = profile.birth_date if profile is not None else None
+    identity = [["성명", getattr(counselor, "name", "") or "—"]]
+    if birth_date:
+        identity.append(["생년월일", _frozen_date_label(birth_date)])
+    identity.append(["수퍼바이저", _supervisor_label(context)])
+    intake = _minute_buckets(progress, "intake")
+    counseling = _minute_buckets(progress, "counseling")
+    supervision = _minute_buckets(progress, "supervision")
+    rows: list[list[str]] = []
+    rows.extend(_frozen_time_rows("접수면접", **intake))
+    rows.extend(_frozen_time_rows("상담자 경험", **counseling, remark=remark))
+    rows.extend(_frozen_time_rows("수퍼비전", **supervision))
+    rows.append(
+        [
+            "사례보고서",
+            f"{int(progress['case_report_submitted_count'])}사례",
+            "비대면",
+            "",
+        ]
+    )
+    return {
+        "counselor_id": str(counselor.pk),
+        "identity": identity,
+        "rows": rows,
+        "issued_on": _issued_on_label(context),
+        "cases_5plus": int(context["counseling_cases_5plus_count"]),
+        "case_report_count": int(progress["case_report_submitted_count"]),
+        "intake_minutes": intake,
+        "counseling_minutes": counseling,
+        "supervision_minutes": supervision,
+    }
+
+
+def _hash_payload(payload: dict) -> str:
     canonical = json.dumps(
         payload,
         ensure_ascii=False,
@@ -386,6 +494,32 @@ def calculate_training_certificate_hash(counselor, context: dict) -> str:
         separators=(",", ":"),
     )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def calculate_training_certificate_hash(counselor, context: dict) -> str:
+    return _hash_payload(build_training_certificate_approval_payload(counselor, context))
+
+
+def legacy_display_approval_hash(counselor, context: dict, remark: str) -> str:
+    return _hash_payload(legacy_display_approval_payload(counselor, context, remark))
+
+
+def stored_approval_matches_current(stored_hash: str, counselor, context: dict) -> bool:
+    """저장된 hash가 현재 실적의 확정 문서 중 하나와 같을 때만 참이다.
+
+    현재 실적 hash, 그리고 재현 가능한 과거 문서 hash만 비교한다.
+    저장된 원문이 없는 hash는 일치로 보지 않는다.
+    """
+    if not stored_hash:
+        return False
+    if stored_hash == calculate_training_certificate_hash(counselor, context):
+        return True
+    count = int(context["counseling_cases_5plus_count"])
+    for template in _LEGACY_REMARK_TEMPLATES:
+        remark = template.format(count=count)
+        if stored_hash == legacy_display_approval_hash(counselor, context, remark):
+            return True
+    return False
 
 
 STATUS_UNAPPROVED = "unapproved"
@@ -466,7 +600,7 @@ def get_training_certificate_approval_status(counselor, context=None) -> dict:
     latest = latest_training_certificate_approval(counselor)
     if latest is None:
         status = STATUS_UNAPPROVED
-    elif latest.content_hash == content_hash:
+    elif stored_approval_matches_current(latest.content_hash, counselor, context):
         status = STATUS_APPROVED
     else:
         status = STATUS_REAPPROVAL_REQUIRED

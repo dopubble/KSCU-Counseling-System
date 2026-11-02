@@ -33,9 +33,12 @@ from apps.counseling.training_certificate import (
     STATUS_UNAPPROVED,
     approve_training_certificate,
     build_counselor_training_certificate_context,
+    build_training_certificate_approval_payload,
     calculate_training_certificate_hash,
     certificate_date_for_counselor,
     get_training_certificate_approval_status,
+    legacy_display_approval_hash,
+    legacy_display_approval_payload,
 )
 from apps.counseling.training_certificate_pdf import format_certificate_date
 from apps.counseling.training_progress import (
@@ -658,32 +661,54 @@ class CertificateApprovalFlowTests(TestCase):
         self.assertNotEqual(status["content_hash"], approved_hash)
         _assert_blocked(self, _http(self.admin).get(self.admin_pdf))
 
-    def test_previous_remark_wording_requires_reapproval_before_pdf(self):
+    def test_legacy_remark_without_include_stays_approved_until_metrics_change(self):
         approve_training_certificate(self.counselor, self.admin)
         approval = TrainingCertificateApproval.objects.get(counselor=self.counselor)
         context = build_counselor_training_certificate_context(self.counselor)
-        old_rows = [list(row) for row in context["rows"]]
-        replaced = False
-        for row in old_rows:
-            if row[3].endswith("건 포함"):
-                row[3] = row[3].removesuffix(" 포함")
-                replaced = True
-        self.assertTrue(replaced)
-        approval.content_hash = calculate_training_certificate_hash(
+        count = context["counseling_cases_5plus_count"]
+        old_remark = f"5회기 이상 지속된 사례 총 {count}건"
+        approval.content_hash = legacy_display_approval_hash(
             self.counselor,
-            {**context, "rows": old_rows},
+            context,
+            old_remark,
         )
         approval.save(update_fields=["content_hash"])
+        legacy = legacy_display_approval_payload(self.counselor, context, old_remark)
+        current_rows = [list(row) for row in context["rows"]]
+        for row in current_rows:
+            if row[3].endswith(" 포함"):
+                row[3] = row[3].removesuffix(" 포함")
+        self.assertEqual(legacy["rows"], current_rows)
+        self.assertEqual(
+            legacy["identity"],
+            [[label, value] for label, value in context["identity"]],
+        )
+        self.assertEqual(legacy["issued_on"], context["issued_on_label"])
+        self.assertEqual(legacy["cases_5plus"], count)
+        self.assertIn("intake_minutes", legacy)
+        self.assertNotIn("schema", legacy)
 
         status = get_training_certificate_approval_status(self.counselor)
-        self.assertEqual(status["status"], STATUS_REAPPROVAL_REQUIRED)
+        self.assertEqual(status["status"], STATUS_APPROVED)
         self.assertNotEqual(status["content_hash"], approval.content_hash)
         self.assertTrue(any(cell.endswith("건 포함") for row in status["context"]["rows"] for cell in row))
+        issued = _http(self.counselor).get(self.counselor_pdf)
+        self.assertEqual(issued.status_code, 200)
+        self.assertTrue(issued.content.startswith(b"%PDF"))
+        self.assertEqual(TrainingCertificateApproval.objects.filter(counselor=self.counselor).count(), 1)
+
+        extra = _case(self.counselor, _client("실적변경"), "AP-LEGACY")
+        _journals(extra, 6)
+        _submit(extra)
+        changed = get_training_certificate_approval_status(self.counselor)
+        self.assertEqual(changed["status"], STATUS_REAPPROVAL_REQUIRED)
+        self.assertNotEqual(changed["content_hash"], approval.content_hash)
         _assert_blocked(self, _http(self.counselor).get(self.counselor_pdf))
         _assert_blocked(self, _http(self.admin).get(self.admin_pdf))
         _assert_blocked(self, _http(self.supervisor).get(self.supervisor_pdf))
 
         _http(self.admin).post(self.admin_approve)
+        self.assertEqual(TrainingCertificateApproval.objects.filter(counselor=self.counselor).count(), 2)
         self.assertEqual(
             get_training_certificate_approval_status(self.counselor)["status"],
             STATUS_APPROVED,
@@ -691,6 +716,160 @@ class CertificateApprovalFlowTests(TestCase):
         restored = _http(self.counselor).get(self.counselor_pdf)
         self.assertEqual(restored.status_code, 200)
         self.assertTrue(restored.content.startswith(b"%PDF"))
+
+    def test_same_total_minutes_with_method_split_requires_reapproval(self):
+        counselor = _counselor("방식분할", cohort=31)
+        case = _case(counselor, _client("방식내담"), "SPLIT-1")
+        _journals(case, 10, method=CounselingMethod.IN_PERSON)
+        _submit(case)
+        approve_training_certificate(counselor, self.admin)
+        approved = TrainingCertificateApproval.objects.get(counselor=counselor)
+        context = build_counselor_training_certificate_context(counselor)
+        payload = build_training_certificate_approval_payload(counselor, context)
+        self.assertEqual(
+            set(payload),
+            {
+                "schema",
+                "counselor_id",
+                "name",
+                "birth_date",
+                "supervisor",
+                "issued_on",
+                "cases_5plus",
+                "case_report_count",
+                "intake_minutes",
+                "counseling_minutes",
+                "supervision_minutes",
+            },
+        )
+        self.assertEqual(payload["schema"], "certificate-metrics-v1")
+        for bucket in ("intake_minutes", "counseling_minutes", "supervision_minutes"):
+            self.assertEqual(
+                set(payload[bucket]),
+                {"in_person", "remote", "unknown"},
+            )
+        self.assertEqual(
+            payload["counseling_minutes"],
+            {"in_person": 600, "remote": 0, "unknown": 0},
+        )
+        self.assertNotIn("rows", payload)
+        self.assertEqual(
+            get_training_certificate_approval_status(counselor)["status"],
+            STATUS_APPROVED,
+        )
+
+        flipped = list(case.journals.order_by("session_number")[:5].values_list("pk", flat=True))
+        CounselingJournal.objects.filter(pk__in=flipped).update(
+            counseling_method=CounselingMethod.REMOTE
+        )
+        status = get_training_certificate_approval_status(counselor)
+        progress = status["context"]["progress"]
+        self.assertEqual(progress["counseling_in_person_minutes"], 300)
+        self.assertEqual(progress["counseling_remote_minutes"], 300)
+        self.assertEqual(
+            progress["counseling_in_person_minutes"]
+            + progress["counseling_remote_minutes"]
+            + progress["counseling_unknown_minutes"],
+            600,
+        )
+        self.assertEqual(status["status"], STATUS_REAPPROVAL_REQUIRED)
+        self.assertNotEqual(status["content_hash"], approved.content_hash)
+        self.assertEqual(approved.content_hash, TrainingCertificateApproval.objects.get(pk=approved.pk).content_hash)
+        _assert_blocked(
+            self,
+            _http(counselor).get(reverse("counselor:training_certificate")),
+        )
+
+    def test_identity_and_intake_changes_require_reapproval(self):
+        approve_training_certificate(self.counselor, self.admin)
+        approved = TrainingCertificateApproval.objects.get(counselor=self.counselor)
+        baseline = approved.content_hash
+
+        def current_hash():
+            return calculate_training_certificate_hash(
+                self.counselor,
+                build_counselor_training_certificate_context(self.counselor),
+            )
+
+        self.counselor.name = "변경이름"
+        self.counselor.save(update_fields=["name", "updated_at"])
+        self.assertNotEqual(current_hash(), baseline)
+        self.assertEqual(
+            get_training_certificate_approval_status(self.counselor)["status"],
+            STATUS_REAPPROVAL_REQUIRED,
+        )
+        self.counselor.name = "승인대상"
+        self.counselor.save(update_fields=["name", "updated_at"])
+        self.assertEqual(
+            get_training_certificate_approval_status(self.counselor)["status"],
+            STATUS_APPROVED,
+        )
+
+        profile = self.counselor.counselor_profile
+        profile.birth_date = datetime(1991, 4, 8).date()
+        profile.save(update_fields=["birth_date", "updated_at"])
+        self.assertNotEqual(current_hash(), baseline)
+        self.assertEqual(
+            get_training_certificate_approval_status(self.counselor)["status"],
+            STATUS_REAPPROVAL_REQUIRED,
+        )
+        profile.birth_date = None
+        profile.save(update_fields=["birth_date", "updated_at"])
+
+        self.supervisor.name = "다른수퍼"
+        self.supervisor.save(update_fields=["name", "updated_at"])
+        self.assertNotEqual(current_hash(), baseline)
+        self.assertEqual(
+            get_training_certificate_approval_status(self.counselor)["status"],
+            STATUS_REAPPROVAL_REQUIRED,
+        )
+        self.supervisor.name = "김수퍼"
+        self.supervisor.save(update_fields=["name", "updated_at"])
+        self.assertEqual(
+            get_training_certificate_approval_status(self.counselor)["status"],
+            STATUS_APPROVED,
+        )
+
+        _intake(self.case, method=CounselingMethod.IN_PERSON)
+        self.assertEqual(
+            build_counselor_training_certificate_context(self.counselor)["progress"][
+                "intake_in_person_minutes"
+            ],
+            60,
+        )
+        self.assertEqual(
+            get_training_certificate_approval_status(self.counselor)["status"],
+            STATUS_REAPPROVAL_REQUIRED,
+        )
+        self.assertEqual(approved.content_hash, baseline)
+        _assert_blocked(self, _http(self.counselor).get(self.counselor_pdf))
+
+    def test_include_era_display_hash_stays_approved_when_metrics_match(self):
+        approve_training_certificate(self.counselor, self.admin)
+        approval = TrainingCertificateApproval.objects.get(counselor=self.counselor)
+        context = build_counselor_training_certificate_context(self.counselor)
+        remark = (
+            f"5회기 이상 지속된 사례 총 {context['counseling_cases_5plus_count']}건 포함"
+        )
+        approval.content_hash = legacy_display_approval_hash(
+            self.counselor,
+            context,
+            remark,
+        )
+        approval.save(update_fields=["content_hash"])
+        status = get_training_certificate_approval_status(self.counselor)
+        self.assertEqual(status["status"], STATUS_APPROVED)
+        self.assertEqual(_http(self.counselor).get(self.counselor_pdf).status_code, 200)
+
+    def test_unknown_approval_hash_is_not_treated_as_current(self):
+        approve_training_certificate(self.counselor, self.admin)
+        approval = TrainingCertificateApproval.objects.get(counselor=self.counselor)
+        approval.content_hash = "c" * 64
+        approval.save(update_fields=["content_hash"])
+        status = get_training_certificate_approval_status(self.counselor)
+        self.assertEqual(status["status"], STATUS_REAPPROVAL_REQUIRED)
+        self.assertFalse(status["can_issue"])
+        _assert_blocked(self, _http(self.counselor).get(self.counselor_pdf))
 
     def test_same_certificate_context_keeps_the_approval(self):
         approve_training_certificate(self.counselor, self.admin)
