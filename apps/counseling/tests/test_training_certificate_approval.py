@@ -237,7 +237,7 @@ class CertificateSubmittedCaseFilterTests(TestCase):
 
         context = build_counselor_training_certificate_context(counselor)
         self.assertEqual(context["counseling_cases_5plus_count"], 1)
-        self.assertEqual(context["rows"][1][3], "5회기 이상 지속된 사례 총 1건")
+        self.assertEqual(context["rows"][1][3], "5회기 이상 지속된 사례 총 1건 포함")
 
     def test_supervision_ignores_submission_and_keeps_legacy_remote(self):
         counselor = _counselor("수퍼유지", cohort=21)
@@ -658,6 +658,40 @@ class CertificateApprovalFlowTests(TestCase):
         self.assertNotEqual(status["content_hash"], approved_hash)
         _assert_blocked(self, _http(self.admin).get(self.admin_pdf))
 
+    def test_previous_remark_wording_requires_reapproval_before_pdf(self):
+        approve_training_certificate(self.counselor, self.admin)
+        approval = TrainingCertificateApproval.objects.get(counselor=self.counselor)
+        context = build_counselor_training_certificate_context(self.counselor)
+        old_rows = [list(row) for row in context["rows"]]
+        replaced = False
+        for row in old_rows:
+            if row[3].endswith("건 포함"):
+                row[3] = row[3].removesuffix(" 포함")
+                replaced = True
+        self.assertTrue(replaced)
+        approval.content_hash = calculate_training_certificate_hash(
+            self.counselor,
+            {**context, "rows": old_rows},
+        )
+        approval.save(update_fields=["content_hash"])
+
+        status = get_training_certificate_approval_status(self.counselor)
+        self.assertEqual(status["status"], STATUS_REAPPROVAL_REQUIRED)
+        self.assertNotEqual(status["content_hash"], approval.content_hash)
+        self.assertTrue(any(cell.endswith("건 포함") for row in status["context"]["rows"] for cell in row))
+        _assert_blocked(self, _http(self.counselor).get(self.counselor_pdf))
+        _assert_blocked(self, _http(self.admin).get(self.admin_pdf))
+        _assert_blocked(self, _http(self.supervisor).get(self.supervisor_pdf))
+
+        _http(self.admin).post(self.admin_approve)
+        self.assertEqual(
+            get_training_certificate_approval_status(self.counselor)["status"],
+            STATUS_APPROVED,
+        )
+        restored = _http(self.counselor).get(self.counselor_pdf)
+        self.assertEqual(restored.status_code, 200)
+        self.assertTrue(restored.content.startswith(b"%PDF"))
+
     def test_same_certificate_context_keeps_the_approval(self):
         approve_training_certificate(self.counselor, self.admin)
         approved_hash = calculate_training_certificate_hash(
@@ -834,3 +868,107 @@ class CertificateHashStabilityTests(TestCase):
             calculate_training_certificate_hash(counselor, second),
         )
         self.assertEqual(first["rows"], second["rows"])
+
+
+class SupervisorDetailTargetCounselorTests(TestCase):
+    def test_url_counselor_counts_are_not_replaced_by_cohort_peers(self):
+        cohort = 51
+        first = _counselor("가가가", cohort)
+        target = _counselor("나나나", cohort)
+        last = _counselor("다다다", cohort)
+        for owner, prefix, total in ((first, "FIRST", 4), (last, "LAST", 4)):
+            for index in range(total):
+                _case(owner, _client(f"{prefix}{index}"), f"{prefix}-{index}")
+        pending = _case(target, _client("대상진행"), "TARGET-OPEN")
+        submitted = _case(target, _client("대상제출"), "TARGET-DONE")
+        submitted.status = CaseStatus.CLOSED
+        submitted.save(update_fields=["status"])
+        _submit(submitted)
+
+        supervisor = _supervisor("대상수퍼@cert.example.com", "대상수퍼", [cohort])
+        admin = _user("대상관리@cert.example.com", "대상관리", UserRole.ADMIN)
+        supervisor_detail = reverse(
+            "supervisor:counselor_training_progress_detail",
+            kwargs={"counselor_id": target.pk},
+        )
+        admin_detail = reverse(
+            "admin_panel:counselor_training_progress_detail",
+            kwargs={"counselor_id": target.pk},
+        )
+        expected = _status_line("미승인", 2, 1)
+        peer_line = _status_line("미승인", 4, 0)
+
+        supervisor_page = _http(supervisor).get(supervisor_detail)
+        admin_page = _http(admin).get(admin_detail)
+        self.assertEqual(supervisor_page.context["counselor"].pk, target.pk)
+        self.assertEqual(admin_page.context["counselor"].pk, target.pk)
+        self.assertEqual(
+            supervisor_page.context["certificate_approval"]["assigned_case_count"],
+            2,
+        )
+        self.assertEqual(
+            supervisor_page.context["certificate_approval"]["submitted_case_count"],
+            1,
+        )
+        self.assertEqual(
+            admin_page.context["certificate_approval"]["assigned_case_count"],
+            2,
+        )
+        self.assertEqual(
+            admin_page.context["certificate_approval"]["submitted_case_count"],
+            1,
+        )
+        self.assertEqual(
+            admin_page.context["certificate_approval"]["status"],
+            supervisor_page.context["certificate_approval"]["status"],
+        )
+        self.assertContains(supervisor_page, expected)
+        self.assertContains(admin_page, expected)
+        self.assertContains(supervisor_page, "나나나 상담사 수련현황")
+        self.assertNotContains(supervisor_page, peer_line)
+        self.assertNotContains(admin_page, peer_line)
+        peer_page = _http(supervisor).get(
+            reverse(
+                "supervisor:counselor_training_progress_detail",
+                kwargs={"counselor_id": last.pk},
+            )
+        )
+        self.assertContains(peer_page, peer_line)
+        self.assertEqual(peer_page.context["counselor"].pk, last.pk)
+        self.assertIsNone(pending.records_submitted_at)
+        self.assertIsNotNone(submitted.records_submitted_at)
+
+        TrainingCertificateApproval.objects.create(
+            counselor=last,
+            approved_by=admin,
+            approved_role=UserRole.ADMIN,
+            content_hash="a" * 64,
+        )
+        again = _http(supervisor).get(supervisor_detail)
+        self.assertContains(again, expected)
+        self.assertEqual(again.context["counselor"].pk, target.pk)
+        self.assertEqual(
+            again.context["certificate_approval"]["status"],
+            STATUS_UNAPPROVED,
+        )
+
+        pdf_url = reverse(
+            "supervisor:counselor_training_certificate",
+            kwargs={"counselor_id": target.pk},
+        )
+        self.assertIn(str(target.pk), pdf_url)
+        self.assertNotIn(str(last.pk), pdf_url)
+        self.assertEqual(_http(supervisor).get(pdf_url).status_code, 403)
+
+        listing = _http(supervisor).get(
+            reverse("supervisor:training_progress"),
+            {"cohort": str(cohort)},
+        )
+        self.assertContains(
+            listing,
+            reverse(
+                "supervisor:counselor_training_progress_detail",
+                kwargs={"counselor_id": target.pk},
+            ),
+        )
+        self.assertContains(listing, "나나나")

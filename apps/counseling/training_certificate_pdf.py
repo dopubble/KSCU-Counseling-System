@@ -324,10 +324,10 @@ def build_training_certificate_pdf(context: dict) -> bytes:
         [Paragraph(str(cell), cell_style) for cell in row]
         for row in body_rows
     ]
-    # 비고는 "5회기 이상 지속된 사례 총 00건" 한 줄 + 여백만 두고 배분.
+    # 비고는 "5회기 이상 지속된 사례 총 00건 포함" 한 줄 + 여백만 두고 배분.
     item_width = _CONTENT_WIDTH * 0.28
     time_width = _CONTENT_WIDTH * 0.17
-    method_width = _CONTENT_WIDTH * 0.25
+    method_width = _CONTENT_WIDTH * 0.24
     remark_width = _CONTENT_WIDTH - item_width - time_width - method_width
     table = Table(
         [header, *body],
