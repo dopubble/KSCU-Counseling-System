@@ -575,3 +575,41 @@ class SupervisionAttendance(models.Model):
 
     def __str__(self):
         return f"{self.session} — {self.counselor}"
+
+
+class TrainingCertificateApproval(models.Model):
+    """수련확인증 승인 이력. 재승인 때도 행을 지우지 않고 추가한다."""
+
+    counselor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="training_certificate_approvals",
+        verbose_name="상담사",
+    )
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="issued_training_certificate_approvals",
+        verbose_name="승인자",
+    )
+    approved_role = models.CharField(
+        "승인 당시 역할",
+        max_length=20,
+        blank=True,
+        default="",
+    )
+    approved_at = models.DateTimeField("승인일시", auto_now_add=True)
+    content_hash = models.CharField("내용 해시", max_length=64)
+
+    class Meta:
+        verbose_name = "수련확인증 승인"
+        verbose_name_plural = "수련확인증 승인"
+        ordering = ["-approved_at", "-id"]
+        indexes = [
+            models.Index(fields=["counselor", "approved_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.counselor_id} {self.approved_at:%Y-%m-%d}"

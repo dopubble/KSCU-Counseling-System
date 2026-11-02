@@ -18,6 +18,7 @@ from apps.counseling.journal_permissions import (
     user_can_browse_counselor_journals,
     user_is_platform_admin,
 )
+from apps.counseling.training_certificate import get_training_certificate_approval_status
 from apps.counseling.training_progress import (
     get_cohort_counselors_training_progress,
     get_counselor_training_progress,
@@ -123,5 +124,6 @@ def supervisor_counselor_training_progress_detail(request, counselor_id):
             "cohort": cohort,
             "training_progress": progress,
             "list_cohort": cohort or request.GET.get("cohort") or "",
+            "certificate_approval": get_training_certificate_approval_status(counselor),
         },
     )

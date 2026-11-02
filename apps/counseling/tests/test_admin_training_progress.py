@@ -218,7 +218,7 @@ class AdminTrainingProgressListTests(TestCase):
         self.assertContains(cohort_one, ">1</td>")
         self.assertContains(cohort_one, ">2</td>")
 
-    def test_detail_and_certificate_links(self):
+    def test_name_links_to_detail_without_certificate_column(self):
         response = self.http.get(self.url, {"cohort": "1"})
         detail = reverse(
             "admin_panel:counselor_training_progress_detail",
@@ -228,9 +228,15 @@ class AdminTrainingProgressListTests(TestCase):
             "admin_panel:counselor_training_certificate",
             kwargs={"counselor_id": self.kim.pk},
         )
-        self.assertContains(response, detail)
-        self.assertContains(response, certificate)
-        self.assertContains(response, 'target="_blank"')
+        body = response.content.decode()
+        self.assertIn(f'href="{detail}?cohort=1"', body)
+        self.assertRegex(
+            body,
+            rf'href="{detail}\?cohort=1"[^>]*>\s*김상담\s*</a>',
+        )
+        self.assertNotIn("수련확인증", body)
+        self.assertNotIn(certificate, body)
+        self.assertNotIn('target="_blank"', body)
 
     def test_empty_cohort_message(self):
         response = self.http.get(self.url, {"cohort": "99"})
@@ -460,13 +466,15 @@ class AdminTrainingProgressDetailTests(TestCase):
         self.assertContains(response, "← 수련현황 목록")
         list_url = reverse("admin_panel:training_progress")
         self.assertContains(response, f"{list_url}?cohort=6")
-        self.assertContains(
-            response,
-            reverse(
-                "admin_panel:counselor_training_certificate",
-                kwargs={"counselor_id": self.counselor.pk},
-            ),
+        pdf_url = reverse(
+            "admin_panel:counselor_training_certificate",
+            kwargs={"counselor_id": self.counselor.pk},
         )
+        body = response.content.decode()
+        self.assertNotIn(f'href="{pdf_url}"', body)
+        self.assertContains(response, "수련확인증 승인")
+        self.assertContains(response, "미승인")
+        self.assertContains(response, "확인증 반영 최종 제출 사례")
         progress = get_counselor_training_progress(self.counselor)
         self.assertEqual(response.context["training_progress"], progress)
         self.assertNotContains(response, "접수면접·상담자 경험·수퍼비전 출석 합계")

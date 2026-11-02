@@ -61,10 +61,17 @@
             <h2 class="h6 fw-semibold mb-0">
                 <i class="bi bi-mortarboard me-2 text-counselor" aria-hidden="true"></i>수련 현황
             </h2>
+            {% if certificate_can_issue %}
             <a href="{% url 'counselor:training_certificate' %}"
                class="btn btn-sm btn-outline-primary"
                target="_blank"
                rel="noopener">수련확인증 출력</a>
+            {% else %}
+            <button type="button"
+                    class="btn btn-sm btn-outline-primary"
+                    data-bs-toggle="modal"
+                    data-bs-target="#trainingCertificateNoticeModal">수련확인증 출력</button>
+            {% endif %}
         </div>
         <div class="card-body">
             <div class="row g-3">
@@ -139,6 +146,25 @@
             </div>
         </div>
     </div>
+
+    {% if not certificate_can_issue %}
+    <div class="modal fade" id="trainingCertificateNoticeModal" tabindex="-1" aria-labelledby="trainingCertificateNoticeLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="trainingCertificateNoticeLabel">수련확인증</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-0">{{ certificate_issue_message }}</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">확인</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
     {% if pending_appointments %}
     <div class="card border-0 shadow-sm section-spacing border-warning">

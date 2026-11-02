@@ -184,51 +184,39 @@ class TrainingCertificateAccessTests(TestCase):
         match = resolve(self.own_url)
         self.assertEqual(match.kwargs, {})
 
-    def test_counselor_receives_own_pdf(self):
+    def test_counselor_pdf_is_blocked_until_approved(self):
         http = HttpClient()
         http.force_login(self.counselor)
         response = http.get(self.own_url)
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response["Content-Type"], "application/pdf")
-        self.assertTrue(response.content.startswith(b"%PDF"))
+        self.assertEqual(response.status_code, 403)
+        self.assertNotEqual(response.get("Content-Type"), "application/pdf")
+        self.assertFalse(response.content.startswith(b"%PDF"))
 
-    def test_counselor_pdf_uses_the_same_progress_object(self):
+    def test_unapproved_request_does_not_render_pdf(self):
         http = HttpClient()
         http.force_login(self.counselor)
-        sentinel = get_counselor_training_progress(self.counselor)
-        with (
-            patch(
-                "apps.counseling.training_progress.get_counselor_training_progress",
-                return_value=sentinel,
-            ) as progress,
-            patch(
-                "apps.counseling.training_certificate_pdf.build_training_certificate_pdf",
-                return_value=b"%PDF-1.4",
-            ) as builder,
-        ):
+        with patch(
+            "apps.counseling.training_certificate_pdf.build_training_certificate_pdf",
+            return_value=b"%PDF-1.4",
+        ) as builder:
             response = http.get(self.own_url)
-        self.assertEqual(response.status_code, 200)
-        progress.assert_called_once()
-        self.assertEqual(progress.call_args.args[0].pk, self.counselor.pk)
-        context = builder.call_args.args[0]
-        self.assertIs(context["progress"], sentinel)
-        self.assertEqual(context["identity"][0], ("성명", "본인상담"))
-        self.assertEqual(context["issued_on_label"], "—")
-        self.assertNotEqual(context["identity"][0][1], self.other.name)
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(response.content.startswith(b"%PDF"))
+        builder.assert_not_called()
 
     def test_one_certificate_does_not_query_per_case(self):
         counselor = User.objects.select_related("counselor_profile").get(pk=self.counselor.pk)
-        with self.assertNumQueries(14):
+        with self.assertNumQueries(13):
             response = training_certificate_response(counselor)
         self.assertEqual(response.status_code, 200)
 
-    def test_admin_can_download_a_counselor_pdf(self):
+    def test_admin_pdf_is_blocked_until_approved(self):
         http = HttpClient()
         http.force_login(self.admin)
         response = http.get(self.admin_url)
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response["Content-Type"], "application/pdf")
-        self.assertTrue(response.content.startswith(b"%PDF"))
+        self.assertEqual(response.status_code, 403)
+        self.assertNotEqual(response.get("Content-Type"), "application/pdf")
+        self.assertFalse(response.content.startswith(b"%PDF"))
 
     def test_non_admin_cannot_open_admin_endpoint(self):
         http = HttpClient()
@@ -265,7 +253,11 @@ class TrainingCertificateAccessTests(TestCase):
         counselor_http.force_login(self.counselor)
         dashboard = counselor_http.get(reverse("counselor:dashboard"))
         self.assertContains(dashboard, "수련확인증 출력")
-        self.assertContains(dashboard, self.own_url)
+        self.assertNotContains(dashboard, f'href="{self.own_url}"')
+        self.assertContains(
+            dashboard,
+            "최종 제출된 상담사례가 없습니다. 상담사례 최종 제출 후 수퍼바이저 또는 관리자 승인을 받아야 수련확인증을 출력할 수 있습니다.",
+        )
 
         admin_http = HttpClient()
         admin_http.force_login(self.admin)
@@ -319,6 +311,12 @@ def _journal(case, session_number, *, appointment=None, is_draft=False, counseli
         objective="O",
         assessment="A",
     )
+
+
+def _submit(case):
+    Case.objects.filter(pk=case.pk).update(records_submitted_at=timezone.now())
+    case.refresh_from_db(fields=["records_submitted_at"])
+    return case
 
 
 class TrainingCertificateDetailTests(TestCase):
@@ -532,6 +530,7 @@ class CertificateItemSpanTests(TestCase):
             _journal(in_person, number, counseling_method=None)
         for number in range(1, 7):
             _journal(remote, number, counseling_method=None)
+        _submit(remote)
         context = _certificate_context(
             counselor, get_counselor_training_progress(counselor)
         )
@@ -564,6 +563,7 @@ class TrainingCertificateRecordTests(TestCase):
             _journal(in_person, number, counseling_method=None)
         for number in range(1, 7):
             _journal(remote, number, counseling_method=None)
+        _submit(remote)
         # snapshot beats Case fallback
         snap_case = _case(
             counselor,
@@ -627,6 +627,7 @@ class TrainingCertificateRecordTests(TestCase):
         _intake(case, method=CounselingMethod.REMOTE)
         for session_number in range(1, 6):
             _journal(case, session_number, counseling_method=CounselingMethod.REMOTE)
+        _submit(case)
         progress = get_counselor_training_progress(counselor)
         context = _certificate_context(counselor, progress)
         self.assertEqual(context["rows"][0], ["접수면접", "1시간", "비대면", ""])
@@ -863,6 +864,8 @@ class CounselingCases5PlusTests(TestCase):
             _journal(case_b, number)
         for number in range(1, 5):
             _journal(case_c, number)
+        _submit(case_a)
+        _submit(case_b)
         self.assertEqual(counseling_cases_5plus_count(counselor), 2)
         self.assertEqual(
             counseling_cases_5plus_label(2),
@@ -891,6 +894,7 @@ class CounselingCases5PlusTests(TestCase):
             _journal(ready, number)
         for number in range(6, 8):
             _journal(ready, number, is_draft=True)
+        _submit(ready)
         self.assertEqual(counseling_cases_5plus_count(counselor), 1)
 
     def test_total_sessions_does_not_affect_count(self):
@@ -913,6 +917,7 @@ class CounselingCases5PlusTests(TestCase):
             _journal(low_journals, number)
         for number in range(1, 6):
             _journal(exact, number)
+        _submit(exact)
         self.assertEqual(counseling_cases_5plus_count(counselor), 1)
 
     def test_case_status_does_not_exclude(self):
@@ -934,6 +939,8 @@ class CounselingCases5PlusTests(TestCase):
             _journal(active, number)
         for number in range(1, 7):
             _journal(closed, number)
+        _submit(active)
+        _submit(closed)
         self.assertEqual(counseling_cases_5plus_count(counselor), 2)
 
     def test_zero_cases_label_and_certificate_remark(self):
@@ -958,6 +965,7 @@ class CounselingCases5PlusTests(TestCase):
             )
             for number in range(1, 6 if index % 2 == 0 else 3):
                 _journal(case, number)
+            _submit(case)
         with self.assertNumQueries(1):
             count = counseling_cases_5plus_count(counselor)
         self.assertEqual(count, 3)
@@ -972,6 +980,7 @@ class CounselingCases5PlusTests(TestCase):
         )
         for number in range(1, 11):
             _journal(case, number)
+        _submit(case)
         self.assertEqual(counseling_cases_5plus_count(counselor), 1)
 
     def test_other_counselor_cases_are_excluded(self):
@@ -993,6 +1002,8 @@ class CounselingCases5PlusTests(TestCase):
             _journal(own, number)
         for number in range(1, 8):
             _journal(foreign, number)
+        _submit(own)
+        _submit(foreign)
         self.assertEqual(counseling_cases_5plus_count(counselor), 1)
         self.assertEqual(counseling_cases_5plus_count(other), 1)
 
@@ -1014,6 +1025,7 @@ class CounselingCases5PlusTests(TestCase):
             _journal(in_person, number, counseling_method=None)
         for number in range(1, 7):
             _journal(remote, number, counseling_method=None)
+        _submit(remote)
         progress = get_counselor_training_progress(counselor)
         context = _certificate_context(counselor, progress)
         self.assertEqual(context["columns"], ["수련항목", "수련시간", "진행방식", "비고"])

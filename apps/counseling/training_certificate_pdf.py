@@ -1,6 +1,8 @@
 """전문상담사 수련확인서 PDF.
 
-수련 숫자는 get_counselor_training_progress() 결과를 그대로 표시한다.
+발급 context는 build_counselor_training_certificate_context() 한 번으로 만들고
+그 결과를 PDF와 승인 hash가 함께 쓴다.
+이 모듈의 build_training_certificate_context()는 넘겨받은 progress를 그대로 그린다.
 """
 
 from __future__ import annotations
@@ -440,28 +442,14 @@ class _FooterMark(Flowable):
         self.canv.drawString(x, -self._descent, self.text)
 
 
-def training_certificate_response(counselor) -> HttpResponse:
-    from apps.counseling.training_certificate import (
-        counseling_cases_5plus_count,
-        intake_delivery_mode_label,
-        journal_delivery_mode_label,
-        certificate_date_for_counselor,
-        supervisor_label_for_counselor,
-        supervision_attended_time_label,
-    )
-    from apps.counseling.training_progress import get_counselor_training_progress
+def training_certificate_response(counselor, context=None) -> HttpResponse:
+    """context를 넘기면 그 값으로 PDF를 만든다. 승인 검사는 view가 한다."""
+    if context is None:
+        from apps.counseling.training_certificate import (
+            build_counselor_training_certificate_context,
+        )
 
-    progress = get_counselor_training_progress(counselor)
-    context = build_training_certificate_context(
-        counselor,
-        progress,
-        certificate_date_for_counselor(counselor),
-        supervisor_label=supervisor_label_for_counselor(counselor),
-        counseling_cases_5plus_count=counseling_cases_5plus_count(counselor),
-        intake_mode=intake_delivery_mode_label(counselor),
-        journal_mode=journal_delivery_mode_label(counselor),
-        supervision_time=supervision_attended_time_label(counselor),
-    )
+        context = build_counselor_training_certificate_context(counselor)
     pdf_bytes = build_training_certificate_pdf(context)
     filename = f"수련확인증_{counselor.name or 'counselor'}.pdf"
     response = HttpResponse(pdf_bytes, content_type="application/pdf")

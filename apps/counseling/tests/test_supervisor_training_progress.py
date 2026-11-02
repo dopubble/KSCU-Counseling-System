@@ -40,10 +40,10 @@ def _user(email, name, role, *, status=UserStatus.ACTIVE):
 
 def _counselor(name, cohort):
     user = _user(f"{name}@example.com", name, UserRole.COUNSELOR)
-    CounselorProfile.objects.update_or_create(
-        user=user,
-        defaults={"cohort": cohort, "is_approved": True},
-    )
+    profile = user.counselor_profile
+    profile.cohort = cohort
+    profile.is_approved = True
+    profile.save(update_fields=["cohort", "is_approved", "updated_at"])
     return user
 
 
@@ -204,6 +204,10 @@ class SupervisorTrainingProgressAccessTests(TestCase):
         self.assertEqual(ok.status_code, 200)
         self.assertContains(ok, "1기상담")
         self.assertNotContains(ok, "2기상담")
+        body = ok.content.decode()
+        self.assertIn(f'href="{self.detail_c1}?cohort=1"', body)
+        self.assertNotIn("수련확인증", body)
+        self.assertNotIn(self.cert_c1, body)
 
         forbidden = self.http.get(self.list_url, {"cohort": "2"})
         self.assertEqual(forbidden.status_code, 403)
@@ -212,6 +216,12 @@ class SupervisorTrainingProgressAccessTests(TestCase):
         self.http.force_login(self.supervisor)
         self.assertEqual(self.http.get(self.detail_c1).status_code, 200)
         self.assertEqual(self.http.get(self.detail_c2).status_code, 403)
+        case = _case(self.counselor_c1, _client_user("승인내담"), "SV-CERT-OK")
+        case.records_submitted_at = timezone.now()
+        case.save(update_fields=["records_submitted_at"])
+        from apps.counseling.training_certificate import approve_training_certificate
+
+        approve_training_certificate(self.counselor_c1, self.admin)
         cert_ok = self.http.get(self.cert_c1)
         self.assertEqual(cert_ok.status_code, 200)
         self.assertEqual(cert_ok["Content-Type"], "application/pdf")
@@ -356,7 +366,14 @@ class SupervisorTrainingProgressDetailTests(TestCase):
         self.assertContains(sv_detail, "총 18시간")
         self.assertNotContains(sv_detail, "접수면접·상담자 경험·수퍼비전 출석 합계")
         self.assertNotContains(sv_detail, "회기·세션에 저장된 방식 기준")
-        self.assertContains(sv_detail, reverse("supervisor:counselor_training_certificate", args=[self.counselor.pk]))
+        pdf_url = reverse(
+            "supervisor:counselor_training_certificate", args=[self.counselor.pk]
+        )
+        body = sv_detail.content.decode()
+        self.assertNotIn(f'href="{pdf_url}"', body)
+        self.assertContains(sv_detail, "수련확인증 승인")
+        self.assertContains(sv_detail, "미승인")
+        self.assertContains(sv_detail, "확인증 반영 최종 제출 사례")
 
 
 class SupervisorTrainingProgressParityTests(TestCase):
@@ -450,8 +467,13 @@ class SupervisorTrainingCertificateReuseTests(TestCase):
         case = _case(counselor, _client_user("확인증내담"), "SV-C-1")
         for number in range(1, 6):
             _journal(case, number, counseling_method=CounselingMethod.IN_PERSON)
+        case.records_submitted_at = timezone.now()
+        case.save(update_fields=["records_submitted_at"])
 
         admin = _user("sv-cert-admin@example.com", "확인증관리", UserRole.ADMIN)
+        from apps.counseling.training_certificate import approve_training_certificate
+
+        approve_training_certificate(counselor, admin)
         sv_http = HttpClient()
         admin_http = HttpClient()
         sv_http.force_login(supervisor)

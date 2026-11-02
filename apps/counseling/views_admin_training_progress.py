@@ -5,6 +5,7 @@ from django.shortcuts import get_object_or_404, render
 
 from apps.accounts.decorators import role_required
 from apps.accounts.models import CounselorProfile, User, UserRole
+from apps.counseling.training_certificate import get_training_certificate_approval_status
 from apps.counseling.training_progress import (
     get_cohort_counselors_training_progress,
     get_counselor_training_progress,
@@ -125,5 +126,6 @@ def admin_counselor_training_progress_detail(request, counselor_id):
             "cohort": cohort,
             "training_progress": progress,
             "list_cohort": cohort or request.GET.get("cohort") or "",
+            "certificate_approval": get_training_certificate_approval_status(counselor),
         },
     )

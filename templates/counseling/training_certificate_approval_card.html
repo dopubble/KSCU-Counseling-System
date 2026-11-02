@@ -1,0 +1,26 @@
+<div class="card border-0 shadow-sm mt-4" id="training-certificate-approval">
+    <div class="card-header bg-white border-bottom py-3">
+        <h2 class="h6 fw-semibold mb-0">
+            <i class="bi bi-patch-check me-2 text-primary" aria-hidden="true"></i>수련확인증
+        </h2>
+    </div>
+    <div class="card-body">
+        <p class="mb-1">상태: <span class="fw-semibold">{{ certificate_approval.label }}</span></p>
+        <p class="mb-1">확인증 반영 최종 제출 사례: {{ certificate_approval.submitted_case_count }}건</p>
+        {% if certificate_approval.status == "approved" %}
+        <p class="mb-1">승인자: {{ certificate_approval.approved_by_name }}</p>
+        <p class="mb-3">승인일: {{ certificate_approval.approved_on_label }}</p>
+        <a href="{% url certificate_url_name counselor.pk %}"
+           class="btn btn-sm btn-outline-primary"
+           target="_blank"
+           rel="noopener">수련확인증 출력</a>
+        {% else %}
+        <form method="post" action="{% url approve_url_name counselor.pk %}" class="mt-3 mb-0">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-primary">
+                {% if certificate_approval.status == "reapproval_required" %}수련확인증 재승인{% else %}수련확인증 승인{% endif %}
+            </button>
+        </form>
+        {% endif %}
+    </div>
+</div>

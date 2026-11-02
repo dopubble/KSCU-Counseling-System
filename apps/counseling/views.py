@@ -156,6 +156,7 @@ from .services import (
     serialize_apply_initial,
     sync_case_counseling_method_from_application,
 )
+from .training_certificate import get_training_certificate_approval_status
 from .training_progress import get_counselor_training_progress
 
 SESSION_APPLY_PREFILL = "counseling_apply_prefill"
@@ -1812,6 +1813,7 @@ def counselor_dashboard(request):
         .order_by("scheduled_at")
     )
     submit_feedback = _pop_records_submit_feedback(request)
+    certificate_approval = get_training_certificate_approval_status(request.user)
     return render(
         request,
         "counselor/dashboard.html",
@@ -1832,6 +1834,8 @@ def counselor_dashboard(request):
                 submit_feedback["case"] if submit_feedback else None
             ),
             "training_progress": get_counselor_training_progress(request.user),
+            "certificate_can_issue": certificate_approval["can_issue"],
+            "certificate_issue_message": certificate_approval["issue_message"],
         },
     )
 

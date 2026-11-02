@@ -59,7 +59,6 @@
                         <th scope="col" class="text-nowrap">수퍼비전</th>
                         <th scope="col" class="text-nowrap">사례보고서</th>
                         <th scope="col" class="text-nowrap">총 수련시간</th>
-                        <th scope="col" class="text-nowrap">수련확인증</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -88,12 +87,6 @@
                             {{ row.display.case_report_label }}
                         </td>
                         <td class="text-nowrap fw-semibold">{{ row.display.training_time_label }}</td>
-                        <td class="text-nowrap">
-                            <a href="{% url 'supervisor:counselor_training_certificate' row.counselor.pk %}"
-                               class="btn btn-sm btn-outline-primary"
-                               target="_blank"
-                               rel="noopener">출력</a>
-                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
