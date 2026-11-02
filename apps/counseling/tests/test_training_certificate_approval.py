@@ -576,6 +576,8 @@ class CertificateApprovalFlowTests(TestCase):
         dashboard = reverse("counselor:dashboard")
         blocked = _http(fresh).get(dashboard)
         self.assertContains(blocked, "수련확인증 출력")
+        self.assertContains(blocked, "수련확인증 상태")
+        self.assertContains(blocked, "미승인")
         self.assertContains(blocked, MESSAGE_NO_SUBMITTED_CASE)
         self.assertNotContains(blocked, f'href="{reverse("counselor:training_certificate")}"')
 
@@ -584,16 +586,25 @@ class CertificateApprovalFlowTests(TestCase):
         _submit(case)
         waiting = _http(fresh).get(dashboard)
         self.assertContains(waiting, MESSAGE_UNAPPROVED)
+        self.assertContains(waiting, "미승인")
+        self.assertNotContains(waiting, "승인완료")
+        self.assertNotContains(waiting, "재승인 필요")
         self.assertNotContains(waiting, MESSAGE_NO_SUBMITTED_CASE)
 
         approve_training_certificate(fresh, self.admin)
         ready = _http(fresh).get(dashboard)
         self.assertContains(ready, f'href="{reverse("counselor:training_certificate")}"')
+        self.assertContains(ready, "승인완료")
+        self.assertNotContains(ready, "미승인")
+        self.assertNotContains(ready, "재승인 필요")
         self.assertNotContains(ready, MESSAGE_UNAPPROVED)
 
         _report(fresh, "변경보고서", case=case, cohort=34)
         changed = _http(fresh).get(dashboard)
         self.assertContains(changed, MESSAGE_REAPPROVAL)
+        self.assertContains(changed, "재승인 필요")
+        self.assertNotContains(changed, "승인완료")
+        self.assertNotContains(changed, "미승인")
         self.assertNotContains(changed, f'href="{reverse("counselor:training_certificate")}"')
 
     def test_final_submit_does_not_create_an_approval(self):
@@ -615,6 +626,16 @@ class CertificateApprovalFlowTests(TestCase):
         self.assertFalse(
             TrainingCertificateApproval.objects.filter(counselor=counselor).exists()
         )
+        dashboard = _http(counselor).get(reverse("counselor:dashboard"))
+        body = dashboard.content.decode()
+        training, closed = body.split('id="counselor-training-progress"', 1)[1].split(
+            'id="counselor-closed-cases"', 1
+        )
+        self.assertIn("수련확인증 상태", training)
+        self.assertIn("미승인", training)
+        self.assertNotIn("수련확인증 상태", closed)
+        self.assertIn("최종 제출 완료", closed)
+        self.assertIn(MESSAGE_UNAPPROVED, body)
 
 
 class CertificateHashStabilityTests(TestCase):

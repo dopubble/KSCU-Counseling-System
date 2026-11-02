@@ -1834,6 +1834,7 @@ def counselor_dashboard(request):
                 submit_feedback["case"] if submit_feedback else None
             ),
             "training_progress": get_counselor_training_progress(request.user),
+            "certificate_approval": certificate_approval,
             "certificate_can_issue": certificate_approval["can_issue"],
             "certificate_issue_message": certificate_approval["issue_message"],
         },

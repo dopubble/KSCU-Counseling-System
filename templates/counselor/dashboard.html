@@ -61,6 +61,15 @@
             <h2 class="h6 fw-semibold mb-0">
                 <i class="bi bi-mortarboard me-2 text-counselor" aria-hidden="true"></i>수련 현황
             </h2>
+            <div class="d-flex flex-wrap align-items-center justify-content-end gap-2">
+                <span class="small text-muted">수련확인증 상태</span>
+                {% if certificate_approval.status == "approved" %}
+                <span class="badge text-bg-success">{{ certificate_approval.label }}</span>
+                {% elif certificate_approval.status == "reapproval_required" %}
+                <span class="badge text-bg-warning text-dark">{{ certificate_approval.label }}</span>
+                {% else %}
+                <span class="badge text-bg-secondary">{{ certificate_approval.label }}</span>
+                {% endif %}
             {% if certificate_can_issue %}
             <a href="{% url 'counselor:training_certificate' %}"
                class="btn btn-sm btn-outline-primary"
@@ -72,6 +81,7 @@
                     data-bs-toggle="modal"
                     data-bs-target="#trainingCertificateNoticeModal">수련확인증 출력</button>
             {% endif %}
+            </div>
         </div>
         <div class="card-body">
             <div class="row g-3">
