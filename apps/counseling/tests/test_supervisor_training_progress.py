@@ -373,7 +373,7 @@ class SupervisorTrainingProgressDetailTests(TestCase):
         self.assertNotIn(f'href="{pdf_url}"', body)
         self.assertContains(sv_detail, "수련확인증 승인")
         self.assertContains(sv_detail, "미승인")
-        self.assertContains(sv_detail, "확인증 반영 최종 제출 사례")
+        self.assertContains(sv_detail, "사례 제출 현황: 총 2건 / 최종 제출 0건")
 
 
 class SupervisorTrainingProgressParityTests(TestCase):

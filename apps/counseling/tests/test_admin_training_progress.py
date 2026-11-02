@@ -474,7 +474,7 @@ class AdminTrainingProgressDetailTests(TestCase):
         self.assertNotIn(f'href="{pdf_url}"', body)
         self.assertContains(response, "수련확인증 승인")
         self.assertContains(response, "미승인")
-        self.assertContains(response, "확인증 반영 최종 제출 사례")
+        self.assertContains(response, "사례 제출 현황: 총 1건 / 최종 제출 0건")
         progress = get_counselor_training_progress(self.counselor)
         self.assertEqual(response.context["training_progress"], progress)
         self.assertNotContains(response, "접수면접·상담자 경험·수퍼비전 출석 합계")

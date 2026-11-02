@@ -6,7 +6,7 @@
     </div>
     <div class="card-body">
         <p class="mb-1">상태: <span class="fw-semibold">{{ certificate_approval.label }}</span></p>
-        <p class="mb-1">확인증 반영 최종 제출 사례: {{ certificate_approval.submitted_case_count }}건</p>
+        <p class="mb-1">사례 제출 현황: 총 {{ certificate_approval.assigned_case_count }}건 / 최종 제출 {{ certificate_approval.submitted_case_count }}건</p>
         {% if certificate_approval.status == "approved" %}
         <p class="mb-1">승인자: {{ certificate_approval.approved_by_name }}</p>
         <p class="mb-3">승인일: {{ certificate_approval.approved_on_label }}</p>

@@ -54,6 +54,21 @@ def submitted_case_count(counselor) -> int:
     return submitted_cases_for_counselor(counselor).count()
 
 
+def case_submission_counts(counselor) -> tuple[int, int]:
+    """배정 Case 수와 최종 제출 Case 수.
+
+    총 건수는 상태와 관계없이 counselor에게 배정된 Case다.
+    최종 제출 건수는 records_submitted_at이 있는 Case다.
+    """
+    if counselor is None or not getattr(counselor, "pk", None):
+        return 0, 0
+    row = Case.objects.filter(counselor_id=counselor.pk).aggregate(
+        assigned=Count("pk"),
+        submitted=Count("pk", filter=Q(records_submitted_at__isnull=False)),
+    )
+    return int(row["assigned"] or 0), int(row["submitted"] or 0)
+
+
 def counseling_cases_5plus_count(counselor) -> int:
     """최종 제출 Case 중 작성완료 상담일지 5개 이상인 건수(Case 단위, draft 제외).
 
@@ -455,10 +470,11 @@ def get_training_certificate_approval_status(counselor, context=None) -> dict:
         status = STATUS_APPROVED
     else:
         status = STATUS_REAPPROVAL_REQUIRED
-    submitted_count = submitted_case_count(counselor)
+    assigned_count, submitted_count = case_submission_counts(counselor)
     return {
         "status": status,
         "label": STATUS_LABELS[status],
+        "assigned_case_count": assigned_count,
         "submitted_case_count": submitted_count,
         "can_issue": status == STATUS_APPROVED,
         "content_hash": content_hash,
