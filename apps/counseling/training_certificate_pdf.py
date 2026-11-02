@@ -148,6 +148,7 @@ def build_training_certificate_context(
     identity = [("성명", counselor.name or _EMPTY)]
     if birth_date:
         identity.append(("생년월일", format_certificate_date(birth_date)))
+    identity.append(("수퍼바이저", "\n".join(supervisor_display_lines(supervisor_label))))
     counseling_remark = counseling_cases_5plus_label(counseling_cases_5plus_count)
     rows: list[list[str]] = []
     rows.extend(
@@ -195,17 +196,25 @@ def build_training_certificate_context(
         "issued_on": issued_on,
         "issued_on_label": format_certificate_date(issued_on) if issued_on else _EMPTY,
         "supervisor_label": supervisor_label or _EMPTY,
-        "supervisor_signatures": supervisor_signature_names(supervisor_label),
+        "supervisor_lines": supervisor_display_lines(supervisor_label),
         "issuer": CERTIFICATE_ISSUER,
     }
 
 
-def supervisor_signature_names(label: str) -> list[str]:
-    """기존 수퍼바이저 표기를 서명란 한 줄씩으로 나눈다. 순서는 유지한다."""
+def supervisor_display_lines(label: str) -> list[str]:
+    """기존 수퍼바이저 표기를 기본정보의 줄 단위로 나눈다. 순서는 유지한다."""
     text = (label or "").strip()
     if not text or text == _EMPTY:
-        return []
-    return [part.strip() for part in text.split(", ") if part.strip()]
+        return [_EMPTY]
+    lines: list[str] = []
+    for part in text.split(", "):
+        name = part.strip()
+        if not name or name == _EMPTY:
+            continue
+        if not name.endswith("교수"):
+            name = f"{name} 교수"
+        lines.append(f"{name} (인)")
+    return lines or [_EMPTY]
 
 
 def footer_logo_size(content_width, pixel_width, pixel_height, ratio=_FOOTER_LOGO_WIDTH_RATIO):
@@ -236,75 +245,23 @@ def _footer_logo_spec():
         return None
 
 
-def _signature_names_from_context(context: dict) -> list[str]:
-    if "supervisor_signatures" in context:
-        return list(context["supervisor_signatures"])
-    label = context.get("supervisor_label")
-    if not label:
-        for item_label, value in context.get("identity") or []:
-            if item_label == "수퍼바이저":
-                label = value
-                break
-    return supervisor_signature_names(label or "")
-
-
-def _supervisor_signature_flowables(names: list[str], font: str) -> list:
-    """하단 수퍼바이저 확인. 이름마다 서명선을 한 줄씩 둔다."""
-    if not names:
-        return []
-    title_style = ParagraphStyle(
-        "CertificateSignatureTitle",
-        fontName=font,
-        fontSize=11,
-        leading=14,
-        alignment=TA_LEFT,
-        textColor=colors.HexColor("#1a365d"),
-    )
-    name_style = ParagraphStyle(
-        "CertificateSignatureName",
-        fontName=font,
-        fontSize=11,
-        leading=14,
-        alignment=TA_LEFT,
-    )
-    mark_style = ParagraphStyle(
-        "CertificateSignatureMark",
-        fontName=font,
-        fontSize=10,
-        leading=13,
-        alignment=TA_CENTER,
-        textColor=colors.HexColor("#4a5568"),
-    )
-    name_width = _CONTENT_WIDTH * 0.33
-    sign_width = _CONTENT_WIDTH * 0.49
-    mark_width = _CONTENT_WIDTH - name_width - sign_width
+def _pdf_identity_rows(context: dict) -> list[tuple[str, str]]:
     rows = [
-        [Paragraph(name, name_style), "", Paragraph("(서명)", mark_style)]
-        for name in names
+        (label, value)
+        for label, value in context.get("identity") or []
+        if label != "수퍼바이저"
     ]
-    table = Table(
-        rows,
-        colWidths=[name_width, sign_width, mark_width],
-        rowHeights=[16 * mm] * len(names),
-    )
-    table.hAlign = "CENTER"
-    table.setStyle(
-        TableStyle(
-            [
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("LEFTPADDING", (0, 0), (0, -1), 1 * mm),
-                ("RIGHTPADDING", (0, 0), (0, -1), 3 * mm),
-                ("LEFTPADDING", (1, 0), (1, -1), 2 * mm),
-                ("RIGHTPADDING", (1, 0), (1, -1), 2 * mm),
-                ("LEFTPADDING", (2, 0), (2, -1), 1 * mm),
-                ("RIGHTPADDING", (2, 0), (2, -1), 1 * mm),
-                ("TOPPADDING", (0, 0), (-1, -1), 2),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-                ("LINEBELOW", (1, 0), (1, -1), 0.6, colors.HexColor("#4a5568")),
-            ]
-        )
-    )
-    return [Paragraph("수퍼바이저 확인", title_style), Spacer(1, 4), table, Spacer(1, 8)]
+    lines = context.get("supervisor_lines")
+    if not lines:
+        label = context.get("supervisor_label")
+        if not label:
+            for item_label, value in context.get("identity") or []:
+                if item_label == "수퍼바이저":
+                    label = value.replace(" (인)", "").replace("\n", ", ")
+                    break
+        lines = supervisor_display_lines(label or "")
+    rows.append(("수퍼바이저", "<br/>".join(lines)))
+    return rows
 
 
 def build_training_certificate_pdf(context: dict) -> bytes:
@@ -374,30 +331,29 @@ def build_training_certificate_pdf(context: dict) -> bytes:
     story.append(Spacer(1, _SPACE_AFTER_TITLE))
 
     label_width = 30 * mm
+    pdf_identity = _pdf_identity_rows(context)
     identity_rows = [
         [Paragraph(label, label_style), Paragraph(value, value_style)]
-        for label, value in context["identity"]
-        if label != "수퍼바이저"
+        for label, value in pdf_identity
     ]
     identity = Table(
         identity_rows,
         colWidths=[label_width, _CONTENT_WIDTH - label_width],
     )
     identity.hAlign = "CENTER"
-    identity.setStyle(
-        TableStyle(
-            [
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("LEFTPADDING", (0, 0), (0, -1), 1 * mm),
-                ("RIGHTPADDING", (0, 0), (0, -1), 4 * mm),
-                ("LEFTPADDING", (1, 0), (1, -1), 4 * mm),
-                ("RIGHTPADDING", (1, 0), (1, -1), 1 * mm),
-                ("TOPPADDING", (0, 0), (-1, -1), 5),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-                ("LINEBELOW", (0, 0), (-1, -1), 0.3, colors.HexColor("#e2e8f0")),
-            ]
-        )
-    )
+    identity_style = [
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (0, -1), 1 * mm),
+        ("RIGHTPADDING", (0, 0), (0, -1), 4 * mm),
+        ("LEFTPADDING", (1, 0), (1, -1), 4 * mm),
+        ("RIGHTPADDING", (1, 0), (1, -1), 1 * mm),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("LINEBELOW", (0, 0), (-1, -1), 0.3, colors.HexColor("#e2e8f0")),
+    ]
+    if any("<br/>" in value for _label, value in pdf_identity):
+        identity_style.append(("VALIGN", (0, -1), (-1, -1), "TOP"))
+    identity.setStyle(TableStyle(identity_style))
     story.extend([identity, Spacer(1, _SPACE_AFTER_IDENTITY)])
 
     header = [Paragraph(column, cell_style) for column in context["columns"]]
@@ -441,15 +397,7 @@ def build_training_certificate_pdf(context: dict) -> bytes:
         left_margin=_SIDE_MARGIN,
         logo=_footer_logo_spec(),
     )
-    signatures = _supervisor_signature_flowables(
-        _signature_names_from_context(context),
-        font,
-    )
     _, issuer_height = issuer.wrap(_CONTENT_WIDTH, doc.height)
-    signature_height = 0
-    for flowable in signatures:
-        _, height = flowable.wrap(_CONTENT_WIDTH, doc.height)
-        signature_height += height
     story.extend(
         [
             table,
@@ -457,8 +405,7 @@ def build_training_certificate_pdf(context: dict) -> bytes:
             Paragraph(context["confirmation"], center_style),
             Spacer(1, _SPACE_AFTER_CONFIRMATION),
             Paragraph(context["issued_on_label"], center_style),
-            _FillRemaining(issuer_height + signature_height),
-            *signatures,
+            _FillRemaining(issuer_height),
             issuer,
         ]
     )

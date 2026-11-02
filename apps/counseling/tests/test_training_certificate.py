@@ -98,10 +98,11 @@ class TrainingCertificateContextTests(TestCase):
             [
                 ("성명", "확인서상담"),
                 ("생년월일", "1991년 4월 8일"),
+                ("수퍼바이저", "홍길동 교수 (인)"),
             ],
         )
         self.assertEqual(context["supervisor_label"], "홍길동")
-        self.assertEqual(context["supervisor_signatures"], ["홍길동"])
+        self.assertEqual(context["supervisor_lines"], ["홍길동 교수 (인)"])
         self.assertNotIn("기수", [label for label, _value in context["identity"]])
         self.assertEqual(
             context["columns"], ["수련항목", "수련시간", "진행방식", "비고"]
@@ -143,9 +144,12 @@ class TrainingCertificateContextTests(TestCase):
             supervision_time="0분",
         )
         labels = [label for label, _value in context["identity"]]
-        self.assertEqual(context["identity"], [("성명", "기간없음")])
+        self.assertEqual(
+            context["identity"],
+            [("성명", "기간없음"), ("수퍼바이저", "—")],
+        )
         self.assertEqual(context["supervisor_label"], "—")
-        self.assertEqual(context["supervisor_signatures"], [])
+        self.assertEqual(context["supervisor_lines"], ["—"])
         self.assertNotIn("생년월일", labels)
         self.assertNotIn("기수", labels)
 
@@ -217,8 +221,11 @@ class SupervisorSignatureLayoutTests(TestCase):
                 supervisor_label=label,
                 counseling_cases_5plus_count=1,
             )
-            self.assertNotIn("수퍼바이저", [item for item, _value in context["identity"]])
-            self.assertEqual(context["supervisor_signatures"], ordered)
+            self.assertEqual(
+                [value for label, value in context["identity"] if label == "수퍼바이저"],
+                ["\n".join(f"{name} (인)" for name in ordered)],
+            )
+            self.assertEqual(context["supervisor_lines"], [f"{name} (인)" for name in ordered])
             self.assertEqual(context["rows"][0][0], "접수면접")
             self.assertIn("상담자 경험", [row[0] for row in context["rows"]])
             self.assertIn("수퍼비전", [row[0] for row in context["rows"]])
@@ -235,7 +242,7 @@ class SupervisorSignatureLayoutTests(TestCase):
                 {"in_person", "remote", "unknown"},
             )
             self.assertNotIn("rows", payload)
-            self.assertNotIn("supervisor_signatures", payload)
+            self.assertNotIn("supervisor_lines", payload)
             content_hash = calculate_training_certificate_hash(counselor, context)
             seen = []
 
@@ -249,12 +256,12 @@ class SupervisorSignatureLayoutTests(TestCase):
             ):
                 pdf_bytes = build_training_certificate_pdf(context)
             self.assertEqual(calculate_training_certificate_hash(counselor, context), content_hash)
-            self.assertEqual(seen.count("수퍼바이저 확인"), 1)
-            if len(ordered) > 1:
-                self.assertNotIn(label, seen)
-            for name in ordered:
-                self.assertEqual(seen.count(name), 1)
-            self.assertEqual(seen.count("(서명)"), len(ordered))
+            self.assertEqual(seen.count("수퍼바이저"), 1)
+            self.assertNotIn("수퍼바이저 확인", seen)
+            self.assertNotIn("(서명)", seen)
+            shown = "<br/>".join(f"{name} (인)" for name in ordered)
+            self.assertEqual(seen.count(shown), 1)
+            self.assertNotIn(label, seen)
             with pikepdf.open(BytesIO(pdf_bytes)) as pdf:
                 self.assertEqual(len(pdf.pages), 1)
 

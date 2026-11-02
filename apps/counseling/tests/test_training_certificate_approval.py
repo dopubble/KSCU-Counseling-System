@@ -679,12 +679,16 @@ class CertificateApprovalFlowTests(TestCase):
             if row[3].endswith(" 포함"):
                 row[3] = row[3].removesuffix(" 포함")
         self.assertEqual(legacy["rows"], current_rows)
-        displayed = [[label, value] for label, value in context["identity"]]
-        self.assertNotIn("수퍼바이저", [label for label, _value in displayed])
+        displayed = [
+            [label, value]
+            for label, value in context["identity"]
+            if label != "수퍼바이저"
+        ]
         self.assertEqual(
             legacy["identity"],
             displayed + [["수퍼바이저", context["supervisor_label"]]],
         )
+        self.assertNotIn("(인)", context["supervisor_label"])
         self.assertEqual(legacy["issued_on"], context["issued_on_label"])
         self.assertEqual(legacy["cases_5plus"], count)
         self.assertIn("intake_minutes", legacy)
@@ -849,11 +853,11 @@ class CertificateApprovalFlowTests(TestCase):
     def test_signature_layout_keeps_an_existing_approval(self):
         approve_training_certificate(self.counselor, self.admin)
         context = build_counselor_training_certificate_context(self.counselor)
-        self.assertNotIn("수퍼바이저", [label for label, _value in context["identity"]])
         self.assertEqual(
-            context["supervisor_signatures"],
-            ["김수퍼 교수"],
+            context["supervisor_lines"],
+            ["김수퍼 교수 (인)"],
         )
+        self.assertEqual(context["supervisor_label"], "김수퍼 교수")
         payload = build_training_certificate_approval_payload(self.counselor, context)
         self.assertEqual(payload["schema"], "certificate-metrics-v1")
         self.assertEqual(payload["supervisor"], context["supervisor_label"])
