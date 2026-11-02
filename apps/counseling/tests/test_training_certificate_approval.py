@@ -679,9 +679,11 @@ class CertificateApprovalFlowTests(TestCase):
             if row[3].endswith(" 포함"):
                 row[3] = row[3].removesuffix(" 포함")
         self.assertEqual(legacy["rows"], current_rows)
+        displayed = [[label, value] for label, value in context["identity"]]
+        self.assertNotIn("수퍼바이저", [label for label, _value in displayed])
         self.assertEqual(
             legacy["identity"],
-            [[label, value] for label, value in context["identity"]],
+            displayed + [["수퍼바이저", context["supervisor_label"]]],
         )
         self.assertEqual(legacy["issued_on"], context["issued_on_label"])
         self.assertEqual(legacy["cases_5plus"], count)
@@ -843,6 +845,25 @@ class CertificateApprovalFlowTests(TestCase):
         )
         self.assertEqual(approved.content_hash, baseline)
         _assert_blocked(self, _http(self.counselor).get(self.counselor_pdf))
+
+    def test_signature_layout_keeps_an_existing_approval(self):
+        approve_training_certificate(self.counselor, self.admin)
+        context = build_counselor_training_certificate_context(self.counselor)
+        self.assertNotIn("수퍼바이저", [label for label, _value in context["identity"]])
+        self.assertEqual(
+            context["supervisor_signatures"],
+            ["김수퍼 교수"],
+        )
+        payload = build_training_certificate_approval_payload(self.counselor, context)
+        self.assertEqual(payload["schema"], "certificate-metrics-v1")
+        self.assertEqual(payload["supervisor"], context["supervisor_label"])
+        self.assertEqual(
+            get_training_certificate_approval_status(self.counselor)["status"],
+            STATUS_APPROVED,
+        )
+        issued = _http(self.counselor).get(self.counselor_pdf)
+        self.assertEqual(issued.status_code, 200)
+        self.assertTrue(issued.content.startswith(b"%PDF"))
 
     def test_include_era_display_hash_stays_approved_when_metrics_match(self):
         approve_training_certificate(self.counselor, self.admin)

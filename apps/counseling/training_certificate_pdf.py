@@ -148,7 +148,6 @@ def build_training_certificate_context(
     identity = [("성명", counselor.name or _EMPTY)]
     if birth_date:
         identity.append(("생년월일", format_certificate_date(birth_date)))
-    identity.append(("수퍼바이저", supervisor_label or _EMPTY))
     counseling_remark = counseling_cases_5plus_label(counseling_cases_5plus_count)
     rows: list[list[str]] = []
     rows.extend(
@@ -196,8 +195,17 @@ def build_training_certificate_context(
         "issued_on": issued_on,
         "issued_on_label": format_certificate_date(issued_on) if issued_on else _EMPTY,
         "supervisor_label": supervisor_label or _EMPTY,
+        "supervisor_signatures": supervisor_signature_names(supervisor_label),
         "issuer": CERTIFICATE_ISSUER,
     }
+
+
+def supervisor_signature_names(label: str) -> list[str]:
+    """기존 수퍼바이저 표기를 서명란 한 줄씩으로 나눈다. 순서는 유지한다."""
+    text = (label or "").strip()
+    if not text or text == _EMPTY:
+        return []
+    return [part.strip() for part in text.split(", ") if part.strip()]
 
 
 def footer_logo_size(content_width, pixel_width, pixel_height, ratio=_FOOTER_LOGO_WIDTH_RATIO):
@@ -226,6 +234,77 @@ def _footer_logo_spec():
         return path, width, height
     except Exception:
         return None
+
+
+def _signature_names_from_context(context: dict) -> list[str]:
+    if "supervisor_signatures" in context:
+        return list(context["supervisor_signatures"])
+    label = context.get("supervisor_label")
+    if not label:
+        for item_label, value in context.get("identity") or []:
+            if item_label == "수퍼바이저":
+                label = value
+                break
+    return supervisor_signature_names(label or "")
+
+
+def _supervisor_signature_flowables(names: list[str], font: str) -> list:
+    """하단 수퍼바이저 확인. 이름마다 서명선을 한 줄씩 둔다."""
+    if not names:
+        return []
+    title_style = ParagraphStyle(
+        "CertificateSignatureTitle",
+        fontName=font,
+        fontSize=11,
+        leading=14,
+        alignment=TA_LEFT,
+        textColor=colors.HexColor("#1a365d"),
+    )
+    name_style = ParagraphStyle(
+        "CertificateSignatureName",
+        fontName=font,
+        fontSize=11,
+        leading=14,
+        alignment=TA_LEFT,
+    )
+    mark_style = ParagraphStyle(
+        "CertificateSignatureMark",
+        fontName=font,
+        fontSize=10,
+        leading=13,
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#4a5568"),
+    )
+    name_width = _CONTENT_WIDTH * 0.33
+    sign_width = _CONTENT_WIDTH * 0.49
+    mark_width = _CONTENT_WIDTH - name_width - sign_width
+    rows = [
+        [Paragraph(name, name_style), "", Paragraph("(서명)", mark_style)]
+        for name in names
+    ]
+    table = Table(
+        rows,
+        colWidths=[name_width, sign_width, mark_width],
+        rowHeights=[16 * mm] * len(names),
+    )
+    table.hAlign = "CENTER"
+    table.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (0, -1), 1 * mm),
+                ("RIGHTPADDING", (0, 0), (0, -1), 3 * mm),
+                ("LEFTPADDING", (1, 0), (1, -1), 2 * mm),
+                ("RIGHTPADDING", (1, 0), (1, -1), 2 * mm),
+                ("LEFTPADDING", (2, 0), (2, -1), 1 * mm),
+                ("RIGHTPADDING", (2, 0), (2, -1), 1 * mm),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                ("LINEBELOW", (1, 0), (1, -1), 0.6, colors.HexColor("#4a5568")),
+            ]
+        )
+    )
+    return [Paragraph("수퍼바이저 확인", title_style), Spacer(1, 4), table, Spacer(1, 8)]
 
 
 def build_training_certificate_pdf(context: dict) -> bytes:
@@ -298,6 +377,7 @@ def build_training_certificate_pdf(context: dict) -> bytes:
     identity_rows = [
         [Paragraph(label, label_style), Paragraph(value, value_style)]
         for label, value in context["identity"]
+        if label != "수퍼바이저"
     ]
     identity = Table(
         identity_rows,
@@ -361,7 +441,15 @@ def build_training_certificate_pdf(context: dict) -> bytes:
         left_margin=_SIDE_MARGIN,
         logo=_footer_logo_spec(),
     )
+    signatures = _supervisor_signature_flowables(
+        _signature_names_from_context(context),
+        font,
+    )
     _, issuer_height = issuer.wrap(_CONTENT_WIDTH, doc.height)
+    signature_height = 0
+    for flowable in signatures:
+        _, height = flowable.wrap(_CONTENT_WIDTH, doc.height)
+        signature_height += height
     story.extend(
         [
             table,
@@ -369,7 +457,8 @@ def build_training_certificate_pdf(context: dict) -> bytes:
             Paragraph(context["confirmation"], center_style),
             Spacer(1, _SPACE_AFTER_CONFIRMATION),
             Paragraph(context["issued_on_label"], center_style),
-            _FillRemaining(issuer_height),
+            _FillRemaining(issuer_height + signature_height),
+            *signatures,
             issuer,
         ]
     )

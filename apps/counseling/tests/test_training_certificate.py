@@ -98,9 +98,10 @@ class TrainingCertificateContextTests(TestCase):
             [
                 ("성명", "확인서상담"),
                 ("생년월일", "1991년 4월 8일"),
-                ("수퍼바이저", "홍길동"),
             ],
         )
+        self.assertEqual(context["supervisor_label"], "홍길동")
+        self.assertEqual(context["supervisor_signatures"], ["홍길동"])
         self.assertNotIn("기수", [label for label, _value in context["identity"]])
         self.assertEqual(
             context["columns"], ["수련항목", "수련시간", "진행방식", "비고"]
@@ -142,7 +143,9 @@ class TrainingCertificateContextTests(TestCase):
             supervision_time="0분",
         )
         labels = [label for label, _value in context["identity"]]
-        self.assertEqual(context["identity"], [("성명", "기간없음"), ("수퍼바이저", "—")])
+        self.assertEqual(context["identity"], [("성명", "기간없음")])
+        self.assertEqual(context["supervisor_label"], "—")
+        self.assertEqual(context["supervisor_signatures"], [])
         self.assertNotIn("생년월일", labels)
         self.assertNotIn("기수", labels)
 
@@ -164,6 +167,96 @@ class TrainingCertificateContextTests(TestCase):
             box = pdf.pages[0].MediaBox
             self.assertAlmostEqual(float(box[2]), 595.27, places=1)
             self.assertAlmostEqual(float(box[3]), 841.89, places=1)
+
+
+class SupervisorSignatureLayoutTests(TestCase):
+    def test_each_supervisor_gets_one_signature_line_in_existing_order(self):
+        from apps.counseling.training_certificate import (
+            build_training_certificate_approval_payload,
+            calculate_training_certificate_hash,
+        )
+
+        groups = (
+            ["김민수"],
+            ["이현우", "김민수"],
+            ["이현우", "박지영", "김민수"],
+        )
+        expected_order = ["김민수", "박지영", "이현우"]
+        for index, created in enumerate(groups, start=61):
+            counselor = _counselor(
+                f"서명{index}",
+                cohort=index,
+                birth_date=date(1990, 1, 2),
+            )
+            for offset, name in enumerate(created):
+                user = _user(
+                    f"{name}-{index}-{offset}@sig.example.com",
+                    name,
+                    UserRole.SUPERVISOR,
+                )
+                SupervisorProfile.objects.filter(user=user).update(assigned_cohorts=[index])
+            label = supervisor_label_for_counselor(counselor)
+            ordered = [f"{name} 교수" for name in expected_order if name in created]
+            self.assertEqual(label, ", ".join(ordered))
+            progress = dict(get_counselor_training_progress(counselor))
+            progress.update(
+                {
+                    "intake_in_person_minutes": 60,
+                    "intake_remote_minutes": 60,
+                    "counseling_in_person_minutes": 300,
+                    "counseling_remote_minutes": 300,
+                    "supervision_in_person_minutes": 120,
+                    "supervision_remote_minutes": 180,
+                    "case_report_submitted_count": 1,
+                }
+            )
+            context = build_training_certificate_context(
+                counselor,
+                progress,
+                date(2026, 10, 28),
+                supervisor_label=label,
+                counseling_cases_5plus_count=1,
+            )
+            self.assertNotIn("수퍼바이저", [item for item, _value in context["identity"]])
+            self.assertEqual(context["supervisor_signatures"], ordered)
+            self.assertEqual(context["rows"][0][0], "접수면접")
+            self.assertIn("상담자 경험", [row[0] for row in context["rows"]])
+            self.assertIn("수퍼비전", [row[0] for row in context["rows"]])
+            self.assertIn("사례보고서", [row[0] for row in context["rows"]])
+            self.assertIn(
+                "5회기 이상 지속된 사례 총 1건 포함",
+                [row[3] for row in context["rows"]],
+            )
+            payload = build_training_certificate_approval_payload(counselor, context)
+            self.assertEqual(payload["schema"], "certificate-metrics-v1")
+            self.assertEqual(payload["supervisor"], label)
+            self.assertEqual(
+                set(payload["counseling_minutes"]),
+                {"in_person", "remote", "unknown"},
+            )
+            self.assertNotIn("rows", payload)
+            self.assertNotIn("supervisor_signatures", payload)
+            content_hash = calculate_training_certificate_hash(counselor, context)
+            seen = []
+
+            def spy(text, style):
+                seen.append(text)
+                return RealParagraph(text, style)
+
+            with patch(
+                "apps.counseling.training_certificate_pdf.Paragraph",
+                side_effect=spy,
+            ):
+                pdf_bytes = build_training_certificate_pdf(context)
+            self.assertEqual(calculate_training_certificate_hash(counselor, context), content_hash)
+            self.assertEqual(seen.count("수퍼바이저 확인"), 1)
+            if len(ordered) > 1:
+                self.assertNotIn(label, seen)
+            for name in ordered:
+                self.assertEqual(seen.count(name), 1)
+            self.assertEqual(seen.count("(서명)"), len(ordered))
+            with pikepdf.open(BytesIO(pdf_bytes)) as pdf:
+                self.assertEqual(len(pdf.pages), 1)
 
 
 class TrainingCertificateAccessTests(TestCase):
