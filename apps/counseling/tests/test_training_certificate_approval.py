@@ -46,6 +46,13 @@ from apps.documents.models import ConsentDocType, ConsentDocument
 from apps.sessions_app.models import CounselingJournal, TerminationCounselingRecord
 
 
+def _status_line(label, assigned, submitted):
+    return (
+        f'상태: <span class="fw-semibold">{label}</span> '
+        f"(총 {assigned}개 사례 중 최종 종결 처리 {submitted}건)"
+    )
+
+
 def _user(email, name, role):
     return User.objects.create_user(
         email=email,
@@ -441,7 +448,7 @@ class CertificateApprovalFlowTests(TestCase):
             "supervisor:counselor_training_progress_detail",
             kwargs={"counselor_id": counselor.pk},
         )
-        partial = "사례 제출 현황: 총 3건 / 최종 제출 2건"
+        partial = _status_line("미승인", 3, 2)
         self.assertContains(_http(self.admin).get(admin_detail), partial)
         self.assertContains(_http(supervisor).get(supervisor_detail), partial)
 
@@ -463,7 +470,8 @@ class CertificateApprovalFlowTests(TestCase):
         _journals(pending, 4)
         _submit(pending)
         again = _http(supervisor).get(supervisor_detail)
-        self.assertContains(again, "사례 제출 현황: 총 3건 / 최종 제출 3건")
+        self.assertContains(again, _status_line("재승인 필요", 3, 3))
+        self.assertNotContains(again, "사례 제출 현황")
         self.assertContains(again, "재승인 필요")
         self.assertEqual(
             get_training_certificate_approval_status(counselor)["status"],
@@ -487,7 +495,7 @@ class CertificateApprovalFlowTests(TestCase):
         )
         self.assertContains(
             _http(self.admin).get(none_detail),
-            "사례 제출 현황: 총 2건 / 최종 제출 0건",
+            _status_line("미승인", 2, 0),
         )
         blocked = _http(self.admin).post(
             reverse(
@@ -512,8 +520,84 @@ class CertificateApprovalFlowTests(TestCase):
         complete_supervisor = _supervisor("전부수퍼@cert.example.com", "전부수퍼", [38])
         self.assertContains(
             _http(complete_supervisor).get(complete_detail),
-            "사례 제출 현황: 총 2건 / 최종 제출 2건",
+            _status_line("미승인", 2, 2),
         )
+
+    def test_status_line_combines_label_and_case_counts(self):
+        counselor = _counselor("한줄현황", cohort=39)
+        supervisor = _supervisor("한줄수퍼@cert.example.com", "한줄수퍼", [39])
+        cases = [
+            _case(counselor, _client(f"한줄{number}"), f"LINE-{number}")
+            for number in range(1, 5)
+        ]
+        cases[0].status = CaseStatus.CLOSED
+        cases[0].save(update_fields=["status"])
+        admin_detail = reverse(
+            "admin_panel:counselor_training_progress_detail",
+            kwargs={"counselor_id": counselor.pk},
+        )
+        supervisor_detail = reverse(
+            "supervisor:counselor_training_progress_detail",
+            kwargs={"counselor_id": counselor.pk},
+        )
+        admin_page = _http(self.admin).get(admin_detail)
+        supervisor_page = _http(supervisor).get(supervisor_detail)
+        self.assertContains(admin_page, _status_line("미승인", 4, 0))
+        self.assertContains(supervisor_page, _status_line("미승인", 4, 0))
+        self.assertNotContains(admin_page, "사례 제출 현황")
+        self.assertNotContains(supervisor_page, "사례 제출 현황")
+
+        blocked = _http(self.admin).post(
+            reverse(
+                "admin_panel:counselor_training_certificate_approve",
+                kwargs={"counselor_id": counselor.pk},
+            ),
+            follow=True,
+        )
+        self.assertContains(blocked, MESSAGE_APPROVAL_REQUIRES_SUBMITTED_CASE)
+
+        for case in cases[2:]:
+            _journals(case, 2)
+            _submit(case)
+        self.assertContains(
+            _http(self.admin).get(admin_detail),
+            _status_line("미승인", 4, 2),
+        )
+        self.assertContains(
+            _http(supervisor).get(supervisor_detail),
+            _status_line("미승인", 4, 2),
+        )
+        approved = _http(self.admin).post(
+            reverse(
+                "admin_panel:counselor_training_certificate_approve",
+                kwargs={"counselor_id": counselor.pk},
+            )
+        )
+        self.assertEqual(approved.status_code, 302)
+        self.assertContains(
+            _http(self.admin).get(admin_detail),
+            _status_line("승인완료", 4, 2),
+        )
+        self.assertContains(
+            _http(supervisor).get(supervisor_detail),
+            _status_line("승인완료", 4, 2),
+        )
+
+        _journals(cases[1], 3)
+        _submit(cases[1])
+        again = _http(supervisor).get(supervisor_detail)
+        self.assertContains(again, _status_line("재승인 필요", 4, 3))
+        self.assertNotContains(again, "사례 제출 현황")
+        self.assertEqual(
+            get_training_certificate_approval_status(counselor)["status"],
+            STATUS_REAPPROVAL_REQUIRED,
+        )
+        self.assertEqual(
+            TrainingCertificateApproval.objects.filter(counselor=counselor).count(),
+            1,
+        )
+        pdf = _http(counselor).get(reverse("counselor:training_certificate"))
+        self.assertEqual(pdf.status_code, 403)
 
     def test_new_submitted_case_requires_reapproval_before_pdf(self):
         approve_training_certificate(self.counselor, self.supervisor)
@@ -638,8 +722,9 @@ class CertificateApprovalFlowTests(TestCase):
         certificate = build_counselor_training_certificate_context(self.counselor)
         self.assertEqual(_bucket_minutes(certificate, "counseling"), 5 * TRAINING_CREDIT_MINUTES_PER_SESSION)
         self.assertEqual(_bucket_minutes(certificate, "intake"), 0)
-        self.assertContains(admin_page, "사례 제출 현황: 총 2건 / 최종 제출 1건")
-        self.assertContains(supervisor_page, "사례 제출 현황: 총 2건 / 최종 제출 1건")
+        self.assertContains(admin_page, _status_line("미승인", 2, 1))
+        self.assertContains(supervisor_page, _status_line("미승인", 2, 1))
+        self.assertNotContains(admin_page, "사례 제출 현황")
 
     def test_detail_cards_follow_approval_state(self):
         admin_page = _http(self.admin).get(self.admin_detail)
@@ -647,7 +732,8 @@ class CertificateApprovalFlowTests(TestCase):
         self.assertContains(admin_page, "상태:")
         self.assertContains(admin_page, "미승인")
         self.assertContains(admin_page, "수련확인증 승인")
-        self.assertContains(admin_page, "사례 제출 현황: 총 1건 / 최종 제출 1건")
+        self.assertContains(admin_page, _status_line("미승인", 1, 1))
+        self.assertNotContains(admin_page, "사례 제출 현황")
         self.assertNotIn(f'href="{self.admin_pdf}"', body)
 
         _http(self.supervisor).post(self.supervisor_approve)
@@ -672,6 +758,7 @@ class CertificateApprovalFlowTests(TestCase):
         blocked = _http(fresh).get(dashboard)
         self.assertContains(blocked, "수련확인증 출력")
         self.assertNotContains(blocked, "사례 제출 현황")
+        self.assertNotContains(blocked, "최종 종결 처리")
         self.assertContains(blocked, "수련확인증 상태")
         self.assertContains(blocked, "미승인")
         self.assertContains(blocked, MESSAGE_NO_SUBMITTED_CASE)
