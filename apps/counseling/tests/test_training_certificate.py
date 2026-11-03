@@ -44,6 +44,7 @@ from apps.counseling.training_certificate_pdf import (
     CERTIFICATE_ISSUER,
     CERTIFICATE_METHOD_NOTICE,
     _BOTTOM_MARGIN,
+    _FOOTER_LOGO_INK_BOTTOM,
     _TOP_MARGIN,
     FOOTER_LOGO_FILENAME,
     _FooterMark,
@@ -51,6 +52,8 @@ from apps.counseling.training_certificate_pdf import (
     _identity_value_rule_segments,
     build_training_certificate_context,
     build_training_certificate_pdf,
+    footer_logo_draw_y,
+    footer_logo_ink_bottom_inset,
     footer_logo_origin,
     footer_logo_size,
     item_column_span_commands,
@@ -1105,9 +1108,17 @@ class FooterLogoLayoutTests(TestCase):
         mark.draw()
         self.assertEqual(mark.canv.strings, [])
         self.assertEqual(len(mark.canv.images), 1)
-        path, x, _y, width, _height = mark.canv.images[0]
+        path, x, y, width, height = mark.canv.images[0]
         self.assertTrue(path.replace("\\", "/").endswith(FOOTER_LOGO_FILENAME))
         self.assertAlmostEqual(62.36 + x + width / 2, 595.27 / 2)
+        inset = footer_logo_ink_bottom_inset(path, height)
+        self.assertAlmostEqual(y, footer_logo_draw_y(inset))
+        self.assertLess(y, 0)
+        ink_bottom = _BOTTOM_MARGIN + y + inset
+        self.assertAlmostEqual(ink_bottom, _FOOTER_LOGO_INK_BOTTOM)
+        self.assertGreaterEqual(ink_bottom, 20 * mm)
+        self.assertLessEqual(ink_bottom, 25 * mm)
+        self.assertAlmostEqual(width / height, 1024 / 341)
 
     def test_notice_is_omitted_and_issuer_margin_matches_title(self):
         self.assertEqual(_BOTTOM_MARGIN, _TOP_MARGIN)

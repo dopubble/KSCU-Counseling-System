@@ -13,6 +13,7 @@ from urllib.parse import quote
 
 from django.conf import settings
 from django.http import HttpResponse
+from PIL import Image
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.pagesizes import A4
@@ -50,6 +51,8 @@ _PAGE_WIDTH = A4[0]
 _SIDE_MARGIN = 22 * mm
 _TOP_MARGIN = 36 * mm
 _BOTTOM_MARGIN = _TOP_MARGIN
+# 로고 잉크 하단과 용지 하단 사이. 프레임 여백(36mm)보다 아래이며 20~25mm 안이다.
+_FOOTER_LOGO_INK_BOTTOM = 22.5 * mm
 _CONTENT_WIDTH = _PAGE_WIDTH - (2 * _SIDE_MARGIN)
 _SPACE_AFTER_TITLE = 16
 _SPACE_AFTER_IDENTITY = 20
@@ -240,6 +243,38 @@ def footer_logo_size(content_width, pixel_width, pixel_height, ratio=_FOOTER_LOG
 def footer_logo_origin(page_width, image_width):
     """이미지 왼쪽 시작 좌표. 중심은 페이지 중심과 같다."""
     return (page_width - image_width) / 2
+
+
+def footer_logo_ink_bottom_inset(path, height):
+    """이미지 박스 하단부터 실제 잉크까지의 투명 여백."""
+    if not path or not height:
+        return 0
+    image = Image.open(path).convert("RGBA")
+    width_px, height_px = image.size
+    if width_px <= 0 or height_px <= 0:
+        return 0
+    pixels = image.load()
+    content_bottom = None
+    for y in range(height_px - 1, -1, -1):
+        for x in range(width_px):
+            red, green, blue, alpha = pixels[x, y]
+            if alpha > 16 and (red < 245 or green < 245 or blue < 245):
+                content_bottom = y
+                break
+        if content_bottom is not None:
+            break
+    if content_bottom is None:
+        return 0
+    transparent_below = height_px - 1 - content_bottom
+    return height * transparent_below / height_px
+
+
+def footer_logo_draw_y(ink_inset):
+    """프레임 하단에 놓인 로고를 용지 하단 기준으로 내린다.
+
+    본문 프레임과 발급일 위치는 그대로 두고, 그리기 좌표만 옮긴다.
+    """
+    return _FOOTER_LOGO_INK_BOTTOM - _BOTTOM_MARGIN - ink_inset
 
 
 def _footer_logo_spec():
@@ -547,14 +582,18 @@ class _FooterMark(Flowable):
         self.logo = logo
         self._ascent = font_size * 0.8
         self._descent = -font_size * 0.2
+        self._ink_inset = 0
 
     def wrap(self, availWidth, availHeight):
         self.width = availWidth
         if self.logo is not None:
-            self.height = self.logo[2]
+            path, _width, height = self.logo
+            self.height = height
+            self._ink_inset = footer_logo_ink_bottom_inset(path, height)
         else:
             self._ascent, self._descent = _text_metrics(self.font, self.font_size)
             self.height = self._ascent - self._descent
+            self._ink_inset = 0
         return availWidth, self.height
 
     def draw(self):
@@ -564,7 +603,7 @@ class _FooterMark(Flowable):
             self.canv.drawImage(
                 path,
                 x,
-                0,
+                footer_logo_draw_y(self._ink_inset),
                 width=width,
                 height=height,
                 mask="auto",
