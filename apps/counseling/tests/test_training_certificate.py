@@ -259,11 +259,111 @@ class SupervisorSignatureLayoutTests(TestCase):
             self.assertEqual(seen.count("수퍼바이저"), 1)
             self.assertNotIn("수퍼바이저 확인", seen)
             self.assertNotIn("(서명)", seen)
-            shown = "<br/>".join(f"{name} (인)" for name in ordered)
-            self.assertEqual(seen.count(shown), 1)
+            ordered_lines = [f"{name} (인)" for name in ordered]
+            self.assertEqual(
+                [text for text in seen if text in ordered_lines],
+                ordered_lines,
+            )
+            for line in ordered_lines:
+                self.assertEqual(seen.count(line), 1)
+            self.assertNotIn("<br/>", "".join(text or "" for text in seen))
             self.assertNotIn(label, seen)
             with pikepdf.open(BytesIO(pdf_bytes)) as pdf:
                 self.assertEqual(len(pdf.pages), 1)
+
+    def test_supervisor_row_pitch_matches_identity_row_height(self):
+        from reportlab.platypus import Table as RealTable
+
+        names = ["김규리 교수", "이유경 교수", "허미경 교수"]
+        counselor = _counselor(
+            "상담자테스트1",
+            cohort=70,
+            birth_date=date(1982, 4, 23),
+        )
+        progress = {
+            "intake_in_person_minutes": 60,
+            "intake_remote_minutes": 30,
+            "intake_unknown_minutes": 0,
+            "counseling_in_person_minutes": 300,
+            "counseling_remote_minutes": 150,
+            "counseling_unknown_minutes": 0,
+            "supervision_in_person_minutes": 120,
+            "supervision_remote_minutes": 60,
+            "supervision_unknown_minutes": 0,
+            "case_report_submitted_count": 1,
+        }
+        for count in (1, 2, 3):
+            lines = [f"{name} (인)" for name in names[:count]]
+            context = build_training_certificate_context(
+                counselor,
+                progress,
+                date(2026, 10, 28),
+                supervisor_label=", ".join(names[:count]),
+                counseling_cases_5plus_count=1,
+            )
+            self.assertEqual(context["supervisor_lines"], lines)
+            drawn = []
+            tables = []
+
+            class RecordingParagraph(RealParagraph):
+                def draw(self):
+                    drawn.append((self.getPlainText(), float(self.canv._currentMatrix[5])))
+                    super().draw()
+
+            def capture_table(*args, **kwargs):
+                table = RealTable(*args, **kwargs)
+                tables.append(table)
+                return table
+
+            with (
+                patch(
+                    "apps.counseling.training_certificate_pdf.Paragraph",
+                    RecordingParagraph,
+                ),
+                patch(
+                    "apps.counseling.training_certificate_pdf.Table",
+                    capture_table,
+                ),
+            ):
+                pdf_bytes = build_training_certificate_pdf(context)
+
+            with pikepdf.open(BytesIO(pdf_bytes)) as pdf:
+                self.assertEqual(len(pdf.pages), 1, count)
+
+            identity = next(table for table in tables if table._ncols == 2)
+            self.assertEqual(len(identity._rowHeights), count + 2)
+            row_height = identity._rowHeights[0]
+            for height in identity._rowHeights:
+                self.assertAlmostEqual(height, row_height, places=2)
+            line_rows = {
+                cmd[1][1]
+                for cmd in identity._linecmds
+                if cmd[0] == "LINEBELOW"
+            }
+            last_row = len(identity._rowHeights) - 1
+            supervisor_start = last_row - count + 1
+            self.assertIn(0, line_rows)
+            self.assertIn(last_row, line_rows)
+            for row_index in range(supervisor_start, last_row):
+                self.assertNotIn(row_index, line_rows)
+
+            def y_of(text):
+                matches = [y for drawn_text, y in drawn if drawn_text == text]
+                self.assertEqual(len(matches), 1, text)
+                return matches[0]
+
+            texts = [counselor.name, "1982년 4월 23일", *lines]
+            ys = [y_of(text) for text in texts]
+            pitches = [ys[index] - ys[index + 1] for index in range(len(ys) - 1)]
+            for pitch in pitches:
+                self.assertAlmostEqual(pitch, row_height, places=2)
+            self.assertAlmostEqual(y_of("수퍼바이저"), ys[2], places=2)
+            self.assertEqual(sum(1 for text, _y in drawn if text == "수퍼바이저"), 1)
+            results = next(table for table in tables if table._ncols == 4)
+            header_cell = results._cellvalues[0][0]
+            header = header_cell[0] if isinstance(header_cell, tuple) else header_cell
+            self.assertEqual(header.getPlainText(), "수련항목")
+            self.assertLess(y_of("수련항목") + header.height, ys[-1])
 
 
 class TrainingCertificateAccessTests(TestCase):

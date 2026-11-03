@@ -246,6 +246,10 @@ def _footer_logo_spec():
 
 
 def _pdf_identity_rows(context: dict) -> list[tuple[str, str]]:
+    """기본정보 행. 수퍼바이저 한 명은 성명·생년월일과 같은 한 행이다.
+
+    라벨은 첫 수퍼바이저 행에만 둔다. 줄바꿈 문자로 간격을 만들지 않는다.
+    """
     rows = [
         (label, value)
         for label, value in context.get("identity") or []
@@ -260,8 +264,32 @@ def _pdf_identity_rows(context: dict) -> list[tuple[str, str]]:
                     label = value.replace(" (인)", "").replace("\n", ", ")
                     break
         lines = supervisor_display_lines(label or "")
-    rows.append(("수퍼바이저", "<br/>".join(lines)))
+    for index, line in enumerate(lines):
+        rows.append(("수퍼바이저" if index == 0 else "", line))
     return rows
+
+
+def _identity_table_style(row_count: int, supervisor_start: int | None) -> TableStyle:
+    """성명·생년월일 행과 같은 padding. 수퍼바이저 사이에는 가로선을 긋지 않는다."""
+    commands = [
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (0, -1), 1 * mm),
+        ("RIGHTPADDING", (0, 0), (0, -1), 4 * mm),
+        ("LEFTPADDING", (1, 0), (1, -1), 4 * mm),
+        ("RIGHTPADDING", (1, 0), (1, -1), 1 * mm),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]
+    for row_index in range(row_count):
+        if (
+            supervisor_start is not None
+            and supervisor_start <= row_index < row_count - 1
+        ):
+            continue
+        commands.append(
+            ("LINEBELOW", (0, row_index), (-1, row_index), 0.3, colors.HexColor("#e2e8f0"))
+        )
+    return TableStyle(commands)
 
 
 def build_training_certificate_pdf(context: dict) -> bytes:
@@ -341,19 +369,11 @@ def build_training_certificate_pdf(context: dict) -> bytes:
         colWidths=[label_width, _CONTENT_WIDTH - label_width],
     )
     identity.hAlign = "CENTER"
-    identity_style = [
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("LEFTPADDING", (0, 0), (0, -1), 1 * mm),
-        ("RIGHTPADDING", (0, 0), (0, -1), 4 * mm),
-        ("LEFTPADDING", (1, 0), (1, -1), 4 * mm),
-        ("RIGHTPADDING", (1, 0), (1, -1), 1 * mm),
-        ("TOPPADDING", (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-        ("LINEBELOW", (0, 0), (-1, -1), 0.3, colors.HexColor("#e2e8f0")),
-    ]
-    if any("<br/>" in value for _label, value in pdf_identity):
-        identity_style.append(("VALIGN", (0, -1), (-1, -1), "TOP"))
-    identity.setStyle(TableStyle(identity_style))
+    supervisor_start = next(
+        (index for index, (label, _value) in enumerate(pdf_identity) if label == "수퍼바이저"),
+        None,
+    )
+    identity.setStyle(_identity_table_style(len(pdf_identity), supervisor_start))
     story.extend([identity, Spacer(1, _SPACE_AFTER_IDENTITY)])
 
     header = [Paragraph(column, cell_style) for column in context["columns"]]
