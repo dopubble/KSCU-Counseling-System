@@ -67,6 +67,23 @@ _IDENTITY_RULE_COLOR = colors.HexColor("#e2e8f0")
 _IDENTITY_VALUE_LEFT_PADDING = 4 * mm
 
 
+_OWN_CASE_REMARK_PREFIX = "내 사례로 슈퍼비전 받은시간 : "
+
+
+def supervision_remark_paragraph_text(text: str) -> str:
+    """시간 값이 줄바꿈되면 시·분을 한 덩어리로 다음 줄에 둔다.
+
+    0시간·3시간처럼 한 줄에 들어가는 문구는 그대로 둔다.
+    화면에 보이는 간격은 일반 공백이다.
+    """
+    if not text.startswith(_OWN_CASE_REMARK_PREFIX):
+        return text
+    time_part = text[len(_OWN_CASE_REMARK_PREFIX):]
+    if " " not in time_part:
+        return text
+    return _OWN_CASE_REMARK_PREFIX + time_part.replace(" ", "\u00a0")
+
+
 def format_certificate_date(day) -> str:
     return f"{day.year}년 {day.month}월 {day.day}일"
 
@@ -473,13 +490,6 @@ def build_training_certificate_pdf(context: dict) -> bytes:
         leading=12,
         alignment=TA_CENTER,
     )
-    # 수퍼비전 비고만 한 줄에 들어간다. 열 폭과 다른 칸의 글자 크기는 그대로다.
-    supervision_remark_style = ParagraphStyle(
-        "CertificateSupervisionRemark",
-        parent=cell_style,
-        fontSize=8,
-        leading=11,
-    )
     label_style = ParagraphStyle(
         "CertificateLabel",
         fontName=font,
@@ -534,16 +544,10 @@ def build_training_certificate_pdf(context: dict) -> bytes:
     header = [Paragraph(column, cell_style) for column in context["columns"]]
     body_rows = context["rows"]
 
-    def _body_cell(cell):
-        text = str(cell)
-        style = (
-            supervision_remark_style
-            if text.startswith("내 사례로 슈퍼비전 받은시간")
-            else cell_style
-        )
-        return Paragraph(text, style)
-
-    body = [[_body_cell(cell) for cell in row] for row in body_rows]
+    body = [
+        [Paragraph(supervision_remark_paragraph_text(str(cell)), cell_style) for cell in row]
+        for row in body_rows
+    ]
     # 비고는 "5회기 이상 지속된 사례 총 00건 포함" 한 줄 + 여백만 두고 배분.
     item_width = _CONTENT_WIDTH * 0.28
     time_width = _CONTENT_WIDTH * 0.17

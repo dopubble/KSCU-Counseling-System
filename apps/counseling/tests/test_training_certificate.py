@@ -965,6 +965,52 @@ class OwnCaseSupervisionRemarkTests(TestCase):
         self.assertEqual(context["rows"][2][3], "내 사례로 슈퍼비전 받은시간 : 0시간")
         self.assertEqual(progress["supervision_attended_minutes"], 120)
 
+    def test_hour_and_minute_remark_keeps_the_time_together(self):
+        from reportlab.lib.enums import TA_CENTER
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.platypus import Paragraph
+
+        from apps.counseling.training_certificate_pdf import (
+            _CONTENT_WIDTH,
+            supervision_remark_paragraph_text,
+        )
+        from apps.sessions_app.pdf import _register_korean_font
+
+        font = _register_korean_font()
+        usable = (
+            _CONTENT_WIDTH
+            - _CONTENT_WIDTH * 0.28
+            - _CONTENT_WIDTH * 0.17
+            - _CONTENT_WIDTH * 0.24
+            - 8
+        )
+        style = ParagraphStyle(
+            "RemarkWrap",
+            fontName=font,
+            fontSize=9,
+            leading=12,
+            alignment=TA_CENTER,
+        )
+
+        def wrapped(text):
+            paragraph = Paragraph(supervision_remark_paragraph_text(text), style)
+            paragraph.wrap(usable, 400)
+            lines = []
+            for line in paragraph.blPara.lines:
+                pieces = [getattr(word, "text", str(word)) for word in line[1]]
+                lines.append("".join(pieces).replace("\u00a0", " "))
+            return lines
+
+        self.assertEqual(len(wrapped("내 사례로 슈퍼비전 받은시간 : 0시간")), 1)
+        mixed = wrapped("내 사례로 슈퍼비전 받은시간 : 1시간 30분")
+        self.assertEqual(mixed[-1], "1시간 30분")
+        self.assertTrue(mixed[0].endswith(":"))
+        self.assertEqual(len(wrapped("내 사례로 슈퍼비전 받은시간 : 3시간")), 1)
+        self.assertEqual(
+            own_case_supervision_time_label(1),
+            "내 사례로 슈퍼비전 받은시간 : 1시간 30분",
+        )
+
     def test_one_post_is_ninety_minutes_and_comments_do_not_count(self):
         counselor = _counselor("한건", cohort=41)
         other = _counselor("타인글", cohort=41)
