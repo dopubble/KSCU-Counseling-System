@@ -13,7 +13,7 @@ from urllib.parse import quote
 
 from django.conf import settings
 from django.http import HttpResponse
-from PIL import Image
+from PIL import Image, ImageFont
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.pagesizes import A4
@@ -33,7 +33,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from apps.sessions_app.pdf import _register_korean_font
+from apps.sessions_app.pdf import _register_korean_font, get_noto_font_path
 
 CERTIFICATE_TITLE = "수련확인증"
 CERTIFICATE_CONFIRMATION = "위와 같이 전문상담사 수련과정의 수련 내역을 확인합니다."
@@ -53,6 +53,9 @@ _TOP_MARGIN = 36 * mm
 _BOTTOM_MARGIN = _TOP_MARGIN
 # 로고 잉크 하단과 용지 하단 사이. 프레임 여백(36mm)보다 아래이며 20~25mm 안이다.
 _FOOTER_LOGO_INK_BOTTOM = 22.5 * mm
+# 수련확인증 글자 잉크 상단과 용지 상단 사이. 하단 로고 잉크 여백과 같게 둔다.
+_TITLE_INK_TOP = 22.6 * mm
+_TITLE_FONT_SIZE = 22
 _CONTENT_WIDTH = _PAGE_WIDTH - (2 * _SIDE_MARGIN)
 _SPACE_AFTER_TITLE = 16
 _SPACE_AFTER_IDENTITY = 20
@@ -277,6 +280,47 @@ def footer_logo_draw_y(ink_inset):
     return _FOOTER_LOGO_INK_BOTTOM - _BOTTOM_MARGIN - ink_inset
 
 
+def title_ink_inset(font_path, font_size, text):
+    """문단 박스 상단에서 실제 글자 잉크 상단까지의 거리.
+
+    ReportLab은 기준선을 글자 크기만큼 박스 상단 아래에 둔다.
+    한글 잉크는 그 글자 크기보다 낮으므로 그 차이를 잰다.
+    """
+    if not font_path or not font_size or not text:
+        return 0
+    sample = 1000
+    image_font = ImageFont.truetype(font_path, sample)
+    _left, top, _right, _bottom = image_font.getbbox(text, anchor="ls")
+    ink_above_baseline = max(-top, 0) * font_size / sample
+    return font_size - ink_above_baseline
+
+
+def title_draw_rise(font_path, font_size, text):
+    """제목만 위로 올려 글자 잉크 상단을 용지 상단에서 _TITLE_INK_TOP에 둔다.
+
+    흐름 높이는 그대로라 성명 이하 본문은 움직이지 않는다.
+    """
+    return _TOP_MARGIN + title_ink_inset(font_path, font_size, text) - _TITLE_INK_TOP
+
+
+class _RaisedFlowable(Flowable):
+    """내용은 rise만큼 위로 그리고, 자리 높이는 유지한다."""
+
+    def __init__(self, inner, rise):
+        super().__init__()
+        self.inner = inner
+        self.rise = rise
+
+    def wrap(self, availWidth, availHeight):
+        width, height = self.inner.wrap(availWidth, availHeight)
+        self.width = width
+        self.height = height
+        return width, height
+
+    def draw(self):
+        self.inner.drawOn(self.canv, 0, self.rise)
+
+
 def _footer_logo_spec():
     path = os.path.join(settings.BASE_DIR, "static", "images", FOOTER_LOGO_FILENAME)
     if not os.path.isfile(path):
@@ -409,7 +453,7 @@ def build_training_certificate_pdf(context: dict) -> bytes:
     title_style = ParagraphStyle(
         "CertificateTitle",
         fontName=font,
-        fontSize=22,
+        fontSize=_TITLE_FONT_SIZE,
         leading=28,
         alignment=TA_CENTER,
         textColor=colors.HexColor("#1a365d"),
@@ -452,7 +496,12 @@ def build_training_certificate_pdf(context: dict) -> bytes:
         alignment=TA_LEFT,
     )
 
-    story = [Paragraph(context["title"], title_style)]
+    story = [
+        _RaisedFlowable(
+            Paragraph(context["title"], title_style),
+            title_draw_rise(get_noto_font_path(), _TITLE_FONT_SIZE, context["title"]),
+        )
+    ]
     story.append(Spacer(1, _SPACE_AFTER_TITLE))
 
     label_width = 30 * mm

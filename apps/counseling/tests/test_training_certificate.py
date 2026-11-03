@@ -45,6 +45,8 @@ from apps.counseling.training_certificate_pdf import (
     CERTIFICATE_METHOD_NOTICE,
     _BOTTOM_MARGIN,
     _FOOTER_LOGO_INK_BOTTOM,
+    _TITLE_FONT_SIZE,
+    _TITLE_INK_TOP,
     _TOP_MARGIN,
     FOOTER_LOGO_FILENAME,
     _FooterMark,
@@ -56,6 +58,8 @@ from apps.counseling.training_certificate_pdf import (
     footer_logo_ink_bottom_inset,
     footer_logo_origin,
     footer_logo_size,
+    title_draw_rise,
+    title_ink_inset,
     item_column_span_commands,
     training_certificate_response,
 )
@@ -1119,6 +1123,17 @@ class FooterLogoLayoutTests(TestCase):
         self.assertGreaterEqual(ink_bottom, 20 * mm)
         self.assertLessEqual(ink_bottom, 25 * mm)
         self.assertAlmostEqual(width / height, 1024 / 341)
+
+    def test_title_ink_top_matches_the_footer_gap(self):
+        from apps.sessions_app.pdf import get_noto_font_path
+
+        inset = title_ink_inset(get_noto_font_path(), _TITLE_FONT_SIZE, "수련확인증")
+        rise = title_draw_rise(get_noto_font_path(), _TITLE_FONT_SIZE, "수련확인증")
+        ink_top = _TOP_MARGIN - rise + inset
+        self.assertAlmostEqual(ink_top, _TITLE_INK_TOP)
+        self.assertAlmostEqual(_TITLE_INK_TOP, 22.6 * mm)
+        self.assertGreater(rise, 0)
+        self.assertAlmostEqual(_TITLE_FONT_SIZE, 22)
 
     def test_notice_is_omitted_and_issuer_margin_matches_title(self):
         self.assertEqual(_BOTTOM_MARGIN, _TOP_MARGIN)
