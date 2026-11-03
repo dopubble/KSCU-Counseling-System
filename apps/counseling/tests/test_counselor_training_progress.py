@@ -19,6 +19,8 @@ from apps.counseling.models import (
     SupervisionAttendanceStatus,
     SupervisionSession,
     SupervisionSessionStatus,
+    TrainingEnrollment,
+    TrainingEnrollmentStatus,
 )
 from apps.counseling.training_progress import (
     TRAINING_CREDIT_MINUTES_PER_SESSION,
@@ -86,6 +88,7 @@ def _create_case(
     total_sessions=10,
     remaining_sessions=10,
     counseling_method=CounselingMethod.IN_PERSON,
+    training_enrollment=None,
 ):
     application = CounselingApplication.objects.create(
         client=client,
@@ -104,6 +107,7 @@ def _create_case(
         counseling_method=counseling_method,
         total_sessions=total_sessions,
         remaining_sessions=remaining_sessions,
+        training_enrollment=training_enrollment,
         closed_at=timezone.now() if status == CaseStatus.CLOSED else None,
     )
 
@@ -914,6 +918,11 @@ class CounselorTrainingProgressTests(TestCase):
 class CounselorTrainingProgressDashboardTests(TestCase):
     def setUp(self):
         self.counselor = _create_counselor("화면상담사")
+        self.enrollment = TrainingEnrollment.objects.create(
+            counselor=self.counselor,
+            cohort=1,
+            status=TrainingEnrollmentStatus.ACTIVE,
+        )
         self.http = HttpClient()
         self.http.force_login(self.counselor)
         self.url = reverse("counselor:dashboard")
@@ -964,6 +973,7 @@ class CounselorTrainingProgressDashboardTests(TestCase):
             "CASE-TRAIN-UI",
             total_sessions=20,
             remaining_sessions=17,
+            training_enrollment=self.enrollment,
         )
         for number in range(1, 4):
             _create_journal(case, number)
@@ -1014,8 +1024,18 @@ class CounselorTrainingProgressDashboardTests(TestCase):
         self.assertContains(response, "88%")
 
     def test_dashboard_shows_linked_case_report_counts(self):
-        first = _create_case(self.counselor, _create_client("화면사례1"), "CASE-UI-1")
-        _create_case(self.counselor, _create_client("화면사례2"), "CASE-UI-2")
+        first = _create_case(
+            self.counselor,
+            _create_client("화면사례1"),
+            "CASE-UI-1",
+            training_enrollment=self.enrollment,
+        )
+        _create_case(
+            self.counselor,
+            _create_client("화면사례2"),
+            "CASE-UI-2",
+            training_enrollment=self.enrollment,
+        )
         _presentation_post(self.counselor, "화면보고서", case=first)
         _presentation_post(self.counselor, "화면보고서2", case=first)
         _presentation_post(self.counselor, "화면보고서3", case=first)
@@ -1039,6 +1059,7 @@ class CounselorTrainingProgressDashboardTests(TestCase):
             _create_client("화면종결준비"),
             "CASE-UI-READY",
             remaining_sessions=0,
+            training_enrollment=self.enrollment,
         )
         _create_case(
             self.counselor,
@@ -1046,6 +1067,7 @@ class CounselorTrainingProgressDashboardTests(TestCase):
             "CASE-UI-OPEN",
             total_sessions=10,
             remaining_sessions=7,
+            training_enrollment=self.enrollment,
         )
         TerminationCounselingRecord.objects.create(
             case=ready, counselor=self.counselor, is_draft=False
@@ -1060,9 +1082,17 @@ class CounselorTrainingProgressDashboardTests(TestCase):
 
     def test_dashboard_counts_submitted_intake_forms(self):
         submitted = _create_case(
-            self.counselor, _create_client("면접제출"), "CASE-2026-45"
+            self.counselor,
+            _create_client("면접제출"),
+            "CASE-2026-45",
+            training_enrollment=self.enrollment,
         )
-        _create_case(self.counselor, _create_client("면접없음"), "CASE-UI-NO-INTAKE")
+        _create_case(
+            self.counselor,
+            _create_client("면접없음"),
+            "CASE-UI-NO-INTAKE",
+            training_enrollment=self.enrollment,
+        )
         _submit_intake(submitted)
         InitialCounselingRecord.objects.create(
             case=submitted, counselor=self.counselor, is_draft=True

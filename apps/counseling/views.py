@@ -157,6 +157,7 @@ from .services import (
     sync_case_counseling_method_from_application,
 )
 from .training_certificate import get_training_certificate_approval_status
+from .training_enrollment import resolve_dashboard_training_enrollment
 from .training_progress import get_counselor_training_progress
 
 SESSION_APPLY_PREFILL = "counseling_apply_prefill"
@@ -1814,6 +1815,18 @@ def counselor_dashboard(request):
     )
     submit_feedback = _pop_records_submit_feedback(request)
     certificate_approval = get_training_certificate_approval_status(request.user)
+    selected_enrollment, enrollment_choices, enrollment_forbidden = (
+        resolve_dashboard_training_enrollment(request.user, request.GET.get("enrollment"))
+    )
+    if enrollment_forbidden:
+        raise Http404("수련 기수를 찾을 수 없습니다.")
+    if selected_enrollment is None:
+        training_progress = get_counselor_training_progress(None)
+    else:
+        training_progress = get_counselor_training_progress(
+            request.user,
+            training_enrollment=selected_enrollment,
+        )
     return render(
         request,
         "counselor/dashboard.html",
@@ -1833,7 +1846,9 @@ def counselor_dashboard(request):
             "records_submit_case_pk": (
                 submit_feedback["case"] if submit_feedback else None
             ),
-            "training_progress": get_counselor_training_progress(request.user),
+            "training_progress": training_progress,
+            "selected_training_enrollment": selected_enrollment,
+            "training_enrollment_choices": enrollment_choices,
             "certificate_approval": certificate_approval,
             "certificate_can_issue": certificate_approval["can_issue"],
             "certificate_issue_message": certificate_approval["issue_message"],

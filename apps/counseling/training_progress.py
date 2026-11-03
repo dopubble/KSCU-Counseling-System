@@ -168,12 +168,15 @@ def _case_report_submitted_exists(counselor_id):
     )
 
 
-def _legacy_null_case_report_count(counselor_id) -> int:
+def _legacy_null_case_report_count(counselor_id, *, cohort=None) -> int:
     """case=NULL 레거시 사례발표 게시글 수. 글 1개 = 제출 1건."""
-    return CasePresentationPost.objects.filter(
+    posts = CasePresentationPost.objects.filter(
         author_id=counselor_id,
         case__isnull=True,
-    ).count()
+    )
+    if cohort is not None:
+        posts = posts.filter(cohort=cohort)
+    return posts.count()
 
 
 def _cap_case_report_submitted(raw_submitted: int, required: int) -> int:
@@ -454,9 +457,12 @@ def _effective_method_expr(*, snapshot_field: str, fallback_field: str):
     )
 
 
-def _intake_method_minutes_for_counselor(counselor_id) -> dict[str, int]:
+def _intake_method_minutes_for_counselor(counselor_id, *, training_enrollment_id=None) -> dict[str, int]:
+    cases = Case.objects.filter(counselor_id=counselor_id)
+    if training_enrollment_id is not None:
+        cases = cases.filter(training_enrollment_id=training_enrollment_id)
     rows = (
-        Case.objects.filter(counselor_id=counselor_id)
+        cases
         .annotate(intake_submitted=_intake_submitted_exists())
         .filter(intake_submitted=True)
         .annotate(
@@ -476,13 +482,18 @@ def _intake_method_minutes_for_counselor(counselor_id) -> dict[str, int]:
     )
 
 
-def _journal_method_minutes_for_counselor(counselor_id) -> dict[str, int]:
+def _journal_method_minutes_for_counselor(
+    counselor_id, *, training_enrollment_id=None
+) -> dict[str, int]:
+    journals = CounselingJournal.objects.filter(
+        counselor_id=counselor_id,
+        case__counselor_id=counselor_id,
+        is_draft=False,
+    )
+    if training_enrollment_id is not None:
+        journals = journals.filter(case__training_enrollment_id=training_enrollment_id)
     rows = (
-        CounselingJournal.objects.filter(
-            counselor_id=counselor_id,
-            case__counselor_id=counselor_id,
-            is_draft=False,
-        )
+        journals
         .annotate(
             effective_method=_effective_method_expr(
                 snapshot_field="counseling_method",
@@ -509,15 +520,18 @@ def _supervision_effective_method_expr():
     )
 
 
-def _supervision_method_minutes_for_profile(profile_id) -> dict[str, int]:
+def _supervision_method_minutes_for_profile(profile_id, *, cohort=None) -> dict[str, int]:
     if not profile_id:
         return _zero_method_minutes()
+    attendances = SupervisionAttendance.objects.filter(
+        counselor_id=profile_id,
+        status=SupervisionAttendanceStatus.PRESENT,
+        session__status=SupervisionSessionStatus.COMPLETED,
+    )
+    if cohort is not None:
+        attendances = attendances.filter(session__cohort=cohort)
     rows = (
-        SupervisionAttendance.objects.filter(
-            counselor_id=profile_id,
-            status=SupervisionAttendanceStatus.PRESENT,
-            session__status=SupervisionSessionStatus.COMPLETED,
-        )
+        attendances
         .annotate(effective_method=_supervision_effective_method_expr())
         .values("effective_method")
         .annotate(minutes=Coalesce(Sum("session__duration_minutes"), Value(0)))
@@ -537,13 +551,14 @@ def _counselor_profile(counselor):
     )
 
 
-def _supervision_counts(counselor, profile=None) -> tuple[int, int, int, int]:
+def _supervision_counts(counselor, profile=None, *, cohort=None) -> tuple[int, int, int, int]:
     """취소 제외 총 회차, 완료 회차, 완료 중 출석 회차, 출석 인정분."""
     if profile is None:
         profile = _counselor_profile(counselor)
-    if profile is None or profile.cohort is None:
+    selected_cohort = profile.cohort if cohort is None and profile is not None else cohort
+    if profile is None or selected_cohort is None:
         return 0, 0, 0, 0
-    row = SupervisionSession.objects.filter(cohort=profile.cohort).aggregate(
+    row = SupervisionSession.objects.filter(cohort=selected_cohort).aggregate(
         total=Count(
             "pk",
             distinct=True,
@@ -583,23 +598,36 @@ def _supervision_counts(counselor, profile=None) -> tuple[int, int, int, int]:
     )
 
 
-def _presentation_participation_count(counselor) -> int:
-    row = CasePresentationComment.objects.filter(author_id=counselor.pk).aggregate(
-        total=Count("post_id", distinct=True)
-    )
+def _presentation_participation_count(counselor, *, cohort=None) -> int:
+    comments = CasePresentationComment.objects.filter(author_id=counselor.pk)
+    if cohort is not None:
+        comments = comments.filter(post__cohort=cohort)
+    row = comments.aggregate(total=Count("post_id", distinct=True))
     return row["total"] or 0
 
 
-def get_counselor_training_progress(counselor) -> dict:
-    """로그인한 상담사의 수련영역별 부여량·이수량·제출현황."""
+def get_counselor_training_progress(counselor, training_enrollment=None) -> dict:
+    """로그인한 상담사의 수련영역별 부여량·이수량·제출현황.
+
+    training_enrollment가 없으면 기존처럼 상담사 전체를 집계한다.
+    값이 있으면 그 수련 단위의 Case와 cohort만 집계한다.
+    """
     if counselor is None or not getattr(counselor, "pk", None):
+        return _empty_training_progress()
+    if (
+        training_enrollment is not None
+        and training_enrollment.counselor_id != counselor.pk
+    ):
         return _empty_training_progress()
 
     profile = _counselor_profile(counselor)
-    row = (
-        Case.objects.filter(counselor_id=counselor.pk)
-        .annotate(**_case_metric_annotations(counselor.pk))
-        .aggregate(**_case_metric_value_annotations())
+    enrollment_id = training_enrollment.pk if training_enrollment is not None else None
+    enrollment_cohort = training_enrollment.cohort if training_enrollment is not None else None
+    cases = Case.objects.filter(counselor_id=counselor.pk)
+    if enrollment_id is not None:
+        cases = cases.filter(training_enrollment_id=enrollment_id)
+    row = cases.annotate(**_case_metric_annotations(counselor.pk)).aggregate(
+        **_case_metric_value_annotations()
     )
     totals = {key: int(row.get(key) or 0) for key in _empty_case_metric_totals()}
     (
@@ -607,11 +635,11 @@ def get_counselor_training_progress(counselor) -> dict:
         supervision_completed,
         supervision_attended,
         supervision_attended_minutes,
-    ) = _supervision_counts(counselor, profile=profile)
+    ) = _supervision_counts(counselor, profile=profile, cohort=enrollment_cohort)
     required = totals["intake_required_count"]
     case_report_submitted = _case_report_submitted_total(
         linked_distinct=totals["case_report_submitted_count"],
-        legacy_null=_legacy_null_case_report_count(counselor.pk),
+        legacy_null=_legacy_null_case_report_count(counselor.pk, cohort=enrollment_cohort),
         required=required,
     )
     return _build_training_progress(
@@ -626,11 +654,18 @@ def get_counselor_training_progress(counselor) -> dict:
         supervision_attended=supervision_attended,
         supervision_attended_minutes=supervision_attended_minutes,
         case_report_submitted=case_report_submitted,
-        public_presentation_participation=_presentation_participation_count(counselor),
-        intake_method_minutes=_intake_method_minutes_for_counselor(counselor.pk),
-        counseling_method_minutes=_journal_method_minutes_for_counselor(counselor.pk),
+        public_presentation_participation=_presentation_participation_count(
+            counselor, cohort=enrollment_cohort
+        ),
+        intake_method_minutes=_intake_method_minutes_for_counselor(
+            counselor.pk, training_enrollment_id=enrollment_id
+        ),
+        counseling_method_minutes=_journal_method_minutes_for_counselor(
+            counselor.pk, training_enrollment_id=enrollment_id
+        ),
         supervision_method_minutes=_supervision_method_minutes_for_profile(
-            profile.pk if profile else None
+            profile.pk if profile else None,
+            cohort=enrollment_cohort,
         ),
     )
 
