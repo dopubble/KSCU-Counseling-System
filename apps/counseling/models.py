@@ -613,3 +613,38 @@ class TrainingCertificateApproval(models.Model):
 
     def __str__(self):
         return f"{self.counselor_id} {self.approved_at:%Y-%m-%d}"
+
+
+class TrainingCertificateApprovalRevocation(models.Model):
+    """수련확인증 승인 취소 이력. 승인 행은 지우거나 고치지 않는다."""
+
+    approval = models.OneToOneField(
+        TrainingCertificateApproval,
+        on_delete=models.PROTECT,
+        related_name="revocation",
+        verbose_name="취소한 승인",
+    )
+    revoked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="revoked_training_certificate_approvals",
+        verbose_name="취소자",
+    )
+    revoked_role = models.CharField(
+        "취소 당시 역할",
+        max_length=20,
+        blank=True,
+        default="",
+    )
+    revoked_at = models.DateTimeField("취소일시", auto_now_add=True)
+    reason = models.TextField("취소 사유", blank=True, default="")
+
+    class Meta:
+        verbose_name = "수련확인증 승인 취소"
+        verbose_name_plural = "수련확인증 승인 취소"
+        ordering = ["-revoked_at", "-id"]
+
+    def __str__(self):
+        return f"{self.approval_id} {self.revoked_at:%Y-%m-%d}"

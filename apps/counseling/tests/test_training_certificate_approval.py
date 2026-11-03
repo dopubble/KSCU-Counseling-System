@@ -22,6 +22,7 @@ from apps.counseling.models import (
     SupervisionSession,
     SupervisionSessionStatus,
     TrainingCertificateApproval,
+    TrainingCertificateApprovalRevocation,
 )
 from apps.counseling.services import submit_case_records
 from apps.counseling.training_certificate import (
@@ -39,6 +40,7 @@ from apps.counseling.training_certificate import (
     certificate_date_for_counselor,
     get_training_certificate_approval_status,
     legacy_display_approval_hash,
+    revoke_training_certificate,
     legacy_display_approval_payload,
     legacy_metrics_approval_hash,
 )
@@ -1203,6 +1205,357 @@ class CertificateApprovalFlowTests(TestCase):
         self.assertNotIn("수련확인증 상태", closed)
         self.assertIn("최종 제출 완료", closed)
         self.assertIn(MESSAGE_UNAPPROVED, body)
+
+
+class CertificateApprovalRevocationTests(TestCase):
+    def setUp(self):
+        self.counselor = _counselor("취소대상", cohort=61)
+        self.admin = _user("취소관리@cert.example.com", "홍길동", UserRole.ADMIN)
+        self.supervisor = _supervisor("취소수퍼@cert.example.com", "김수퍼", [61])
+        self.outsider = _supervisor("취소타기수@cert.example.com", "박수퍼", [62])
+        self.case = _case(self.counselor, _client("취소내담"), "RV-1")
+        _journals(self.case, 5)
+        _submit(self.case)
+        self.admin_detail = reverse(
+            "admin_panel:counselor_training_progress_detail",
+            kwargs={"counselor_id": self.counselor.pk},
+        )
+        self.supervisor_detail = reverse(
+            "supervisor:counselor_training_progress_detail",
+            kwargs={"counselor_id": self.counselor.pk},
+        )
+        self.admin_revoke = reverse(
+            "admin_panel:counselor_training_certificate_revoke",
+            kwargs={"counselor_id": self.counselor.pk},
+        )
+        self.supervisor_revoke = reverse(
+            "supervisor:counselor_training_certificate_revoke",
+            kwargs={"counselor_id": self.counselor.pk},
+        )
+        self.admin_approve = reverse(
+            "admin_panel:counselor_training_certificate_approve",
+            kwargs={"counselor_id": self.counselor.pk},
+        )
+        self.supervisor_approve = reverse(
+            "supervisor:counselor_training_certificate_approve",
+            kwargs={"counselor_id": self.counselor.pk},
+        )
+        self.counselor_pdf = reverse("counselor:training_certificate")
+        self.admin_pdf = reverse(
+            "admin_panel:counselor_training_certificate",
+            args=[self.counselor.pk],
+        )
+        self.supervisor_pdf = reverse(
+            "supervisor:counselor_training_certificate",
+            kwargs={"counselor_id": self.counselor.pk},
+        )
+
+    def _snapshot(self, approval):
+        approval.refresh_from_db()
+        return {
+            "counselor_id": approval.counselor_id,
+            "approved_by_id": approval.approved_by_id,
+            "approved_role": approval.approved_role,
+            "approved_at": approval.approved_at,
+            "content_hash": approval.content_hash,
+        }
+
+    def test_unapproved_card_has_no_revoke_button(self):
+        page = _http(self.admin).get(self.admin_detail)
+        self.assertContains(page, "미승인")
+        self.assertNotContains(page, "승인 취소")
+        self.assertNotContains(page, "revokeTrainingCertificateModal")
+        denied = _http(self.admin).post(self.admin_revoke)
+        self.assertEqual(denied.status_code, 400)
+        self.assertEqual(TrainingCertificateApprovalRevocation.objects.count(), 0)
+
+    def test_approved_card_offers_revoke_confirmation(self):
+        approve_training_certificate(self.counselor, self.supervisor)
+        for user, detail in (
+            (self.admin, self.admin_detail),
+            (self.supervisor, self.supervisor_detail),
+        ):
+            page = _http(user).get(detail)
+            self.assertContains(page, "승인완료")
+            self.assertContains(page, ">승인 취소</button>")
+            self.assertContains(
+                page,
+                "수련확인증 승인을 취소하시겠습니까? 승인 취소 즉시 수련확인증 출력이 제한됩니다.",
+            )
+            self.assertContains(page, ">취소</button>")
+
+    def test_admin_revoke_marks_unapproved_and_blocks_pdf(self):
+        approval = approve_training_certificate(self.counselor, self.supervisor)
+        before = self._snapshot(approval)
+        payload = build_training_certificate_approval_payload(
+            self.counselor,
+            build_counselor_training_certificate_context(self.counselor),
+        )
+        response = _http(self.admin).post(self.admin_revoke, follow=True)
+        self.assertContains(response, _status_line("미승인", 1, 1))
+        self.assertContains(response, "최근 승인 취소: 홍길동 / ")
+        self.assertContains(response, "수련확인증 승인")
+        self.assertNotContains(response, "revokeTrainingCertificateModal")
+        self.assertNotContains(response, "재승인 필요")
+        approval.refresh_from_db()
+        self.assertEqual(self._snapshot(approval), before)
+        revocation = TrainingCertificateApprovalRevocation.objects.get()
+        self.assertEqual(revocation.approval_id, approval.pk)
+        self.assertEqual(revocation.revoked_by, self.admin)
+        self.assertEqual(revocation.revoked_role, UserRole.ADMIN)
+        self.assertEqual(revocation.reason, "")
+        status = get_training_certificate_approval_status(self.counselor)
+        self.assertEqual(status["status"], STATUS_UNAPPROVED)
+        self.assertFalse(status["can_issue"])
+        self.assertRegex(status["revoked_at_label"], r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$")
+        self.assertEqual(status["revoked_by_name"], "홍길동")
+        after = build_training_certificate_approval_payload(
+            self.counselor,
+            status["context"],
+        )
+        self.assertEqual(after, payload)
+        self.assertEqual(after["schema"], "certificate-metrics-v2")
+        self.assertNotIn("revocation", after)
+        for user, url in (
+            (self.counselor, self.counselor_pdf),
+            (self.admin, self.admin_pdf),
+            (self.supervisor, self.supervisor_pdf),
+        ):
+            _assert_blocked(self, _http(user).get(url))
+
+    def test_assigned_supervisor_can_revoke_an_admin_approval(self):
+        approval = approve_training_certificate(self.counselor, self.admin)
+        before = self._snapshot(approval)
+        response = _http(self.supervisor).post(self.supervisor_revoke, follow=True)
+        self.assertContains(response, "최근 승인 취소: 김수퍼 / ")
+        self.assertEqual(
+            get_training_certificate_approval_status(self.counselor)["status"],
+            STATUS_UNAPPROVED,
+        )
+        self.assertEqual(self._snapshot(approval), before)
+        revocation = approval.revocation
+        self.assertEqual(revocation.revoked_by, self.supervisor)
+        self.assertEqual(revocation.revoked_role, UserRole.SUPERVISOR)
+
+    def test_other_cohort_supervisor_cannot_revoke(self):
+        approve_training_certificate(self.counselor, self.admin)
+        denied = _http(self.outsider).post(self.supervisor_revoke)
+        self.assertEqual(denied.status_code, 403)
+        self.assertFalse(TrainingCertificateApprovalRevocation.objects.exists())
+        self.assertEqual(
+            get_training_certificate_approval_status(self.counselor)["status"],
+            STATUS_APPROVED,
+        )
+
+    def test_counselor_cannot_revoke(self):
+        approve_training_certificate(self.counselor, self.admin)
+        self.assertEqual(_http(self.counselor).post(self.admin_revoke).status_code, 403)
+        self.assertEqual(_http(self.counselor).post(self.supervisor_revoke).status_code, 403)
+        self.assertEqual(_http(self.counselor).get(self.admin_revoke).status_code, 403)
+        self.assertFalse(TrainingCertificateApprovalRevocation.objects.exists())
+
+    def test_duplicate_revoke_does_not_add_another_row(self):
+        approval = approve_training_certificate(self.counselor, self.admin)
+        first = _http(self.admin).post(self.admin_revoke)
+        self.assertEqual(first.status_code, 302)
+        again = _http(self.admin).post(self.admin_revoke)
+        self.assertEqual(again.status_code, 400)
+        self.assertEqual(
+            TrainingCertificateApprovalRevocation.objects.filter(approval=approval).count(),
+            1,
+        )
+        self.assertEqual(TrainingCertificateApproval.objects.count(), 1)
+
+    def test_revoke_targets_the_current_hash_approval_only(self):
+        older = approve_training_certificate(self.counselor, self.admin)
+        older_fields = self._snapshot(older)
+        _journals(self.case, 1)
+        self.assertEqual(
+            get_training_certificate_approval_status(self.counselor)["status"],
+            STATUS_REAPPROVAL_REQUIRED,
+        )
+        missed = _http(self.admin).post(self.admin_revoke)
+        self.assertEqual(missed.status_code, 400)
+        self.assertFalse(TrainingCertificateApprovalRevocation.objects.exists())
+        current = approve_training_certificate(self.counselor, self.supervisor)
+        current_fields = self._snapshot(current)
+        self.assertNotEqual(older.content_hash, current.content_hash)
+        revoked = _http(self.admin).post(self.admin_revoke)
+        self.assertEqual(revoked.status_code, 302)
+        self.assertEqual(
+            TrainingCertificateApprovalRevocation.objects.get().approval_id,
+            current.pk,
+        )
+        self.assertFalse(
+            TrainingCertificateApprovalRevocation.objects.filter(approval=older).exists()
+        )
+        self.assertEqual(self._snapshot(older), older_fields)
+        self.assertEqual(self._snapshot(current), current_fields)
+        self.assertEqual(
+            get_training_certificate_approval_status(self.counselor)["status"],
+            STATUS_UNAPPROVED,
+        )
+
+    def test_reapproval_after_revoke_adds_a_row_and_restores_pdf(self):
+        original = approve_training_certificate(self.counselor, self.admin)
+        original_fields = self._snapshot(original)
+        _http(self.admin).post(self.admin_revoke)
+        renewed = _http(self.supervisor).post(self.supervisor_approve)
+        self.assertEqual(renewed.status_code, 302)
+        self.assertEqual(TrainingCertificateApproval.objects.count(), 2)
+        self.assertEqual(TrainingCertificateApprovalRevocation.objects.count(), 1)
+        self.assertEqual(self._snapshot(original), original_fields)
+        self.assertTrue(
+            TrainingCertificateApprovalRevocation.objects.filter(approval=original).exists()
+        )
+        status = get_training_certificate_approval_status(self.counselor)
+        self.assertEqual(status["status"], STATUS_APPROVED)
+        self.assertNotEqual(status["latest"].pk, original.pk)
+        self.assertFalse(
+            TrainingCertificateApprovalRevocation.objects.filter(
+                approval=status["latest"]
+            ).exists()
+        )
+        self.assertEqual(status["latest"].content_hash, status["content_hash"])
+        self.assertEqual(status["latest"].content_hash, original.content_hash)
+        pdf = _http(self.counselor).get(self.counselor_pdf)
+        self.assertEqual(pdf.status_code, 200)
+        self.assertTrue(pdf.content.startswith(b"%PDF"))
+        page = _http(self.admin).get(self.admin_detail)
+        self.assertContains(page, ">승인 취소</button>")
+        self.assertNotContains(page, "최근 승인 취소:")
+
+        _journals(self.case, 1)
+        changed = get_training_certificate_approval_status(self.counselor)
+        self.assertEqual(changed["status"], STATUS_REAPPROVAL_REQUIRED)
+        self.assertEqual(TrainingCertificateApproval.objects.count(), 2)
+        self.assertEqual(TrainingCertificateApprovalRevocation.objects.count(), 1)
+        _assert_blocked(self, _http(self.admin).get(self.admin_pdf))
+        again = _http(self.supervisor).get(self.supervisor_detail)
+        self.assertContains(again, "재승인 필요")
+        self.assertContains(again, "수련확인증 재승인")
+        self.assertNotContains(again, "revokeTrainingCertificateModal")
+
+    def test_metrics_change_after_revoke_stays_unapproved_until_a_new_approval(self):
+        approve_training_certificate(self.counselor, self.admin)
+        revoke_training_certificate(self.counselor, self.supervisor)
+        _journals(self.case, 1)
+        status = get_training_certificate_approval_status(self.counselor)
+        self.assertEqual(status["status"], STATUS_REAPPROVAL_REQUIRED)
+        self.assertNotEqual(status["status"], STATUS_APPROVED)
+        self.assertFalse(status["can_issue"])
+        _assert_blocked(self, _http(self.counselor).get(self.counselor_pdf))
+        approve_training_certificate(self.counselor, self.admin)
+        self.assertEqual(
+            get_training_certificate_approval_status(self.counselor)["status"],
+            STATUS_APPROVED,
+        )
+
+    def test_dashboard_uses_the_unapproved_notice_after_revoke(self):
+        approve_training_certificate(self.counselor, self.admin)
+        dashboard = reverse("counselor:dashboard")
+        ready = _http(self.counselor).get(dashboard)
+        self.assertContains(ready, "승인완료")
+        self.assertContains(ready, f'href="{self.counselor_pdf}"')
+        revoke_training_certificate(self.counselor, self.admin)
+        blocked = _http(self.counselor).get(dashboard)
+        self.assertContains(blocked, "미승인")
+        self.assertContains(blocked, MESSAGE_UNAPPROVED)
+        self.assertNotContains(blocked, "승인완료")
+        self.assertNotContains(blocked, "재승인 필요")
+        self.assertNotContains(blocked, f'href="{self.counselor_pdf}"')
+        self.assertContains(blocked, "trainingCertificateNoticeModal")
+
+    def test_get_does_not_revoke(self):
+        approve_training_certificate(self.counselor, self.admin)
+        self.assertEqual(_http(self.admin).get(self.admin_revoke).status_code, 405)
+        self.assertFalse(TrainingCertificateApprovalRevocation.objects.exists())
+        self.assertEqual(
+            get_training_certificate_approval_status(self.counselor)["status"],
+            STATUS_APPROVED,
+        )
+
+    def test_revoked_latest_approval_does_not_fall_back_to_older_same_hash_approval(self):
+        older = approve_training_certificate(self.counselor, self.supervisor)
+        latest = TrainingCertificateApproval.objects.create(
+            counselor=self.counselor,
+            approved_by=self.admin,
+            approved_role=UserRole.ADMIN,
+            content_hash=older.content_hash,
+        )
+        self.assertGreater(latest.pk, older.pk)
+        self.assertEqual(older.content_hash, latest.content_hash)
+        before = get_training_certificate_approval_status(self.counselor)
+        self.assertEqual(before["status"], STATUS_APPROVED)
+        self.assertEqual(before["approved_by_name"], "홍길동")
+        self.assertTrue(before["can_issue"])
+
+        page = _http(self.admin).post(self.admin_revoke, follow=True)
+        self.assertContains(page, _status_line("미승인", 1, 1))
+        self.assertContains(page, "최근 승인 취소: 홍길동 / ")
+        self.assertContains(page, "수련확인증 승인")
+        self.assertNotContains(page, "revokeTrainingCertificateModal")
+        self.assertNotContains(page, "승인완료")
+        self.assertEqual(
+            TrainingCertificateApprovalRevocation.objects.get().approval_id,
+            latest.pk,
+        )
+        self.assertFalse(
+            TrainingCertificateApprovalRevocation.objects.filter(approval=older).exists()
+        )
+        revoked = get_training_certificate_approval_status(self.counselor)
+        self.assertEqual(revoked["status"], STATUS_UNAPPROVED)
+        self.assertFalse(revoked["can_issue"])
+        self.assertEqual(revoked["revoked_by_name"], "홍길동")
+        for user, url in (
+            (self.counselor, self.counselor_pdf),
+            (self.admin, self.admin_pdf),
+            (self.supervisor, self.supervisor_pdf),
+        ):
+            _assert_blocked(self, _http(user).get(url))
+
+        renewed = approve_training_certificate(self.counselor, self.supervisor)
+        self.assertNotIn(renewed.pk, {older.pk, latest.pk})
+        self.assertEqual(
+            TrainingCertificateApproval.objects.filter(counselor=self.counselor).count(),
+            3,
+        )
+        self.assertEqual(TrainingCertificateApprovalRevocation.objects.count(), 1)
+        self.assertEqual(renewed.content_hash, older.content_hash)
+        restored = get_training_certificate_approval_status(self.counselor)
+        self.assertEqual(restored["status"], STATUS_APPROVED)
+        self.assertEqual(restored["latest"].pk, renewed.pk)
+        self.assertEqual(restored["approved_by_name"], "김수퍼")
+        pdf = _http(self.counselor).get(self.counselor_pdf)
+        self.assertEqual(pdf.status_code, 200)
+        self.assertTrue(pdf.content.startswith(b"%PDF"))
+
+    def test_already_approved_does_not_create_another_same_hash_row(self):
+        first = approve_training_certificate(self.counselor, self.admin)
+        second = approve_training_certificate(self.counselor, self.supervisor)
+        self.assertEqual(second.pk, first.pk)
+        posted = _http(self.supervisor).post(self.supervisor_approve)
+        self.assertEqual(posted.status_code, 302)
+        self.assertEqual(
+            TrainingCertificateApproval.objects.filter(counselor=self.counselor).count(),
+            1,
+        )
+        self.assertEqual(
+            get_training_certificate_approval_status(self.counselor)["status"],
+            STATUS_APPROVED,
+        )
+
+        revoke_training_certificate(self.counselor, self.admin)
+        third = approve_training_certificate(self.counselor, self.supervisor)
+        self.assertNotEqual(third.pk, first.pk)
+        self.assertEqual(
+            TrainingCertificateApproval.objects.filter(counselor=self.counselor).count(),
+            2,
+        )
+        self.assertEqual(
+            get_training_certificate_approval_status(self.counselor)["status"],
+            STATUS_APPROVED,
+        )
 
 
 class CertificateHashStabilityTests(TestCase):

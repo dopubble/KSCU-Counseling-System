@@ -6,7 +6,7 @@
 
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
-from django.http import Http404
+from django.http import Http404, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect
 from django.views.decorators.http import require_POST
 
@@ -15,8 +15,10 @@ from apps.accounts.models import CounselorProfile, User, UserRole
 from apps.counseling.journal_permissions import user_can_browse_counselor_journals
 from apps.counseling.training_certificate import (
     TrainingCertificateApprovalError,
+    TrainingCertificateRevocationError,
     approve_training_certificate,
     get_training_certificate_approval_status,
+    revoke_training_certificate,
 )
 from apps.counseling.training_certificate_pdf import training_certificate_response
 
@@ -94,6 +96,39 @@ def supervisor_approve_training_certificate(request, counselor_id):
     if not user_can_browse_counselor_journals(request.user, counselor):
         raise PermissionDenied("담당 기수 상담사만 승인할 수 있습니다.")
     return _approve_and_redirect(
+        request,
+        counselor,
+        "supervisor:counselor_training_progress_detail",
+    )
+
+
+def _revoke_and_redirect(request, counselor, detail_name):
+    try:
+        revoke_training_certificate(counselor, request.user, request.POST.get("reason", ""))
+    except TrainingCertificateRevocationError as exc:
+        return HttpResponseBadRequest(exc.message)
+    messages.success(request, "수련확인증 승인을 취소했습니다.")
+    return redirect(detail_name, counselor_id=counselor.pk)
+
+
+@role_required(UserRole.ADMIN)
+@require_POST
+def admin_revoke_training_certificate(request, counselor_id):
+    counselor = _counselor_for_certificate(counselor_id)
+    return _revoke_and_redirect(
+        request,
+        counselor,
+        "admin_panel:counselor_training_progress_detail",
+    )
+
+
+@supervisor_required
+@require_POST
+def supervisor_revoke_training_certificate(request, counselor_id):
+    counselor = _counselor_for_certificate(counselor_id)
+    if not user_can_browse_counselor_journals(request.user, counselor):
+        raise PermissionDenied("담당 기수 상담사만 승인 취소할 수 있습니다.")
+    return _revoke_and_redirect(
         request,
         counselor,
         "supervisor:counselor_training_progress_detail",

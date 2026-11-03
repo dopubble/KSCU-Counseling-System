@@ -9,7 +9,7 @@ import hashlib
 import json
 
 from django.core.exceptions import PermissionDenied
-from django.db import transaction
+from django.db import IntegrityError, connection, transaction
 from django.db.models import Count, Exists, OuterRef, Q, Sum
 from django.utils import timezone
 
@@ -23,6 +23,7 @@ from apps.counseling.models import (
     SupervisionSession,
     SupervisionSessionStatus,
     TrainingCertificateApproval,
+    TrainingCertificateApprovalRevocation,
 )
 from apps.counseling.training_progress import (
     TRAINING_CREDIT_MINUTES_PER_SESSION,
@@ -580,6 +581,12 @@ class TrainingCertificateApprovalError(Exception):
         self.message = message
 
 
+class TrainingCertificateRevocationError(Exception):
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.message = message
+
+
 def latest_training_certificate_approval(counselor):
     if counselor is None or not getattr(counselor, "pk", None):
         return None
@@ -591,19 +598,69 @@ def latest_training_certificate_approval(counselor):
     )
 
 
+def _latest_matching_approval(counselor, content_hash):
+    """현재 hash와 일치하는 승인 중 가장 최근 행. 더 오래된 동일 hash는 보지 않는다."""
+    if counselor is None or not getattr(counselor, "pk", None) or not content_hash:
+        return None
+    return (
+        TrainingCertificateApproval.objects.filter(
+            counselor_id=counselor.pk,
+            content_hash=content_hash,
+        )
+        .select_related("approved_by", "revocation__revoked_by")
+        .order_by("-approved_at", "-pk")
+        .first()
+    )
+
+
+def _revocation_of(approval):
+    if approval is None:
+        return None
+    try:
+        return approval.revocation
+    except TrainingCertificateApprovalRevocation.DoesNotExist:
+        return None
+
+
+def current_valid_training_certificate_approval(counselor, context):
+    """현재 hash의 최신 승인이 취소되지 않았을 때만 그 행을 반환한다."""
+    match = _latest_matching_approval(
+        counselor,
+        calculate_training_certificate_hash(counselor, context),
+    )
+    if _revocation_of(match) is not None:
+        return None
+    return match
+
+
 def _approved_on_label(approval) -> str:
     if approval is None or approval.approved_at is None:
         return ""
     return timezone.localtime(approval.approved_at).strftime("%Y.%m.%d")
 
 
+def _person_name(user) -> str:
+    if user is None:
+        return "—"
+    return (user.name or "").strip() or "—"
+
+
 def _approved_by_name(approval) -> str:
     if approval is None:
         return ""
-    approver = approval.approved_by
-    if approver is None:
-        return "—"
-    return (approver.name or "").strip() or "—"
+    return _person_name(approval.approved_by)
+
+
+def _revoked_by_name(revocation) -> str:
+    if revocation is None:
+        return ""
+    return _person_name(revocation.revoked_by)
+
+
+def _revoked_at_label(revocation) -> str:
+    if revocation is None or revocation.revoked_at is None:
+        return ""
+    return timezone.localtime(revocation.revoked_at).strftime("%Y-%m-%d %H:%M")
 
 
 def counselor_certificate_issue_message(status: str, submitted_case_count: int) -> str:
@@ -617,17 +674,30 @@ def counselor_certificate_issue_message(status: str, submitted_case_count: int) 
 
 
 def get_training_certificate_approval_status(counselor, context=None) -> dict:
-    """최신 승인 hash와 현재 확인증 hash로 미승인·승인완료·재승인 필요를 가른다."""
+    """현재 hash의 최신 승인이 취소되지 않았을 때만 승인완료다.
+
+    그 최신 승인이 취소되면 더 오래된 동일 hash 승인으로 되돌리지 않고 미승인이다.
+    현재 hash와 맞는 승인이 없으면, 과거 승인이 있을 때 재승인 필요하다.
+    취소 여부는 확인증 hash에 넣지 않는다.
+    """
     if context is None:
         context = build_counselor_training_certificate_context(counselor)
     content_hash = calculate_training_certificate_hash(counselor, context)
     latest = latest_training_certificate_approval(counselor)
-    if latest is None:
-        status = STATUS_UNAPPROVED
-    elif stored_approval_matches_current(latest.content_hash, counselor, context):
+    match = _latest_matching_approval(counselor, content_hash)
+    revocation = _revocation_of(match)
+    if match is not None and revocation is None:
         status = STATUS_APPROVED
-    else:
+        valid = match
+    elif match is not None:
+        status = STATUS_UNAPPROVED
+        valid = None
+    elif latest is not None:
         status = STATUS_REAPPROVAL_REQUIRED
+        valid = None
+    else:
+        status = STATUS_UNAPPROVED
+        valid = None
     assigned_count, submitted_count = case_submission_counts(counselor)
     return {
         "status": status,
@@ -638,8 +708,10 @@ def get_training_certificate_approval_status(counselor, context=None) -> dict:
         "content_hash": content_hash,
         "context": context,
         "latest": latest,
-        "approved_by_name": _approved_by_name(latest) if status == STATUS_APPROVED else "",
-        "approved_on_label": _approved_on_label(latest) if status == STATUS_APPROVED else "",
+        "approved_by_name": _approved_by_name(valid) if status == STATUS_APPROVED else "",
+        "approved_on_label": _approved_on_label(valid) if status == STATUS_APPROVED else "",
+        "revoked_by_name": _revoked_by_name(revocation) if status == STATUS_UNAPPROVED else "",
+        "revoked_at_label": _revoked_at_label(revocation) if status == STATUS_UNAPPROVED else "",
         "issue_message": counselor_certificate_issue_message(status, submitted_count),
     }
 
@@ -656,16 +728,65 @@ def _approver_may_approve(user, counselor) -> bool:
 
 @transaction.atomic
 def approve_training_certificate(counselor, approved_by) -> TrainingCertificateApproval:
-    """현재 확인증 context의 hash로 승인 행을 추가한다. 기존 행은 지우지 않는다."""
+    """현재 확인증 hash로 승인 행을 추가한다. 기존 행은 지우지 않는다.
+
+    현재 hash의 최신 승인이 아직 유효하면 같은 hash 행을 다시 만들지 않는다.
+    그 승인이 취소된 뒤에만 새 행을 추가한다.
+    """
     if not _approver_may_approve(approved_by, counselor):
         raise PermissionDenied("수련확인증을 승인할 수 없습니다.")
     if submitted_case_count(counselor) < 1:
         raise TrainingCertificateApprovalError(MESSAGE_APPROVAL_REQUIRES_SUBMITTED_CASE)
     context = build_counselor_training_certificate_context(counselor)
     content_hash = calculate_training_certificate_hash(counselor, context)
+    existing = TrainingCertificateApproval.objects.filter(
+        counselor_id=counselor.pk,
+        content_hash=content_hash,
+    ).order_by("-approved_at", "-pk")
+    if connection.features.has_select_for_update:
+        existing = existing.select_for_update()
+    current = existing.first()
+    if current is not None and _revocation_of(current) is None:
+        return current
     return TrainingCertificateApproval.objects.create(
         counselor=counselor,
         approved_by=approved_by,
         approved_role=getattr(approved_by, "role", "") or "",
         content_hash=content_hash,
     )
+
+
+_REVOCATION_UNAVAILABLE = "취소할 수 있는 유효한 승인이 없습니다."
+
+
+@transaction.atomic
+def revoke_training_certificate(counselor, revoked_by, reason: str = ""):
+    """현재 hash의 최신 미취소 승인만 취소한다.
+
+    승인 행의 hash·승인자·승인일시는 바꾸지 않는다.
+    이미 취소된 최신 승인이나 과거 hash는 취소하지 않고,
+    더 오래된 동일 hash 승인으로 넘어가지도 않는다.
+    행 잠금이 되는 DB에서는 그 최신 승인을 잠근 뒤 취소 이력을 한 번만 만든다.
+    """
+    if not _approver_may_approve(revoked_by, counselor):
+        raise PermissionDenied("수련확인증 승인을 취소할 수 없습니다.")
+    context = build_counselor_training_certificate_context(counselor)
+    content_hash = calculate_training_certificate_hash(counselor, context)
+    candidates = TrainingCertificateApproval.objects.filter(
+        counselor_id=counselor.pk,
+        content_hash=content_hash,
+    ).order_by("-approved_at", "-pk")
+    if connection.features.has_select_for_update:
+        candidates = candidates.select_for_update()
+    candidate = candidates.first()
+    if candidate is None or _revocation_of(candidate) is not None:
+        raise TrainingCertificateRevocationError(_REVOCATION_UNAVAILABLE)
+    try:
+        return TrainingCertificateApprovalRevocation.objects.create(
+            approval=candidate,
+            revoked_by=revoked_by,
+            revoked_role=getattr(revoked_by, "role", "") or "",
+            reason=(reason or "").strip(),
+        )
+    except IntegrityError as exc:
+        raise TrainingCertificateRevocationError(_REVOCATION_UNAVAILABLE) from exc

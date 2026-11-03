@@ -58,6 +58,11 @@ urlpatterns = [
         name="counselor_training_certificate_approve",
     ),
     path(
+        "training-progress/counselors/<uuid:counselor_id>/certificate/revoke/",
+        views_training_certificate.supervisor_revoke_training_certificate,
+        name="counselor_training_certificate_revoke",
+    ),
+    path(
         "supervision/",
         views_supervision.supervisor_supervision_cohorts,
         name="supervision_cohorts",
