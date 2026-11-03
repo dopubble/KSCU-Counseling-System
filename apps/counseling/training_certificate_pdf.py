@@ -56,6 +56,9 @@ _SPACE_AFTER_IDENTITY = 20
 _SPACE_AFTER_TABLE = 20
 _SPACE_AFTER_CONFIRMATION = 28
 _ISSUER_FONT_SIZE = 11
+_IDENTITY_RULE_WEIGHT = 0.3
+_IDENTITY_RULE_COLOR = colors.HexColor("#e2e8f0")
+_IDENTITY_VALUE_LEFT_PADDING = 4 * mm
 
 
 def format_certificate_date(day) -> str:
@@ -269,27 +272,70 @@ def _pdf_identity_rows(context: dict) -> list[tuple[str, str]]:
     return rows
 
 
+def _supervisor_value_rule_rows(row_count: int, supervisor_start: int | None) -> tuple[int, ...]:
+    """마지막 수퍼바이저를 제외한 수퍼바이저 행. 이 행의 선은 값 영역에만 둔다."""
+    if supervisor_start is None:
+        return ()
+    return tuple(range(supervisor_start, row_count - 1))
+
+
 def _identity_table_style(row_count: int, supervisor_start: int | None) -> TableStyle:
-    """성명·생년월일 행과 같은 padding. 수퍼바이저 사이에는 가로선을 긋지 않는다."""
+    """성명·생년월일과 같은 padding과 전체 폭 구분선.
+
+    수퍼바이저 중간 행은 여기서 전체 폭 선을 긋지 않는다.
+    그 선은 값 영역 시작 x부터 별도로 그린다.
+    """
     commands = [
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("LEFTPADDING", (0, 0), (0, -1), 1 * mm),
         ("RIGHTPADDING", (0, 0), (0, -1), 4 * mm),
-        ("LEFTPADDING", (1, 0), (1, -1), 4 * mm),
+        ("LEFTPADDING", (1, 0), (1, -1), _IDENTITY_VALUE_LEFT_PADDING),
         ("RIGHTPADDING", (1, 0), (1, -1), 1 * mm),
         ("TOPPADDING", (0, 0), (-1, -1), 5),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
     ]
     for row_index in range(row_count):
-        if (
-            supervisor_start is not None
-            and supervisor_start <= row_index < row_count - 1
-        ):
+        if row_index in _supervisor_value_rule_rows(row_count, supervisor_start):
             continue
         commands.append(
-            ("LINEBELOW", (0, row_index), (-1, row_index), 0.3, colors.HexColor("#e2e8f0"))
+            (
+                "LINEBELOW",
+                (0, row_index),
+                (-1, row_index),
+                _IDENTITY_RULE_WEIGHT,
+                _IDENTITY_RULE_COLOR,
+            )
         )
     return TableStyle(commands)
+
+
+def _identity_value_rule_segments(table) -> list[tuple[float, float, float, float]]:
+    """수퍼바이저 중간 구분선. x는 값 칸 글자 시작, 끝은 표 오른쪽 끝이다."""
+    rows = tuple(getattr(table, "_value_rule_rows", ()) or ())
+    positions = getattr(table, "_colpositions", None)
+    if not rows or not positions:
+        return []
+    left_padding = table._cellStyles[rows[0]][1].leftPadding
+    x0 = positions[1] + left_padding
+    x1 = positions[-1]
+    return [
+        (x0, table._rowpositions[row_index + 1], x1, table._rowpositions[row_index + 1])
+        for row_index in rows
+    ]
+
+
+def _draw_identity_value_rules(table) -> None:
+    segments = _identity_value_rule_segments(table)
+    if not segments:
+        return
+    weight, color = table._value_rule_stroke
+    canvas = table.canv
+    canvas.saveState()
+    canvas.setStrokeColor(color)
+    canvas.setLineWidth(weight)
+    for x0, y0, x1, y1 in segments:
+        canvas.line(x0, y0, x1, y1)
+    canvas.restoreState()
 
 
 def build_training_certificate_pdf(context: dict) -> bytes:
@@ -374,6 +420,15 @@ def build_training_certificate_pdf(context: dict) -> bytes:
         None,
     )
     identity.setStyle(_identity_table_style(len(pdf_identity), supervisor_start))
+    identity._value_rule_rows = _supervisor_value_rule_rows(len(pdf_identity), supervisor_start)
+    identity._value_rule_stroke = (_IDENTITY_RULE_WEIGHT, _IDENTITY_RULE_COLOR)
+    draw_identity = identity.draw
+
+    def draw_identity_with_value_rules():
+        draw_identity()
+        _draw_identity_value_rules(identity)
+
+    identity.draw = draw_identity_with_value_rules
     story.extend([identity, Spacer(1, _SPACE_AFTER_IDENTITY)])
 
     header = [Paragraph(column, cell_style) for column in context["columns"]]

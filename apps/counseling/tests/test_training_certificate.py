@@ -45,6 +45,7 @@ from apps.counseling.training_certificate_pdf import (
     FOOTER_LOGO_FILENAME,
     _FooterMark,
     _certificate_time_rows,
+    _identity_value_rule_segments,
     build_training_certificate_context,
     build_training_certificate_pdf,
     footer_logo_origin,
@@ -335,17 +336,36 @@ class SupervisorSignatureLayoutTests(TestCase):
             row_height = identity._rowHeights[0]
             for height in identity._rowHeights:
                 self.assertAlmostEqual(height, row_height, places=2)
-            line_rows = {
-                cmd[1][1]
-                for cmd in identity._linecmds
-                if cmd[0] == "LINEBELOW"
-            }
+            below = [cmd for cmd in identity._linecmds if cmd[0] == "LINEBELOW"]
+            self.assertTrue(below)
+            full_weight, full_color = below[0][3], below[0][4]
+            for cmd in below:
+                self.assertEqual((cmd[1][0], cmd[2][0]), (0, -1))
+                self.assertEqual(cmd[3], full_weight)
+                self.assertEqual(cmd[4], full_color)
+            below_rows = {cmd[1][1] for cmd in below}
             last_row = len(identity._rowHeights) - 1
             supervisor_start = last_row - count + 1
-            self.assertIn(0, line_rows)
-            self.assertIn(last_row, line_rows)
+            self.assertIn(0, below_rows)
+            self.assertIn(last_row, below_rows)
             for row_index in range(supervisor_start, last_row):
-                self.assertNotIn(row_index, line_rows)
+                self.assertNotIn(row_index, below_rows)
+            segments = _identity_value_rule_segments(identity)
+            self.assertEqual(len(segments), count - 1)
+            self.assertEqual(identity._value_rule_stroke, (full_weight, full_color))
+            if segments:
+                value_start = identity._colpositions[1] + identity._cellStyles[0][1].leftPadding
+                value_end = identity._colpositions[-1]
+                self.assertGreater(value_start, identity._colpositions[1])
+                for index, (x0, y0, x1, y1) in enumerate(segments):
+                    self.assertAlmostEqual(x0, value_start, places=2)
+                    self.assertAlmostEqual(x1, value_end, places=2)
+                    self.assertAlmostEqual(y0, y1, places=2)
+                    self.assertAlmostEqual(
+                        y0,
+                        identity._rowpositions[supervisor_start + index + 1],
+                        places=2,
+                    )
 
             def y_of(text):
                 matches = [y for drawn_text, y in drawn if drawn_text == text]
