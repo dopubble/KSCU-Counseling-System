@@ -155,6 +155,14 @@ class Case(models.Model):
         related_name="counselor_cases",
         verbose_name="상담사",
     )
+    training_enrollment = models.ForeignKey(
+        "counseling.TrainingEnrollment",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="cases",
+        verbose_name="수련 단위",
+    )
     case_number = models.CharField("사례번호", max_length=20, unique=True)
     status = models.CharField(
         "상태", max_length=20, choices=CaseStatus.choices, default=CaseStatus.ACTIVE
@@ -577,6 +585,55 @@ class SupervisionAttendance(models.Model):
         return f"{self.session} — {self.counselor}"
 
 
+class TrainingEnrollmentStatus(models.TextChoices):
+    ACTIVE = "ACTIVE", "진행"
+    COMPLETED = "COMPLETED", "완료"
+    WITHDRAWN = "WITHDRAWN", "중단"
+
+
+class TrainingEnrollment(models.Model):
+    """상담사가 한 기수에서 수행하는 수련 단위."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    counselor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="training_enrollments",
+        verbose_name="상담사",
+    )
+    cohort = models.PositiveIntegerField("기수")
+    status = models.CharField(
+        "상태",
+        max_length=20,
+        choices=TrainingEnrollmentStatus.choices,
+        default=TrainingEnrollmentStatus.ACTIVE,
+    )
+    started_at = models.DateTimeField("시작일", null=True, blank=True)
+    completed_at = models.DateTimeField("완료일", null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "수련 등록"
+        verbose_name_plural = "수련 등록"
+        ordering = ["counselor_id", "cohort"]
+        constraints = [
+            # 2기는 기존 ACTIVE를 COMPLETED로 바꾼 뒤에만 만든다. 1단계에서는 그 전환을 하지 않는다.
+            models.UniqueConstraint(
+                fields=["counselor", "cohort"],
+                name="uniq_training_enrollment_counselor_cohort",
+            ),
+            models.UniqueConstraint(
+                fields=["counselor"],
+                condition=models.Q(status=TrainingEnrollmentStatus.ACTIVE),
+                name="uniq_active_training_enrollment_per_counselor",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.counselor_id} {self.cohort}기"
+
+
 class TrainingCertificateApproval(models.Model):
     """수련확인증 승인 이력. 재승인 때도 행을 지우지 않고 추가한다."""
 
@@ -585,6 +642,14 @@ class TrainingCertificateApproval(models.Model):
         on_delete=models.CASCADE,
         related_name="training_certificate_approvals",
         verbose_name="상담사",
+    )
+    training_enrollment = models.ForeignKey(
+        "counseling.TrainingEnrollment",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="certificate_approvals",
+        verbose_name="수련 단위",
     )
     approved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
