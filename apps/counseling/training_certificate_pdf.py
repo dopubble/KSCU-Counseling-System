@@ -152,7 +152,14 @@ def build_training_certificate_context(
     if birth_date:
         identity.append(("생년월일", format_certificate_date(birth_date)))
     identity.append(("수퍼바이저", "\n".join(supervisor_display_lines(supervisor_label))))
+    from apps.counseling.training_certificate import (
+        own_case_supervision_post_count,
+        own_case_supervision_time_label,
+    )
+
     counseling_remark = counseling_cases_5plus_label(counseling_cases_5plus_count)
+    own_case_posts = own_case_supervision_post_count(counselor)
+    supervision_remark = own_case_supervision_time_label(own_case_posts)
     rows: list[list[str]] = []
     rows.extend(
         _certificate_time_rows(
@@ -177,6 +184,7 @@ def build_training_certificate_context(
             in_person=progress.get("supervision_in_person_minutes", 0),
             remote=progress.get("supervision_remote_minutes", 0),
             unknown=progress.get("supervision_unknown_minutes", 0),
+            remark=supervision_remark,
         )
     )
     rows.append(
@@ -194,6 +202,7 @@ def build_training_certificate_context(
         "rows": rows,
         "progress": progress,
         "counseling_cases_5plus_count": counseling_cases_5plus_count,
+        "own_case_supervision_posts": own_case_posts,
         "method_notice": CERTIFICATE_METHOD_NOTICE,
         "confirmation": CERTIFICATE_CONFIRMATION,
         "issued_on": issued_on,
@@ -385,6 +394,13 @@ def build_training_certificate_pdf(context: dict) -> bytes:
         leading=12,
         alignment=TA_CENTER,
     )
+    # 수퍼비전 비고만 한 줄에 들어간다. 열 폭과 다른 칸의 글자 크기는 그대로다.
+    supervision_remark_style = ParagraphStyle(
+        "CertificateSupervisionRemark",
+        parent=cell_style,
+        fontSize=8,
+        leading=11,
+    )
     label_style = ParagraphStyle(
         "CertificateLabel",
         fontName=font,
@@ -433,10 +449,17 @@ def build_training_certificate_pdf(context: dict) -> bytes:
 
     header = [Paragraph(column, cell_style) for column in context["columns"]]
     body_rows = context["rows"]
-    body = [
-        [Paragraph(str(cell), cell_style) for cell in row]
-        for row in body_rows
-    ]
+
+    def _body_cell(cell):
+        text = str(cell)
+        style = (
+            supervision_remark_style
+            if text.startswith("내 사례로 슈퍼비전 받은시간")
+            else cell_style
+        )
+        return Paragraph(text, style)
+
+    body = [[_body_cell(cell) for cell in row] for row in body_rows]
     # 비고는 "5회기 이상 지속된 사례 총 00건 포함" 한 줄 + 여백만 두고 배분.
     item_width = _CONTENT_WIDTH * 0.28
     time_width = _CONTENT_WIDTH * 0.17

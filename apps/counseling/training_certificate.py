@@ -17,6 +17,7 @@ from apps.accounts.models import CounselorProfile, SupervisorProfile, UserRole
 from apps.counseling.journal_permissions import user_can_browse_counselor_journals
 from apps.counseling.models import (
     Case,
+    CasePresentationPost,
     CounselingMethod,
     SupervisionAttendanceStatus,
     SupervisionSession,
@@ -93,6 +94,31 @@ def counseling_cases_5plus_count(counselor) -> int:
 
 def counseling_cases_5plus_label(count: int) -> str:
     return f"5회기 이상 지속된 사례 총 {count}건 포함"
+
+
+OWN_CASE_SUPERVISION_MINUTES_PER_POST = 90
+
+
+def own_case_supervision_post_count(counselor) -> int:
+    """사례발표게시판에 수련자 본인이 작성한 사례보고서 게시글 수.
+
+    CasePresentationPost 한 건이 1이다. 댓글은 세지 않는다.
+    같은 Case에 올린 글도 각각 센다. case_report_submitted_count의
+    사례 단위 집계·상한과는 다른 값이다.
+    """
+    if counselor is None or not getattr(counselor, "pk", None):
+        return 0
+    return CasePresentationPost.objects.filter(author_id=counselor.pk).count()
+
+
+def own_case_supervision_time_label(post_count: int) -> str:
+    """게시글 1건 = 90분. 0분은 0시간으로 적고, 분이 0이면 분 표기를 빼다."""
+    minutes = max(int(post_count or 0), 0) * OWN_CASE_SUPERVISION_MINUTES_PER_POST
+    if minutes <= 0:
+        shown = "0시간"
+    else:
+        shown = format_training_minutes(minutes)
+    return f"내 사례로 슈퍼비전 받은시간 : {shown}"
 
 
 def supervisor_label_for_counselor(counselor) -> str:
@@ -349,14 +375,6 @@ def build_counselor_training_certificate_context(counselor) -> dict:
     )
 
 
-# 승인 도입(37b9e4a) 이후 저장된 hash는 화면 문장을 포함한 문서다.
-# 두 템플릿만 당시 문서로 재현할 수 있다. 그 외 hash는 실적을 확인할 수 없다.
-_LEGACY_REMARK_TEMPLATES = (
-    "5회기 이상 지속된 사례 총 {count}건",
-    "5회기 이상 지속된 사례 총 {count}건 포함",
-)
-
-
 def _counselor_profile(counselor):
     try:
         return counselor.counselor_profile
@@ -435,7 +453,7 @@ def build_training_certificate_approval_payload(counselor, context: dict) -> dic
     birth_date = profile.birth_date if profile is not None else None
     issued_on = context.get("issued_on")
     return {
-        "schema": "certificate-metrics-v1",
+        "schema": "certificate-metrics-v2",
         "counselor_id": str(counselor.pk),
         "name": getattr(counselor, "name", "") or "",
         "birth_date": birth_date.isoformat() if birth_date else "",
@@ -443,6 +461,7 @@ def build_training_certificate_approval_payload(counselor, context: dict) -> dic
         "issued_on": issued_on.isoformat() if issued_on else "",
         "cases_5plus": int(context["counseling_cases_5plus_count"]),
         "case_report_count": int(progress["case_report_submitted_count"]),
+        "own_case_supervision_posts": int(context.get("own_case_supervision_posts") or 0),
         "intake_minutes": _minute_buckets(progress, "intake"),
         "counseling_minutes": _minute_buckets(progress, "counseling"),
         "supervision_minutes": _minute_buckets(progress, "supervision"),
@@ -500,26 +519,31 @@ def calculate_training_certificate_hash(counselor, context: dict) -> str:
     return _hash_payload(build_training_certificate_approval_payload(counselor, context))
 
 
+def legacy_metrics_approval_hash(counselor, context: dict) -> str:
+    """own_case_supervision_posts가 없던 certificate-metrics-v1.
+
+    이미 저장된 과거 승인을 재현할 때만 쓴다.
+    내 사례 슈퍼비전 시간이 승인 대상에 없었으므로 현재 승인으로는 인정하지 않는다.
+    """
+    payload = build_training_certificate_approval_payload(counselor, context)
+    payload["schema"] = "certificate-metrics-v1"
+    payload.pop("own_case_supervision_posts", None)
+    return _hash_payload(payload)
+
+
 def legacy_display_approval_hash(counselor, context: dict, remark: str) -> str:
     return _hash_payload(legacy_display_approval_payload(counselor, context, remark))
 
 
 def stored_approval_matches_current(stored_hash: str, counselor, context: dict) -> bool:
-    """저장된 hash가 현재 실적의 확정 문서 중 하나와 같을 때만 참이다.
+    """저장된 hash가 현재 certificate-metrics-v2와 같을 때만 참이다.
 
-    현재 실적 hash, 그리고 재현 가능한 과거 문서 hash만 비교한다.
-    저장된 원문이 없는 hash는 일치로 보지 않는다.
+    v1 실적 hash와 화면 문장을 포함한 과거 hash에는
+    내 사례 슈퍼비전 시간이 없으므로 일치로 보지 않는다.
     """
     if not stored_hash:
         return False
-    if stored_hash == calculate_training_certificate_hash(counselor, context):
-        return True
-    count = int(context["counseling_cases_5plus_count"])
-    for template in _LEGACY_REMARK_TEMPLATES:
-        remark = template.format(count=count)
-        if stored_hash == legacy_display_approval_hash(counselor, context, remark):
-            return True
-    return False
+    return stored_hash == calculate_training_certificate_hash(counselor, context)
 
 
 STATUS_UNAPPROVED = "unapproved"

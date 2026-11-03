@@ -12,6 +12,7 @@ from apps.accounts.models import User, UserRole, UserStatus
 from apps.counseling.models import (
     ApplicationStatus,
     Case,
+    CasePresentationComment,
     CasePresentationPost,
     CaseStatus,
     CounselingApplication,
@@ -39,6 +40,7 @@ from apps.counseling.training_certificate import (
     get_training_certificate_approval_status,
     legacy_display_approval_hash,
     legacy_display_approval_payload,
+    legacy_metrics_approval_hash,
 )
 from apps.counseling.training_certificate_pdf import format_certificate_date
 from apps.counseling.training_progress import (
@@ -256,7 +258,10 @@ class CertificateSubmittedCaseFilterTests(TestCase):
         self.assertEqual(context["progress"]["supervision_remote_minutes"], 180)
         self.assertEqual(context["progress"]["supervision_in_person_minutes"], 0)
         self.assertEqual(_bucket_minutes(context, "counseling"), 0)
-        self.assertIn(["수퍼비전", "3시간", "비대면", ""], context["rows"])
+        self.assertIn(
+            ["수퍼비전", "3시간", "비대면", "내 사례로 슈퍼비전 받은시간 : 0시간"],
+            context["rows"],
+        )
 
     def test_case_report_policy_is_not_filtered_by_submission(self):
         counselor = _counselor("보고서유지", cohort=22)
@@ -651,6 +656,124 @@ class CertificateApprovalFlowTests(TestCase):
         self.assertEqual(status["context"]["progress"]["supervision_remote_minutes"], 120)
         _assert_blocked(self, _http(self.counselor).get(self.counselor_pdf))
 
+    def test_v1_metrics_hash_requires_reapproval_until_v2_is_stored(self):
+        approve_training_certificate(self.counselor, self.admin)
+        approval = TrainingCertificateApproval.objects.get(counselor=self.counselor)
+        context = build_counselor_training_certificate_context(self.counselor)
+        stored = legacy_metrics_approval_hash(self.counselor, context)
+        approval.content_hash = stored
+        approval.save(update_fields=["content_hash"])
+        status = get_training_certificate_approval_status(self.counselor)
+        self.assertEqual(context["own_case_supervision_posts"], 0)
+        self.assertEqual(
+            build_training_certificate_approval_payload(self.counselor, context)["schema"],
+            "certificate-metrics-v2",
+        )
+        self.assertEqual(status["status"], STATUS_REAPPROVAL_REQUIRED)
+        self.assertNotEqual(status["content_hash"], stored)
+        _assert_blocked(self, _http(self.counselor).get(self.counselor_pdf))
+
+        _report(self.counselor, "승인후추가", case=self.case, cohort=31)
+        later = get_training_certificate_approval_status(self.counselor)
+        self.assertEqual(later["context"]["own_case_supervision_posts"], 1)
+        self.assertIn(
+            "내 사례로 슈퍼비전 받은시간 : 1시간 30분",
+            [row[3] for row in later["context"]["rows"]],
+        )
+        self.assertEqual(later["status"], STATUS_REAPPROVAL_REQUIRED)
+        approval.refresh_from_db()
+        self.assertEqual(approval.content_hash, stored)
+
+        _http(self.admin).post(self.admin_approve)
+        self.assertEqual(
+            TrainingCertificateApproval.objects.filter(counselor=self.counselor).count(),
+            2,
+        )
+        approval.refresh_from_db()
+        self.assertEqual(approval.content_hash, stored)
+        renewed = get_training_certificate_approval_status(self.counselor)
+        self.assertEqual(renewed["status"], STATUS_APPROVED)
+        self.assertEqual(renewed["content_hash"], renewed["latest"].content_hash)
+        self.assertNotEqual(renewed["latest"].pk, approval.pk)
+        self.assertEqual(
+            build_training_certificate_approval_payload(
+                self.counselor,
+                renewed["context"],
+            )["schema"],
+            "certificate-metrics-v2",
+        )
+        issued = _http(self.counselor).get(self.counselor_pdf)
+        self.assertEqual(issued.status_code, 200)
+        self.assertTrue(issued.content.startswith(b"%PDF"))
+
+    def test_duplicate_post_requires_reapproval_without_changing_supervision_time(self):
+        session = _session(31, 1, SupervisionSessionStatus.COMPLETED, 120)
+        _present(session, self.counselor)
+        _report(self.counselor, "내보고서", case=self.case, cohort=31)
+        approve_training_certificate(self.counselor, self.admin)
+        approved = TrainingCertificateApproval.objects.get(counselor=self.counselor)
+        before = build_counselor_training_certificate_context(self.counselor)
+        self.assertEqual(before["own_case_supervision_posts"], 1)
+        self.assertEqual(before["progress"]["case_report_submitted_count"], 1)
+        self.assertEqual(before["progress"]["supervision_remote_minutes"], 120)
+        self.assertIn(
+            "내 사례로 슈퍼비전 받은시간 : 1시간 30분",
+            [row[3] for row in before["rows"]],
+        )
+
+        _report(self.counselor, "같은사례추가", case=self.case, cohort=31)
+        status = get_training_certificate_approval_status(self.counselor)
+        self.assertEqual(status["context"]["own_case_supervision_posts"], 2)
+        self.assertEqual(status["context"]["progress"]["case_report_submitted_count"], 1)
+        self.assertEqual(status["context"]["progress"]["supervision_remote_minutes"], 120)
+        self.assertEqual(
+            status["context"]["progress"]["supervision_in_person_minutes"],
+            0,
+        )
+        self.assertIn(
+            "내 사례로 슈퍼비전 받은시간 : 3시간",
+            [row[3] for row in status["context"]["rows"]],
+        )
+        self.assertEqual(status["status"], STATUS_REAPPROVAL_REQUIRED)
+        self.assertNotEqual(status["content_hash"], approved.content_hash)
+        _assert_blocked(self, _http(self.counselor).get(self.counselor_pdf))
+
+    def test_comments_after_v2_approval_keep_the_approval(self):
+        post = _report(self.counselor, "댓글대상", case=self.case, cohort=31)
+        approve_training_certificate(self.counselor, self.admin)
+        approved_hash = TrainingCertificateApproval.objects.get().content_hash
+        for index in range(5):
+            CasePresentationComment.objects.create(
+                post=post,
+                author=self.counselor,
+                content=f"댓글{index}",
+            )
+        status = get_training_certificate_approval_status(self.counselor)
+        self.assertEqual(status["context"]["own_case_supervision_posts"], 1)
+        self.assertIn(
+            "내 사례로 슈퍼비전 받은시간 : 1시간 30분",
+            [row[3] for row in status["context"]["rows"]],
+        )
+        self.assertEqual(status["content_hash"], approved_hash)
+        self.assertEqual(status["status"], STATUS_APPROVED)
+        self.assertEqual(_http(self.counselor).get(self.counselor_pdf).status_code, 200)
+
+    def test_other_counselor_post_after_v2_approval_keeps_the_approval(self):
+        approve_training_certificate(self.counselor, self.admin)
+        approved_hash = TrainingCertificateApproval.objects.get(
+            counselor=self.counselor
+        ).content_hash
+        _report(self.other, "타인보고서", case=None, cohort=32)
+        status = get_training_certificate_approval_status(self.counselor)
+        self.assertEqual(status["context"]["own_case_supervision_posts"], 0)
+        self.assertEqual(
+            status["context"]["rows"][2][3],
+            "내 사례로 슈퍼비전 받은시간 : 0시간",
+        )
+        self.assertEqual(status["content_hash"], approved_hash)
+        self.assertEqual(status["status"], STATUS_APPROVED)
+        self.assertEqual(_http(self.counselor).get(self.counselor_pdf).status_code, 200)
+
     def test_case_report_change_requires_reapproval(self):
         approve_training_certificate(self.counselor, self.admin)
         approved_hash = TrainingCertificateApproval.objects.get().content_hash
@@ -661,7 +784,7 @@ class CertificateApprovalFlowTests(TestCase):
         self.assertNotEqual(status["content_hash"], approved_hash)
         _assert_blocked(self, _http(self.admin).get(self.admin_pdf))
 
-    def test_legacy_remark_without_include_stays_approved_until_metrics_change(self):
+    def test_legacy_display_hash_requires_reapproval(self):
         approve_training_certificate(self.counselor, self.admin)
         approval = TrainingCertificateApproval.objects.get(counselor=self.counselor)
         context = build_counselor_training_certificate_context(self.counselor)
@@ -678,7 +801,13 @@ class CertificateApprovalFlowTests(TestCase):
         for row in current_rows:
             if row[3].endswith(" 포함"):
                 row[3] = row[3].removesuffix(" 포함")
+            if row[3].startswith("내 사례로 슈퍼비전 받은시간"):
+                row[3] = ""
         self.assertEqual(legacy["rows"], current_rows)
+        self.assertIn(
+            "내 사례로 슈퍼비전 받은시간 : 0시간",
+            [row[3] for row in context["rows"]],
+        )
         displayed = [
             [label, value]
             for label, value in context["identity"]
@@ -695,12 +824,16 @@ class CertificateApprovalFlowTests(TestCase):
         self.assertNotIn("schema", legacy)
 
         status = get_training_certificate_approval_status(self.counselor)
-        self.assertEqual(status["status"], STATUS_APPROVED)
+        self.assertEqual(status["status"], STATUS_REAPPROVAL_REQUIRED)
         self.assertNotEqual(status["content_hash"], approval.content_hash)
         self.assertTrue(any(cell.endswith("건 포함") for row in status["context"]["rows"] for cell in row))
-        issued = _http(self.counselor).get(self.counselor_pdf)
-        self.assertEqual(issued.status_code, 200)
-        self.assertTrue(issued.content.startswith(b"%PDF"))
+        _assert_blocked(self, _http(self.counselor).get(self.counselor_pdf))
+        approval.refresh_from_db()
+        self.assertEqual(approval.content_hash, legacy_display_approval_hash(
+            self.counselor,
+            context,
+            old_remark,
+        ))
         self.assertEqual(TrainingCertificateApproval.objects.filter(counselor=self.counselor).count(), 1)
 
         extra = _case(self.counselor, _client("실적변경"), "AP-LEGACY")
@@ -713,11 +846,20 @@ class CertificateApprovalFlowTests(TestCase):
         _assert_blocked(self, _http(self.admin).get(self.admin_pdf))
         _assert_blocked(self, _http(self.supervisor).get(self.supervisor_pdf))
 
+        stored = approval.content_hash
         _http(self.admin).post(self.admin_approve)
         self.assertEqual(TrainingCertificateApproval.objects.filter(counselor=self.counselor).count(), 2)
+        approval.refresh_from_db()
+        self.assertEqual(approval.content_hash, stored)
+        renewed = get_training_certificate_approval_status(self.counselor)
+        self.assertEqual(renewed["status"], STATUS_APPROVED)
+        self.assertEqual(renewed["content_hash"], renewed["latest"].content_hash)
         self.assertEqual(
-            get_training_certificate_approval_status(self.counselor)["status"],
-            STATUS_APPROVED,
+            build_training_certificate_approval_payload(
+                self.counselor,
+                renewed["context"],
+            )["schema"],
+            "certificate-metrics-v2",
         )
         restored = _http(self.counselor).get(self.counselor_pdf)
         self.assertEqual(restored.status_code, 200)
@@ -743,12 +885,13 @@ class CertificateApprovalFlowTests(TestCase):
                 "issued_on",
                 "cases_5plus",
                 "case_report_count",
+                "own_case_supervision_posts",
                 "intake_minutes",
                 "counseling_minutes",
                 "supervision_minutes",
             },
         )
-        self.assertEqual(payload["schema"], "certificate-metrics-v1")
+        self.assertEqual(payload["schema"], "certificate-metrics-v2")
         for bucket in ("intake_minutes", "counseling_minutes", "supervision_minutes"):
             self.assertEqual(
                 set(payload[bucket]),
@@ -859,7 +1002,7 @@ class CertificateApprovalFlowTests(TestCase):
         )
         self.assertEqual(context["supervisor_label"], "김수퍼 교수")
         payload = build_training_certificate_approval_payload(self.counselor, context)
-        self.assertEqual(payload["schema"], "certificate-metrics-v1")
+        self.assertEqual(payload["schema"], "certificate-metrics-v2")
         self.assertEqual(payload["supervisor"], context["supervisor_label"])
         self.assertEqual(
             get_training_certificate_approval_status(self.counselor)["status"],
@@ -869,7 +1012,7 @@ class CertificateApprovalFlowTests(TestCase):
         self.assertEqual(issued.status_code, 200)
         self.assertTrue(issued.content.startswith(b"%PDF"))
 
-    def test_include_era_display_hash_stays_approved_when_metrics_match(self):
+    def test_include_era_display_hash_requires_reapproval(self):
         approve_training_certificate(self.counselor, self.admin)
         approval = TrainingCertificateApproval.objects.get(counselor=self.counselor)
         context = build_counselor_training_certificate_context(self.counselor)
@@ -882,9 +1025,12 @@ class CertificateApprovalFlowTests(TestCase):
             remark,
         )
         approval.save(update_fields=["content_hash"])
+        stored = approval.content_hash
         status = get_training_certificate_approval_status(self.counselor)
-        self.assertEqual(status["status"], STATUS_APPROVED)
-        self.assertEqual(_http(self.counselor).get(self.counselor_pdf).status_code, 200)
+        self.assertEqual(status["status"], STATUS_REAPPROVAL_REQUIRED)
+        _assert_blocked(self, _http(self.counselor).get(self.counselor_pdf))
+        approval.refresh_from_db()
+        self.assertEqual(approval.content_hash, stored)
 
     def test_unknown_approval_hash_is_not_treated_as_current(self):
         approve_training_certificate(self.counselor, self.admin)
