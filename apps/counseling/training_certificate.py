@@ -748,8 +748,18 @@ def approve_training_certificate(counselor, approved_by) -> TrainingCertificateA
     current = existing.first()
     if current is not None and _revocation_of(current) is None:
         return current
+    from .training_enrollment import (
+        ActiveTrainingEnrollmentError,
+        require_active_training_enrollment,
+    )
+
+    try:
+        enrollment = require_active_training_enrollment(counselor)
+    except ActiveTrainingEnrollmentError as exc:
+        raise TrainingCertificateApprovalError(str(exc)) from exc
     return TrainingCertificateApproval.objects.create(
         counselor=counselor,
+        training_enrollment=enrollment,
         approved_by=approved_by,
         approved_role=getattr(approved_by, "role", "") or "",
         content_hash=content_hash,

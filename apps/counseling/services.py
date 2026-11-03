@@ -746,6 +746,20 @@ def assign_counselor(
     if total_sessions < 1:
         raise ValueError("총 회기 수는 1 이상이어야 합니다.")
 
+    from .training_enrollment import require_active_training_enrollment
+
+    existing = (
+        Case.objects.filter(application=application)
+        .only("pk", "counselor_id", "training_enrollment_id")
+        .first()
+    )
+    needs_link = (
+        existing is None
+        or existing.counselor_id != counselor.pk
+        or existing.training_enrollment_id is None
+    )
+    enrollment = require_active_training_enrollment(counselor) if needs_link else None
+
     application.status = ApplicationStatus.IN_PROGRESS
     application.save(update_fields=["status", "updated_at"])
 
@@ -754,6 +768,7 @@ def assign_counselor(
         defaults={
             "client": application.client,
             "counselor": counselor,
+            "training_enrollment": enrollment,
             "status": CaseStatus.ACTIVE,
             "total_sessions": total_sessions,
             "remaining_sessions": total_sessions,
@@ -765,6 +780,8 @@ def assign_counselor(
         case.counselor = counselor
         case.client = application.client
         case.counseling_method = counseling_method_for_application(application)
+        if needs_link:
+            case.training_enrollment = enrollment
         if case.status != CaseStatus.ACTIVE:
             case.status = CaseStatus.ACTIVE
             case.closed_at = None
@@ -950,8 +967,13 @@ def reassign_counselor(case: Case, counselor: User) -> Case:
     assert_case_records_unlocked(case)
     if counselor.role != UserRole.COUNSELOR:
         raise ValueError("선택한 사용자는 상담사가 아닙니다.")
+    from .training_enrollment import require_active_training_enrollment
+
+    needs_link = case.counselor_id != counselor.pk or case.training_enrollment_id is None
+    if needs_link:
+        case.training_enrollment = require_active_training_enrollment(counselor)
     case.counselor = counselor
-    case.save(update_fields=["counselor"])
+    case.save(update_fields=["counselor", "training_enrollment"])
     application = case.application
     if application.status in (
         ApplicationStatus.RECEIVED,

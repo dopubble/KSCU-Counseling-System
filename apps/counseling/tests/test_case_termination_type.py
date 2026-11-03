@@ -17,6 +17,8 @@ from apps.counseling.models import (
     CaseTerminationType,
     CounselingApplication,
     CounselingMethod,
+    TrainingEnrollment,
+    TrainingEnrollmentStatus,
 )
 from apps.counseling.services import (
     assign_counselor,
@@ -43,6 +45,11 @@ def _counselor(name):
     CounselorProfile.objects.update_or_create(
         user=user,
         defaults={"cohort": 1, "is_approved": True},
+    )
+    TrainingEnrollment.objects.create(
+        counselor=user,
+        cohort=1,
+        status=TrainingEnrollmentStatus.ACTIVE,
     )
     return user
 

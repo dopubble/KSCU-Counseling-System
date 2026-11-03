@@ -23,6 +23,8 @@ from apps.counseling.models import (
     SupervisionSessionStatus,
     TrainingCertificateApproval,
     TrainingCertificateApprovalRevocation,
+    TrainingEnrollment,
+    TrainingEnrollmentStatus,
 )
 from apps.counseling.services import submit_case_records
 from apps.counseling.training_certificate import (
@@ -76,6 +78,12 @@ def _counselor(name, cohort=4):
     profile.cohort = cohort
     profile.is_approved = True
     profile.save(update_fields=["cohort", "is_approved", "updated_at"])
+    if cohort is not None:
+        TrainingEnrollment.objects.create(
+            counselor=user,
+            cohort=cohort,
+            status=TrainingEnrollmentStatus.ACTIVE,
+        )
     return user
 
 

@@ -426,12 +426,21 @@ def _import_one_row(
     except Case.DoesNotExist:
         existing_case = active_case
 
-    if existing_case:
-        case = reassign_counselor(existing_case, counselor)
-        action = "reassigned"
-    else:
-        case = assign_counselor(application, counselor, total_sessions=total_sessions)
-        action = "assigned"
+    try:
+        if existing_case:
+            case = reassign_counselor(existing_case, counselor)
+            action = "reassigned"
+        else:
+            case = assign_counselor(application, counselor, total_sessions=total_sessions)
+            action = "assigned"
+    except ValueError as exc:
+        return ImportRowResult(
+            row.client_name,
+            row.counselor_name,
+            row.first_session,
+            "error",
+            str(exc),
+        )
 
     case.total_sessions = total_sessions
     case.remaining_sessions = total_sessions

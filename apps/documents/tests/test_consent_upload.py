@@ -6,7 +6,13 @@ from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
 from apps.accounts.models import CounselorProfile, User, UserRole, UserStatus
-from apps.counseling.models import ApplicationStatus, CounselingApplication, CounselingMethod
+from apps.counseling.models import (
+    ApplicationStatus,
+    CounselingApplication,
+    CounselingMethod,
+    TrainingEnrollment,
+    TrainingEnrollmentStatus,
+)
 from apps.counseling.services import assign_counselor
 from apps.documents.models import ConsentDocType, ConsentDocument
 from apps.documents.services.consent_service import delete_counselor_consent, upsert_counselor_consent
@@ -46,6 +52,11 @@ class ConsentUploadTests(TestCase):
         CounselorProfile.objects.update_or_create(
             user=self.counselor,
             defaults={"cohort": 2, "is_approved": True},
+        )
+        TrainingEnrollment.objects.create(
+            counselor=self.counselor,
+            cohort=2,
+            status=TrainingEnrollmentStatus.ACTIVE,
         )
         self.other_counselor = User.objects.create_user(
             email="other@example.com",

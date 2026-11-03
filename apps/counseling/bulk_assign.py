@@ -244,14 +244,17 @@ def _assign_row(
             existing_case.case_number if existing_case else "",
         )
 
-    if existing_case:
-        case = reassign_counselor(existing_case, counselor)
-        action = "reassigned"
-        msg = f"{counselor.name} 상담사로 변경 ({case.case_number})"
-    else:
-        case = assign_counselor(application, counselor, total_sessions=total_sessions)
-        action = "assigned"
-        msg = f"{counselor.name} 상담사 배정 ({case.case_number}, {case.total_sessions}회)"
+    try:
+        if existing_case:
+            case = reassign_counselor(existing_case, counselor)
+            action = "reassigned"
+            msg = f"{counselor.name} 상담사로 변경 ({case.case_number})"
+        else:
+            case = assign_counselor(application, counselor, total_sessions=total_sessions)
+            action = "assigned"
+            msg = f"{counselor.name} 상담사 배정 ({case.case_number}, {case.total_sessions}회)"
+    except ValueError as exc:
+        return AssignCounselorResult(row.email, "error", str(exc), row.line_no)
 
     if counselor_note:
         msg = f"{msg} — {counselor_note}"

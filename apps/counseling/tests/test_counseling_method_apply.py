@@ -2,7 +2,13 @@ from django.test import TestCase
 
 from apps.accounts.models import CounselorProfile, User, UserRole, UserStatus
 from apps.counseling.forms import CounselingApplyForm
-from apps.counseling.models import ApplicationStatus, CounselingApplication, CounselingMethod
+from apps.counseling.models import (
+    ApplicationStatus,
+    CounselingApplication,
+    CounselingMethod,
+    TrainingEnrollment,
+    TrainingEnrollmentStatus,
+)
 from apps.counseling.services import assign_counselor, build_apply_initial_from_application
 
 
@@ -23,6 +29,11 @@ class CounselingMethodApplyTests(TestCase):
             status=UserStatus.ACTIVE,
         )
         CounselorProfile.objects.get_or_create(user=self.counselor, defaults={"cohort": 1})
+        TrainingEnrollment.objects.create(
+            counselor=self.counselor,
+            cohort=1,
+            status=TrainingEnrollmentStatus.ACTIVE,
+        )
 
     def test_apply_form_accepts_remote_counseling_method(self):
         form = CounselingApplyForm(

@@ -3,6 +3,10 @@ from django.contrib import admin
 from django.core.exceptions import PermissionDenied
 
 from .admin_lock import RecordsSubmittedLockMixin
+from .training_enrollment import (
+    ActiveTrainingEnrollmentError,
+    require_active_training_enrollment,
+)
 from .models import (
     Case,
     CaseStatus,
@@ -33,6 +37,18 @@ class CaseAdminForm(forms.ModelForm):
         cleaned = super().clean()
         if cleaned.get("status") != CaseStatus.CLOSED:
             cleaned["termination_type"] = ""
+        counselor = cleaned.get("counselor")
+        if counselor is None:
+            return cleaned
+        creating = self.instance._state.adding
+        counselor_changed = not creating and self.instance.counselor_id != counselor.pk
+        if not creating and not counselor_changed:
+            cleaned["training_enrollment"] = self.instance.training_enrollment
+            return cleaned
+        try:
+            cleaned["training_enrollment"] = require_active_training_enrollment(counselor)
+        except ActiveTrainingEnrollmentError as exc:
+            self.add_error("counselor", str(exc))
         return cleaned
 
 

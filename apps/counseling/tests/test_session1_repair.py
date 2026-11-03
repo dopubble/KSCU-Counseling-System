@@ -9,6 +9,8 @@ from apps.counseling.models import (
     CaseStatus,
     CounselingApplication,
     CounselingMethod,
+    TrainingEnrollment,
+    TrainingEnrollmentStatus,
 )
 from apps.counseling.services import assign_counselor
 from apps.counseling.session1_bulk_import import (
@@ -39,6 +41,11 @@ def _create_counselor(name: str = "테스트상담사") -> User:
         status=UserStatus.ACTIVE,
     )
     CounselorProfile.objects.get_or_create(user=user, defaults={"cohort": 1})
+    TrainingEnrollment.objects.create(
+        counselor=user,
+        cohort=1,
+        status=TrainingEnrollmentStatus.ACTIVE,
+    )
     return user
 
 

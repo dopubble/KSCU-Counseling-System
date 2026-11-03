@@ -2,7 +2,13 @@ from django.test import Client, TestCase
 from django.urls import reverse
 
 from apps.accounts.models import CounselorProfile, User, UserRole, UserStatus
-from apps.counseling.models import ApplicationStatus, CounselingApplication, CounselingMethod
+from apps.counseling.models import (
+    ApplicationStatus,
+    CounselingApplication,
+    CounselingMethod,
+    TrainingEnrollment,
+    TrainingEnrollmentStatus,
+)
 from apps.counseling.services import assign_counselor
 
 
@@ -36,6 +42,16 @@ class CounselingManagementSearchTests(TestCase):
         CounselorProfile.objects.update_or_create(
             user=self.lee,
             defaults={"cohort": 3, "is_approved": True},
+        )
+        TrainingEnrollment.objects.create(
+            counselor=self.kim,
+            cohort=2,
+            status=TrainingEnrollmentStatus.ACTIVE,
+        )
+        TrainingEnrollment.objects.create(
+            counselor=self.lee,
+            cohort=3,
+            status=TrainingEnrollmentStatus.ACTIVE,
         )
         self.client_kim = User.objects.create_user(
             email="client-kim@example.com",

@@ -121,6 +121,13 @@ class ExistingApplicationWithoutBirthDateMatchingTests(TestCase):
             status=UserStatus.ACTIVE,
         )
         CounselorProfile.objects.get_or_create(user=counselor, defaults={"cohort": 1})
+        from apps.counseling.models import TrainingEnrollment, TrainingEnrollmentStatus
+
+        TrainingEnrollment.objects.create(
+            counselor=counselor,
+            cohort=1,
+            status=TrainingEnrollmentStatus.ACTIVE,
+        )
         application = CounselingApplication.objects.create(
             client=client,
             counseling_types=["개인상담"],

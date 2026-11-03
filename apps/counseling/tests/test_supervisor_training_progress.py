@@ -19,6 +19,8 @@ from apps.counseling.models import (
     SupervisionAttendanceStatus,
     SupervisionSession,
     SupervisionSessionStatus,
+    TrainingEnrollment,
+    TrainingEnrollmentStatus,
 )
 from apps.counseling.training_progress import (
     get_cohort_counselors_training_progress,
@@ -44,6 +46,12 @@ def _counselor(name, cohort):
     profile.cohort = cohort
     profile.is_approved = True
     profile.save(update_fields=["cohort", "is_approved", "updated_at"])
+    if cohort is not None:
+        TrainingEnrollment.objects.create(
+            counselor=user,
+            cohort=cohort,
+            status=TrainingEnrollmentStatus.ACTIVE,
+        )
     return user
 
 

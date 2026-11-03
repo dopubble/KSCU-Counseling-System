@@ -2,7 +2,14 @@ from django.test import Client as HttpClient, TestCase
 from django.urls import reverse
 
 from apps.accounts.models import CounselorProfile, User, UserRole, UserStatus
-from apps.counseling.models import ApplicationStatus, Case, CaseStatus, CounselingApplication
+from apps.counseling.models import (
+    ApplicationStatus,
+    Case,
+    CaseStatus,
+    CounselingApplication,
+    TrainingEnrollment,
+    TrainingEnrollmentStatus,
+)
 from apps.counseling.services import assign_counselor
 
 
@@ -25,6 +32,11 @@ def _create_counselor(email: str, name: str) -> User:
         status=UserStatus.ACTIVE,
     )
     CounselorProfile.objects.get_or_create(user=user, defaults={"cohort": 1})
+    TrainingEnrollment.objects.create(
+        counselor=user,
+        cohort=1,
+        status=TrainingEnrollmentStatus.ACTIVE,
+    )
     return user
 
 
