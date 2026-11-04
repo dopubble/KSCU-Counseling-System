@@ -156,7 +156,12 @@ from .services import (
     serialize_apply_initial,
     sync_case_counseling_method_from_application,
 )
-from .training_certificate import get_training_certificate_approval_status
+from .training_certificate import (
+    MESSAGE_NO_SUBMITTED_CASE,
+    STATUS_LABELS,
+    STATUS_UNAPPROVED,
+    get_training_certificate_approval_status,
+)
 from .training_enrollment import resolve_dashboard_training_enrollment
 from .training_progress import get_counselor_training_progress
 
@@ -1814,7 +1819,6 @@ def counselor_dashboard(request):
         .order_by("scheduled_at")
     )
     submit_feedback = _pop_records_submit_feedback(request)
-    certificate_approval = get_training_certificate_approval_status(request.user)
     selected_enrollment, enrollment_choices, enrollment_forbidden = (
         resolve_dashboard_training_enrollment(request.user, request.GET.get("enrollment"))
     )
@@ -1822,8 +1826,18 @@ def counselor_dashboard(request):
         raise Http404("수련 기수를 찾을 수 없습니다.")
     if selected_enrollment is None:
         training_progress = get_counselor_training_progress(None)
+        certificate_approval = {
+            "status": STATUS_UNAPPROVED,
+            "label": STATUS_LABELS[STATUS_UNAPPROVED],
+            "can_issue": False,
+            "issue_message": MESSAGE_NO_SUBMITTED_CASE,
+        }
     else:
         training_progress = get_counselor_training_progress(
+            request.user,
+            training_enrollment=selected_enrollment,
+        )
+        certificate_approval = get_training_certificate_approval_status(
             request.user,
             training_enrollment=selected_enrollment,
         )

@@ -101,8 +101,7 @@ def render_enrollment_training_progress(request, enrollment, template):
         profile = counselor.counselor_profile
     except CounselorProfile.DoesNotExist:
         profile = None
-    # 수련실적은 Enrollment 기준이다.
-    # 승인 카드와 PDF는 아직 User 단위 certificate-metrics-v2이며 기수 승인이 아니다.
+    # 수련실적과 수련확인증 승인은 이 Enrollment만 본다.
     return render(
         request,
         template,
@@ -116,7 +115,10 @@ def render_enrollment_training_progress(request, enrollment, template):
                 training_enrollment=enrollment,
             ),
             "list_cohort": enrollment.cohort,
-            "certificate_approval": get_training_certificate_approval_status(counselor),
+            "certificate_approval": get_training_certificate_approval_status(
+                counselor,
+                training_enrollment=enrollment,
+            ),
         },
     )
 

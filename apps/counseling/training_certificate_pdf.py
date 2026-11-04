@@ -161,6 +161,8 @@ def build_training_certificate_context(
     intake_mode: str = "",
     journal_mode: str = "",
     supervision_time: str = "",
+    own_case_post_count=None,
+    cohort_label: str = "",
 ) -> dict:
     """확인서에 찍을 값. progress는 수련현황 함수의 반환 그대로다.
 
@@ -174,6 +176,8 @@ def build_training_certificate_context(
     identity = [("성명", counselor.name or _EMPTY)]
     if birth_date:
         identity.append(("생년월일", format_certificate_date(birth_date)))
+    if cohort_label:
+        identity.append(("수련 기수", cohort_label))
     identity.append(("수퍼바이저", "\n".join(supervisor_display_lines(supervisor_label))))
     from apps.counseling.training_certificate import (
         own_case_supervision_post_count,
@@ -181,7 +185,11 @@ def build_training_certificate_context(
     )
 
     counseling_remark = counseling_cases_5plus_label(counseling_cases_5plus_count)
-    own_case_posts = own_case_supervision_post_count(counselor)
+    own_case_posts = (
+        own_case_supervision_post_count(counselor)
+        if own_case_post_count is None
+        else own_case_post_count
+    )
     supervision_remark = own_case_supervision_time_label(own_case_posts)
     rows: list[list[str]] = []
     rows.extend(

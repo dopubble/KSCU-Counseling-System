@@ -715,7 +715,7 @@ class CertificateApprovalFlowTests(TestCase):
                 self.counselor,
                 renewed["context"],
             )["schema"],
-            "certificate-metrics-v2",
+            "certificate-metrics-v3",
         )
         issued = _http(self.counselor).get(self.counselor_pdf)
         self.assertEqual(issued.status_code, 200)
@@ -874,7 +874,7 @@ class CertificateApprovalFlowTests(TestCase):
                 self.counselor,
                 renewed["context"],
             )["schema"],
-            "certificate-metrics-v2",
+            "certificate-metrics-v3",
         )
         restored = _http(self.counselor).get(self.counselor_pdf)
         self.assertEqual(restored.status_code, 200)
@@ -1133,6 +1133,11 @@ class CertificateApprovalFlowTests(TestCase):
         self.assertContains(admin_page, "수련확인증 승인")
         self.assertContains(admin_page, _status_line("미승인", 1, 1))
         self.assertNotContains(admin_page, "사례 제출 현황")
+        enrollment_pdf = reverse(
+            "supervisor:enrollment_training_certificate",
+            kwargs={"enrollment_id": self.case.training_enrollment_id},
+        )
+        self.assertNotIn(f'href="{enrollment_pdf}"', body)
         self.assertNotIn(f'href="{self.admin_pdf}"', body)
 
         _http(self.supervisor).post(self.supervisor_approve)
@@ -1141,7 +1146,7 @@ class CertificateApprovalFlowTests(TestCase):
         self.assertContains(approved, "승인완료")
         self.assertContains(approved, "김수퍼")
         self.assertContains(approved, "수련확인증 출력")
-        self.assertIn(f'href="{self.supervisor_pdf}"', approved_body)
+        self.assertIn(f'href="{enrollment_pdf}"', approved_body)
         self.assertNotContains(approved, "수련확인증 재승인")
 
         _journals(self.case, 1)
@@ -1149,6 +1154,7 @@ class CertificateApprovalFlowTests(TestCase):
         again_body = again.content.decode()
         self.assertContains(again, "재승인 필요")
         self.assertContains(again, "수련확인증 재승인")
+        self.assertNotIn(f'href="{enrollment_pdf}"', again_body)
         self.assertNotIn(f'href="{self.admin_pdf}"', again_body)
 
     def test_dashboard_messages_match_issue_state(self):
@@ -1161,7 +1167,11 @@ class CertificateApprovalFlowTests(TestCase):
         self.assertContains(blocked, "수련확인증 상태")
         self.assertContains(blocked, "미승인")
         self.assertContains(blocked, MESSAGE_NO_SUBMITTED_CASE)
-        self.assertNotContains(blocked, f'href="{reverse("counselor:training_certificate")}"')
+        certificate_href = (
+            f'{reverse("counselor:training_certificate")}'
+            f'?enrollment={TrainingEnrollment.objects.get(counselor=fresh).pk}'
+        )
+        self.assertNotContains(blocked, certificate_href)
 
         case = _case(fresh, _client("안내내담"), "MSG-1")
         _journals(case, 1)
@@ -1175,7 +1185,7 @@ class CertificateApprovalFlowTests(TestCase):
 
         approve_training_certificate(fresh, self.admin)
         ready = _http(fresh).get(dashboard)
-        self.assertContains(ready, f'href="{reverse("counselor:training_certificate")}"')
+        self.assertContains(ready, f'href="{certificate_href}"')
         self.assertContains(ready, "승인완료")
         self.assertNotContains(ready, "미승인")
         self.assertNotContains(ready, "재승인 필요")
@@ -1187,7 +1197,7 @@ class CertificateApprovalFlowTests(TestCase):
         self.assertContains(changed, "재승인 필요")
         self.assertNotContains(changed, "승인완료")
         self.assertNotContains(changed, "미승인")
-        self.assertNotContains(changed, f'href="{reverse("counselor:training_certificate")}"')
+        self.assertNotContains(changed, certificate_href)
 
     def test_final_submit_does_not_create_an_approval(self):
         counselor = _counselor("종결유지", cohort=35)
@@ -1326,8 +1336,15 @@ class CertificateApprovalRevocationTests(TestCase):
             self.counselor,
             status["context"],
         )
-        self.assertEqual(after, payload)
-        self.assertEqual(after["schema"], "certificate-metrics-v2")
+        comparable = dict(after)
+        comparable["schema"] = "certificate-metrics-v2"
+        comparable.pop("training_enrollment_id", None)
+        self.assertEqual(comparable, payload)
+        self.assertEqual(after["schema"], "certificate-metrics-v3")
+        self.assertEqual(
+            after["training_enrollment_id"],
+            str(status["context"]["training_enrollment"].pk),
+        )
         self.assertNotIn("revocation", after)
         for user, url in (
             (self.counselor, self.counselor_pdf),
@@ -1468,15 +1485,18 @@ class CertificateApprovalRevocationTests(TestCase):
         approve_training_certificate(self.counselor, self.admin)
         dashboard = reverse("counselor:dashboard")
         ready = _http(self.counselor).get(dashboard)
+        certificate_href = (
+            f"{self.counselor_pdf}?enrollment={self.case.training_enrollment_id}"
+        )
         self.assertContains(ready, "승인완료")
-        self.assertContains(ready, f'href="{self.counselor_pdf}"')
+        self.assertContains(ready, f'href="{certificate_href}"')
         revoke_training_certificate(self.counselor, self.admin)
         blocked = _http(self.counselor).get(dashboard)
         self.assertContains(blocked, "미승인")
         self.assertContains(blocked, MESSAGE_UNAPPROVED)
         self.assertNotContains(blocked, "승인완료")
         self.assertNotContains(blocked, "재승인 필요")
-        self.assertNotContains(blocked, f'href="{self.counselor_pdf}"')
+        self.assertNotContains(blocked, certificate_href)
         self.assertContains(blocked, "trainingCertificateNoticeModal")
 
     def test_get_does_not_revoke(self):
@@ -1492,6 +1512,7 @@ class CertificateApprovalRevocationTests(TestCase):
         older = approve_training_certificate(self.counselor, self.supervisor)
         latest = TrainingCertificateApproval.objects.create(
             counselor=self.counselor,
+            training_enrollment=older.training_enrollment,
             approved_by=self.admin,
             approved_role=UserRole.ADMIN,
             content_hash=older.content_hash,

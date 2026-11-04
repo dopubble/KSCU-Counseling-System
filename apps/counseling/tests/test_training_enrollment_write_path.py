@@ -205,18 +205,24 @@ class TrainingEnrollmentWritePathTests(TestCase):
         case.records_submitted_at = timezone.now()
         case.save(update_fields=["records_submitted_at"])
         before = build_counselor_training_certificate_context(counselor)
-        before_hash = calculate_training_certificate_hash(counselor, before)
         before_payload = build_training_certificate_approval_payload(counselor, before)
+        scoped = build_counselor_training_certificate_context(counselor, enrollment)
 
         approval = approve_training_certificate(counselor, approver)
 
         self.assertEqual(approval.training_enrollment_id, enrollment.pk)
-        self.assertEqual(approval.content_hash, before_hash)
+        self.assertEqual(
+            approval.content_hash,
+            calculate_training_certificate_hash(counselor, scoped),
+        )
         self.assertEqual(approval.approved_by_id, approver.pk)
         after = build_counselor_training_certificate_context(counselor)
         after_payload = build_training_certificate_approval_payload(counselor, after)
         self.assertEqual(after_payload, before_payload)
         self.assertEqual(before_payload["schema"], "certificate-metrics-v2")
+        scoped_payload = build_training_certificate_approval_payload(counselor, scoped)
+        self.assertEqual(scoped_payload["schema"], "certificate-metrics-v3")
+        self.assertEqual(scoped_payload["training_enrollment_id"], str(enrollment.pk))
 
     def test_reapproval_links_the_same_active_enrollment_and_keeps_history(self):
         counselor = _counselor("재승인상담", 4)
@@ -278,11 +284,11 @@ class TrainingEnrollmentWritePathTests(TestCase):
                 get_active_training_enrollment(counselor)
         self.assertEqual(str(caught.exception), ACTIVE_ENROLLMENT_AMBIGUOUS)
 
-    def test_approval_without_active_enrollment_creates_nothing(self):
-        counselor = _counselor("승인불가", 3)
+    def test_completed_enrollment_can_be_approved_without_an_active_row(self):
+        counselor = _counselor("수료승인", 3)
         admin = _admin()
         enrollment = _enrollment(counselor, 3)
-        case = assign_counselor(_application(_client("승인불가내담")), counselor, total_sessions=10)
+        case = assign_counselor(_application(_client("수료내담")), counselor, total_sessions=10)
         case.records_submitted_at = timezone.now()
         case.save(update_fields=["records_submitted_at"])
         enrollment.status = TrainingEnrollmentStatus.COMPLETED
@@ -314,10 +320,9 @@ class TrainingEnrollmentWritePathTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertIn(
-            ACTIVE_ENROLLMENT_MISSING,
+            "수련확인증을 승인했습니다.",
             [message.message for message in get_messages(response.wsgi_request)],
         )
-        self.assertEqual(TrainingCertificateApproval.objects.filter(counselor=counselor).count(), 1)
         existing.refresh_from_db()
         self.assertEqual(
             (
@@ -330,6 +335,9 @@ class TrainingEnrollmentWritePathTests(TestCase):
             ),
             snapshot,
         )
+        created = TrainingCertificateApproval.objects.exclude(pk=existing.pk).get()
+        self.assertEqual(created.training_enrollment_id, enrollment.pk)
+        self.assertNotEqual(created.content_hash, existing.content_hash)
         self.assertFalse(
             TrainingCertificateApprovalRevocation.objects.filter(approval=existing).exists()
         )

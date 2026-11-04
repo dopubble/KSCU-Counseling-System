@@ -281,6 +281,38 @@ class SupervisorSignatureLayoutTests(TestCase):
             self.assertNotIn(label, seen)
             with pikepdf.open(BytesIO(pdf_bytes)) as pdf:
                 self.assertEqual(len(pdf.pages), 1)
+            cohort_context = build_training_certificate_context(
+                counselor,
+                progress,
+                date(2026, 10, 28),
+                supervisor_label=label,
+                counseling_cases_5plus_count=1,
+                cohort_label=f"{index}기",
+            )
+            self.assertIn(("수련 기수", f"{index}기"), cohort_context["identity"])
+            self.assertEqual(
+                calculate_training_certificate_hash(counselor, cohort_context),
+                content_hash,
+            )
+            cohort_seen = []
+
+            def spy_cohort(text, style):
+                cohort_seen.append(text)
+                return RealParagraph(text, style)
+
+            with patch(
+                "apps.counseling.training_certificate_pdf.Paragraph",
+                side_effect=spy_cohort,
+            ):
+                cohort_pdf = build_training_certificate_pdf(cohort_context)
+            self.assertIn("수련 기수", cohort_seen)
+            self.assertIn(f"{index}기", cohort_seen)
+            self.assertEqual(
+                calculate_training_certificate_hash(counselor, cohort_context),
+                content_hash,
+            )
+            with pikepdf.open(BytesIO(cohort_pdf)) as pdf:
+                self.assertEqual(len(pdf.pages), 1)
 
     def test_supervisor_row_pitch_matches_identity_row_height(self):
         from reportlab.platypus import Table as RealTable

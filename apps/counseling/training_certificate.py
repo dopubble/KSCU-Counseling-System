@@ -14,7 +14,10 @@ from django.db.models import Count, Exists, OuterRef, Q, Sum
 from django.utils import timezone
 
 from apps.accounts.models import CounselorProfile, SupervisorProfile, UserRole
-from apps.counseling.journal_permissions import user_can_browse_counselor_journals
+from apps.counseling.journal_permissions import (
+    supervisor_can_access_cohort,
+    user_can_browse_counselor_journals,
+)
 from apps.counseling.models import (
     Case,
     CasePresentationPost,
@@ -42,36 +45,45 @@ _UNKNOWN = "UNKNOWN"
 _CASES_5PLUS_MIN_JOURNALS = 5
 
 
-def submitted_cases_for_counselor(counselor):
+def submitted_cases_for_counselor(counselor, training_enrollment=None):
     """수련확인증에 반영하는 최종 제출 Case. records_submitted_at이 완료 표시다."""
-    return Case.objects.filter(
+    if counselor is None or not getattr(counselor, "pk", None):
+        return Case.objects.none()
+    cases = Case.objects.filter(
         counselor_id=counselor.pk,
         records_submitted_at__isnull=False,
     )
+    if training_enrollment is not None:
+        cases = cases.filter(training_enrollment_id=training_enrollment.pk)
+    return cases
 
 
-def submitted_case_count(counselor) -> int:
+def submitted_case_count(counselor, training_enrollment=None) -> int:
     if counselor is None or not getattr(counselor, "pk", None):
         return 0
-    return submitted_cases_for_counselor(counselor).count()
+    return submitted_cases_for_counselor(counselor, training_enrollment).count()
 
 
-def case_submission_counts(counselor) -> tuple[int, int]:
+def case_submission_counts(counselor, training_enrollment=None) -> tuple[int, int]:
     """배정 Case 수와 최종 제출 Case 수.
 
     총 건수는 상태와 관계없이 counselor에게 배정된 Case다.
     최종 제출 건수는 records_submitted_at이 있는 Case다.
+    training_enrollment가 있으면 그 수련 단위의 Case만 센다.
     """
     if counselor is None or not getattr(counselor, "pk", None):
         return 0, 0
-    row = Case.objects.filter(counselor_id=counselor.pk).aggregate(
+    cases = Case.objects.filter(counselor_id=counselor.pk)
+    if training_enrollment is not None:
+        cases = cases.filter(training_enrollment_id=training_enrollment.pk)
+    row = cases.aggregate(
         assigned=Count("pk"),
         submitted=Count("pk", filter=Q(records_submitted_at__isnull=False)),
     )
     return int(row["assigned"] or 0), int(row["submitted"] or 0)
 
 
-def counseling_cases_5plus_count(counselor) -> int:
+def counseling_cases_5plus_count(counselor, training_enrollment=None) -> int:
     """최종 제출 Case 중 작성완료 상담일지 5개 이상인 건수(Case 단위, draft 제외).
 
     Count 경로는 Case.journals related_name 기준이며,
@@ -80,7 +92,7 @@ def counseling_cases_5plus_count(counselor) -> int:
     records_submitted_at이 없는 Case는 확인증 비고에 넣지 않는다.
     """
     return (
-        submitted_cases_for_counselor(counselor)
+        submitted_cases_for_counselor(counselor, training_enrollment)
         .annotate(
             completed_journal_count=Count(
                 "journals",
@@ -100,7 +112,7 @@ def counseling_cases_5plus_label(count: int) -> str:
 OWN_CASE_SUPERVISION_MINUTES_PER_POST = 90
 
 
-def own_case_supervision_post_count(counselor) -> int:
+def own_case_supervision_post_count(counselor, *, cohort=None) -> int:
     """사례발표게시판에 수련자 본인이 작성한 사례보고서 게시글 수.
 
     CasePresentationPost 한 건이 1이다. 댓글은 세지 않는다.
@@ -109,7 +121,10 @@ def own_case_supervision_post_count(counselor) -> int:
     """
     if counselor is None or not getattr(counselor, "pk", None):
         return 0
-    return CasePresentationPost.objects.filter(author_id=counselor.pk).count()
+    posts = CasePresentationPost.objects.filter(author_id=counselor.pk)
+    if cohort is not None:
+        posts = posts.filter(cohort=cohort)
+    return posts.count()
 
 
 def own_case_supervision_time_label(post_count: int) -> str:
@@ -122,10 +137,14 @@ def own_case_supervision_time_label(post_count: int) -> str:
     return f"내 사례로 슈퍼비전 받은시간 : {shown}"
 
 
-def supervisor_label_for_counselor(counselor) -> str:
-    """담당 기수 수퍼바이저 이름. 없으면 —."""
-    profile = getattr(counselor, "counselor_profile", None)
-    cohort = profile.cohort if profile is not None else None
+def supervisor_label_for_counselor(counselor, cohort=None) -> str:
+    """담당 기수 수퍼바이저 이름. 없으면 —.
+
+    cohort를 넘기면 CounselorProfile.cohort 대신 그 기수를 쓴다.
+    """
+    if cohort is None:
+        profile = getattr(counselor, "counselor_profile", None)
+        cohort = profile.cohort if profile is not None else None
     if cohort is None:
         return "—"
     try:
@@ -229,10 +248,11 @@ def supervision_attended_time_label(counselor) -> str:
     return format_training_minutes(total)
 
 
-def certificate_date_for_counselor(counselor):
+def certificate_date_for_counselor(counselor, cohort=None):
     """취소되지 않은 기수 수퍼비전 중 가장 늦은 회차의 현지 날짜. 없으면 None."""
-    profile = getattr(counselor, "counselor_profile", None)
-    cohort = getattr(profile, "cohort", None) if profile is not None else None
+    if cohort is None:
+        profile = getattr(counselor, "counselor_profile", None)
+        cohort = getattr(profile, "cohort", None) if profile is not None else None
     if cohort is None:
         return None
     scheduled_at = (
@@ -269,10 +289,10 @@ def journal_delivery_mode_label(counselor) -> str:
     return format_case_method_kinds(methods)
 
 
-def certificate_intake_method_minutes(counselor) -> dict[str, int]:
+def certificate_intake_method_minutes(counselor, training_enrollment=None) -> dict[str, int]:
     """최종 제출 Case의 접수면접 방식별 인정분. snapshot 우선, 없으면 Case fallback."""
     rows = (
-        submitted_cases_for_counselor(counselor)
+        submitted_cases_for_counselor(counselor, training_enrollment)
         .annotate(intake_submitted=_intake_submitted_exists())
         .filter(intake_submitted=True)
         .annotate(
@@ -292,15 +312,18 @@ def certificate_intake_method_minutes(counselor) -> dict[str, int]:
     )
 
 
-def certificate_journal_method_minutes(counselor) -> dict[str, int]:
+def certificate_journal_method_minutes(counselor, training_enrollment=None) -> dict[str, int]:
     """최종 제출 Case의 작성완료 일지 방식별 인정분. snapshot 우선, 없으면 Case fallback."""
+    journals = CounselingJournal.objects.filter(
+        counselor_id=counselor.pk,
+        case__counselor_id=counselor.pk,
+        case__records_submitted_at__isnull=False,
+        is_draft=False,
+    )
+    if training_enrollment is not None:
+        journals = journals.filter(case__training_enrollment_id=training_enrollment.pk)
     rows = (
-        CounselingJournal.objects.filter(
-            counselor_id=counselor.pk,
-            case__counselor_id=counselor.pk,
-            case__records_submitted_at__isnull=False,
-            is_draft=False,
-        )
+        journals
         .annotate(
             effective_method=_effective_method_expr(
                 snapshot_field="counseling_method",
@@ -318,16 +341,19 @@ def certificate_journal_method_minutes(counselor) -> dict[str, int]:
     )
 
 
-def certificate_training_figures(counselor) -> dict:
+def certificate_training_figures(counselor, training_enrollment=None) -> dict:
     """확인증 PDF에 넘길 진행 dict.
 
     수퍼비전·사례보고서·날짜 원천은 get_counselor_training_progress 그대로다.
     접수면접·상담자 경험 분만 최종 제출 Case로 다시 계산한다.
+    training_enrollment가 있으면 그 수련 단위만 집계한다.
     반환 dict는 수련현황 화면과 공유하지 않는다.
     """
-    base = get_counselor_training_progress(counselor)
-    intake = certificate_intake_method_minutes(counselor)
-    counseling = certificate_journal_method_minutes(counselor)
+    base = get_counselor_training_progress(
+        counselor, training_enrollment=training_enrollment
+    )
+    intake = certificate_intake_method_minutes(counselor, training_enrollment)
+    counseling = certificate_journal_method_minutes(counselor, training_enrollment)
     supervision = {
         CounselingMethod.IN_PERSON: base["supervision_in_person_minutes"],
         CounselingMethod.REMOTE: base["supervision_remote_minutes"],
@@ -363,17 +389,32 @@ def certificate_training_figures(counselor) -> dict:
     return figures
 
 
-def build_counselor_training_certificate_context(counselor) -> dict:
-    """PDF와 승인 hash가 함께 쓰는 확인증 context."""
+def build_counselor_training_certificate_context(counselor, training_enrollment=None) -> dict:
+    """PDF와 승인 hash가 함께 쓰는 확인증 context.
+
+    training_enrollment가 있으면 그 수련 단위의 실적·기수·수퍼바이저만 넣는다.
+    """
     from apps.counseling.training_certificate_pdf import build_training_certificate_context
 
-    return build_training_certificate_context(
+    cohort = training_enrollment.cohort if training_enrollment is not None else None
+    context = build_training_certificate_context(
         counselor,
-        certificate_training_figures(counselor),
-        certificate_date_for_counselor(counselor),
-        supervisor_label=supervisor_label_for_counselor(counselor),
-        counseling_cases_5plus_count=counseling_cases_5plus_count(counselor),
+        certificate_training_figures(counselor, training_enrollment),
+        certificate_date_for_counselor(counselor, cohort),
+        supervisor_label=supervisor_label_for_counselor(counselor, cohort),
+        counseling_cases_5plus_count=counseling_cases_5plus_count(
+            counselor, training_enrollment
+        ),
+        own_case_post_count=(
+            own_case_supervision_post_count(counselor, cohort=cohort)
+            if training_enrollment is not None
+            else None
+        ),
+        cohort_label=(f"{cohort}기" if training_enrollment is not None else ""),
     )
+    if training_enrollment is not None:
+        context["training_enrollment"] = training_enrollment
+    return context
 
 
 def _counselor_profile(counselor):
@@ -453,7 +494,7 @@ def build_training_certificate_approval_payload(counselor, context: dict) -> dic
     profile = _counselor_profile(counselor)
     birth_date = profile.birth_date if profile is not None else None
     issued_on = context.get("issued_on")
-    return {
+    payload = {
         "schema": "certificate-metrics-v2",
         "counselor_id": str(counselor.pk),
         "name": getattr(counselor, "name", "") or "",
@@ -467,6 +508,11 @@ def build_training_certificate_approval_payload(counselor, context: dict) -> dic
         "counseling_minutes": _minute_buckets(progress, "counseling"),
         "supervision_minutes": _minute_buckets(progress, "supervision"),
     }
+    enrollment = context.get("training_enrollment")
+    if enrollment is not None:
+        payload["schema"] = "certificate-metrics-v3"
+        payload["training_enrollment_id"] = str(enrollment.pk)
+    return payload
 
 
 def legacy_display_approval_payload(counselor, context: dict, remark: str) -> dict:
@@ -529,6 +575,7 @@ def legacy_metrics_approval_hash(counselor, context: dict) -> str:
     payload = build_training_certificate_approval_payload(counselor, context)
     payload["schema"] = "certificate-metrics-v1"
     payload.pop("own_case_supervision_posts", None)
+    payload.pop("training_enrollment_id", None)
     return _hash_payload(payload)
 
 
@@ -536,15 +583,35 @@ def legacy_display_approval_hash(counselor, context: dict, remark: str) -> str:
     return _hash_payload(legacy_display_approval_payload(counselor, context, remark))
 
 
+def current_certificate_hashes(counselor, context: dict) -> list[str]:
+    """지금 실적으로 인정하는 hash.
+
+    Enrollment context의 현재 값은 certificate-metrics-v3다.
+    같은 실적의 certificate-metrics-v2는 이미 저장된 단일 기수 승인만 이어 받기 위해 포함한다.
+    v1과 화면 문장 hash는 포함하지 않는다.
+    """
+    current = calculate_training_certificate_hash(counselor, context)
+    hashes = [current]
+    if context.get("training_enrollment") is None:
+        return hashes
+    legacy = build_training_certificate_approval_payload(counselor, context)
+    legacy["schema"] = "certificate-metrics-v2"
+    legacy.pop("training_enrollment_id", None)
+    legacy_hash = _hash_payload(legacy)
+    if legacy_hash not in hashes:
+        hashes.append(legacy_hash)
+    return hashes
+
+
 def stored_approval_matches_current(stored_hash: str, counselor, context: dict) -> bool:
-    """저장된 hash가 현재 certificate-metrics-v2와 같을 때만 참이다.
+    """저장된 hash가 현재 확인증 hash일 때만 참이다.
 
     v1 실적 hash와 화면 문장을 포함한 과거 hash에는
     내 사례 슈퍼비전 시간이 없으므로 일치로 보지 않는다.
     """
     if not stored_hash:
         return False
-    return stored_hash == calculate_training_certificate_hash(counselor, context)
+    return stored_hash in current_certificate_hashes(counselor, context)
 
 
 STATUS_UNAPPROVED = "unapproved"
@@ -587,30 +654,61 @@ class TrainingCertificateRevocationError(Exception):
         self.message = message
 
 
-def latest_training_certificate_approval(counselor):
+def latest_training_certificate_approval(counselor, training_enrollment=None):
     if counselor is None or not getattr(counselor, "pk", None):
         return None
+    rows = TrainingCertificateApproval.objects.filter(counselor_id=counselor.pk)
+    if training_enrollment is not None:
+        rows = rows.filter(training_enrollment_id=training_enrollment.pk)
     return (
-        TrainingCertificateApproval.objects.filter(counselor_id=counselor.pk)
-        .select_related("approved_by")
+        rows.select_related("approved_by")
         .order_by("-approved_at", "-pk")
         .first()
     )
 
 
-def _latest_matching_approval(counselor, content_hash):
+def _latest_matching_approval(counselor, content_hash, training_enrollment=None):
     """현재 hash와 일치하는 승인 중 가장 최근 행. 더 오래된 동일 hash는 보지 않는다."""
     if counselor is None or not getattr(counselor, "pk", None) or not content_hash:
         return None
+    rows = TrainingCertificateApproval.objects.filter(
+        counselor_id=counselor.pk,
+        content_hash=content_hash,
+    )
+    if training_enrollment is not None:
+        rows = rows.filter(training_enrollment_id=training_enrollment.pk)
+    return (
+        rows.select_related("approved_by", "revocation__revoked_by")
+        .order_by("-approved_at", "-pk")
+        .first()
+    )
+
+
+def _latest_enrollment_approval(training_enrollment, hashes):
+    """이 Enrollment에서 현재 hash들 중 가장 최근 행. 다른 기수 승인은 보지 않는다."""
+    if training_enrollment is None or not hashes:
+        return None
     return (
         TrainingCertificateApproval.objects.filter(
-            counselor_id=counselor.pk,
-            content_hash=content_hash,
+            training_enrollment_id=training_enrollment.pk,
+            content_hash__in=list(hashes),
         )
         .select_related("approved_by", "revocation__revoked_by")
         .order_by("-approved_at", "-pk")
         .first()
     )
+
+
+def _resolved_certificate_enrollment(counselor, training_enrollment):
+    if training_enrollment is not None:
+        if training_enrollment.counselor_id != getattr(counselor, "pk", None):
+            raise PermissionDenied("수련확인증을 승인할 수 없습니다.")
+        return training_enrollment
+    from apps.counseling.training_enrollment import (
+        resolve_legacy_counselor_training_enrollment,
+    )
+
+    return resolve_legacy_counselor_training_enrollment(counselor)
 
 
 def _revocation_of(approval):
@@ -624,10 +722,16 @@ def _revocation_of(approval):
 
 def current_valid_training_certificate_approval(counselor, context):
     """현재 hash의 최신 승인이 취소되지 않았을 때만 그 행을 반환한다."""
-    match = _latest_matching_approval(
-        counselor,
-        calculate_training_certificate_hash(counselor, context),
-    )
+    enrollment = context.get("training_enrollment")
+    if enrollment is not None:
+        match = _latest_enrollment_approval(
+            enrollment, current_certificate_hashes(counselor, context)
+        )
+    else:
+        match = _latest_matching_approval(
+            counselor,
+            calculate_training_certificate_hash(counselor, context),
+        )
     if _revocation_of(match) is not None:
         return None
     return match
@@ -673,18 +777,36 @@ def counselor_certificate_issue_message(status: str, submitted_case_count: int) 
     return MESSAGE_UNAPPROVED
 
 
-def get_training_certificate_approval_status(counselor, context=None) -> dict:
+def get_training_certificate_approval_status(
+    counselor, context=None, training_enrollment=None
+) -> dict:
     """현재 hash의 최신 승인이 취소되지 않았을 때만 승인완료다.
 
     그 최신 승인이 취소되면 더 오래된 동일 hash 승인으로 되돌리지 않고 미승인이다.
-    현재 hash와 맞는 승인이 없으면, 과거 승인이 있을 때 재승인 필요하다.
+    현재 hash와 맞는 승인이 없으면, 그 Enrollment의 과거 승인이 있을 때 재승인 필요하다.
+    다른 Enrollment의 승인은 이 판정에 넣지 않는다.
     취소 여부는 확인증 hash에 넣지 않는다.
     """
-    if context is None:
-        context = build_counselor_training_certificate_context(counselor)
+    if training_enrollment is None and context is not None:
+        training_enrollment = context.get("training_enrollment")
+    if training_enrollment is None:
+        training_enrollment = _resolved_certificate_enrollment(counselor, None)
+    if context is None or (
+        training_enrollment is not None
+        and context.get("training_enrollment") != training_enrollment
+    ):
+        context = build_counselor_training_certificate_context(
+            counselor, training_enrollment
+        )
     content_hash = calculate_training_certificate_hash(counselor, context)
-    latest = latest_training_certificate_approval(counselor)
-    match = _latest_matching_approval(counselor, content_hash)
+    if training_enrollment is not None:
+        latest = latest_training_certificate_approval(counselor, training_enrollment)
+        match = _latest_enrollment_approval(
+            training_enrollment, current_certificate_hashes(counselor, context)
+        )
+    else:
+        latest = latest_training_certificate_approval(counselor)
+        match = _latest_matching_approval(counselor, content_hash)
     revocation = _revocation_of(match)
     if match is not None and revocation is None:
         status = STATUS_APPROVED
@@ -698,7 +820,9 @@ def get_training_certificate_approval_status(counselor, context=None) -> dict:
     else:
         status = STATUS_UNAPPROVED
         valid = None
-    assigned_count, submitted_count = case_submission_counts(counselor)
+    assigned_count, submitted_count = case_submission_counts(
+        counselor, training_enrollment
+    )
     return {
         "status": status,
         "label": STATUS_LABELS[status],
@@ -716,47 +840,61 @@ def get_training_certificate_approval_status(counselor, context=None) -> dict:
     }
 
 
-def _approver_may_approve(user, counselor) -> bool:
+def _approver_may_approve(user, counselor, training_enrollment=None) -> bool:
     if not getattr(user, "is_authenticated", False):
         return False
     if getattr(user, "is_superuser", False) or user.role == UserRole.ADMIN:
         return True
     if user.role != UserRole.SUPERVISOR:
         return False
+    if training_enrollment is not None:
+        return supervisor_can_access_cohort(user, training_enrollment.cohort)
     return user_can_browse_counselor_journals(user, counselor)
 
 
 @transaction.atomic
-def approve_training_certificate(counselor, approved_by) -> TrainingCertificateApproval:
+def approve_training_certificate(
+    counselor, approved_by, training_enrollment=None
+) -> TrainingCertificateApproval:
     """현재 확인증 hash로 승인 행을 추가한다. 기존 행은 지우지 않는다.
 
     현재 hash의 최신 승인이 아직 유효하면 같은 hash 행을 다시 만들지 않는다.
     그 승인이 취소된 뒤에만 새 행을 추가한다.
+    training_enrollment를 주면 그 수련 단위만 승인한다.
     """
-    if not _approver_may_approve(approved_by, counselor):
+    enrollment = _resolved_certificate_enrollment(counselor, training_enrollment)
+    if not _approver_may_approve(approved_by, counselor, enrollment):
         raise PermissionDenied("수련확인증을 승인할 수 없습니다.")
-    if submitted_case_count(counselor) < 1:
+    if submitted_case_count(counselor, enrollment) < 1:
         raise TrainingCertificateApprovalError(MESSAGE_APPROVAL_REQUIRES_SUBMITTED_CASE)
-    context = build_counselor_training_certificate_context(counselor)
+    context = build_counselor_training_certificate_context(counselor, enrollment)
     content_hash = calculate_training_certificate_hash(counselor, context)
-    existing = TrainingCertificateApproval.objects.filter(
-        counselor_id=counselor.pk,
-        content_hash=content_hash,
-    ).order_by("-approved_at", "-pk")
+    if enrollment is not None:
+        existing = TrainingCertificateApproval.objects.filter(
+            training_enrollment_id=enrollment.pk,
+            content_hash__in=current_certificate_hashes(counselor, context),
+        )
+    else:
+        existing = TrainingCertificateApproval.objects.filter(
+            counselor_id=counselor.pk,
+            content_hash=content_hash,
+        )
+    existing = existing.order_by("-approved_at", "-pk")
     if connection.features.has_select_for_update:
         existing = existing.select_for_update()
     current = existing.first()
     if current is not None and _revocation_of(current) is None:
         return current
-    from .training_enrollment import (
-        ActiveTrainingEnrollmentError,
-        require_active_training_enrollment,
-    )
+    if enrollment is None:
+        from .training_enrollment import (
+            ActiveTrainingEnrollmentError,
+            require_active_training_enrollment,
+        )
 
-    try:
-        enrollment = require_active_training_enrollment(counselor)
-    except ActiveTrainingEnrollmentError as exc:
-        raise TrainingCertificateApprovalError(str(exc)) from exc
+        try:
+            enrollment = require_active_training_enrollment(counselor)
+        except ActiveTrainingEnrollmentError as exc:
+            raise TrainingCertificateApprovalError(str(exc)) from exc
     return TrainingCertificateApproval.objects.create(
         counselor=counselor,
         training_enrollment=enrollment,
@@ -770,22 +908,33 @@ _REVOCATION_UNAVAILABLE = "취소할 수 있는 유효한 승인이 없습니다
 
 
 @transaction.atomic
-def revoke_training_certificate(counselor, revoked_by, reason: str = ""):
+def revoke_training_certificate(
+    counselor, revoked_by, reason: str = "", training_enrollment=None
+):
     """현재 hash의 최신 미취소 승인만 취소한다.
 
     승인 행의 hash·승인자·승인일시는 바꾸지 않는다.
     이미 취소된 최신 승인이나 과거 hash는 취소하지 않고,
     더 오래된 동일 hash 승인으로 넘어가지도 않는다.
+    다른 Enrollment의 승인도 취소하지 않는다.
     행 잠금이 되는 DB에서는 그 최신 승인을 잠근 뒤 취소 이력을 한 번만 만든다.
     """
-    if not _approver_may_approve(revoked_by, counselor):
+    enrollment = _resolved_certificate_enrollment(counselor, training_enrollment)
+    if not _approver_may_approve(revoked_by, counselor, enrollment):
         raise PermissionDenied("수련확인증 승인을 취소할 수 없습니다.")
-    context = build_counselor_training_certificate_context(counselor)
+    context = build_counselor_training_certificate_context(counselor, enrollment)
     content_hash = calculate_training_certificate_hash(counselor, context)
-    candidates = TrainingCertificateApproval.objects.filter(
-        counselor_id=counselor.pk,
-        content_hash=content_hash,
-    ).order_by("-approved_at", "-pk")
+    if enrollment is not None:
+        candidates = TrainingCertificateApproval.objects.filter(
+            training_enrollment_id=enrollment.pk,
+            content_hash__in=current_certificate_hashes(counselor, context),
+        )
+    else:
+        candidates = TrainingCertificateApproval.objects.filter(
+            counselor_id=counselor.pk,
+            content_hash=content_hash,
+        )
+    candidates = candidates.order_by("-approved_at", "-pk")
     if connection.features.has_select_for_update:
         candidates = candidates.select_for_update()
     candidate = candidates.first()

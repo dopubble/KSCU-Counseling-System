@@ -53,6 +53,21 @@ urlpatterns = [
         name="enrollment_training_progress_detail",
     ),
     path(
+        "training-progress/enrollments/<uuid:enrollment_id>/certificate/",
+        views_training_certificate.supervisor_enrollment_training_certificate,
+        name="enrollment_training_certificate",
+    ),
+    path(
+        "training-progress/enrollments/<uuid:enrollment_id>/certificate/approve/",
+        views_training_certificate.supervisor_approve_enrollment_training_certificate,
+        name="enrollment_training_certificate_approve",
+    ),
+    path(
+        "training-progress/enrollments/<uuid:enrollment_id>/certificate/revoke/",
+        views_training_certificate.supervisor_revoke_enrollment_training_certificate,
+        name="enrollment_training_certificate_revoke",
+    ),
+    path(
         "training-progress/counselors/<uuid:counselor_id>/certificate/",
         views_training_certificate.supervisor_counselor_training_certificate,
         name="counselor_training_certificate",

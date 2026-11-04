@@ -83,7 +83,7 @@
                 <span class="badge text-bg-secondary">{{ certificate_approval.label }}</span>
                 {% endif %}
             {% if certificate_can_issue %}
-            <a href="{% url 'counselor:training_certificate' %}"
+            <a href="{% url 'counselor:training_certificate' %}?enrollment={{ selected_training_enrollment.pk }}"
                class="btn btn-sm btn-outline-primary"
                target="_blank"
                rel="noopener">수련확인증 출력</a>
