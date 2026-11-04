@@ -27,7 +27,7 @@
             <div class="list-group list-group-flush">
                 {% for counselor in group.counselors %}
                 <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center py-3"
-                   href="{% url 'supervisor:counselor_journals' counselor.id %}">
+                   href="{% url 'supervisor:counselor_journals' counselor.id %}?cohort={{ group.cohort }}">
                     <span class="fw-semibold">{{ counselor.name }}</span>
                     <span class="badge text-bg-light text-dark border">상담일지 {{ counselor.completed_journal_count }}건</span>
                 </a>

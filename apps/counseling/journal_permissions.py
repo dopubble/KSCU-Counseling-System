@@ -5,7 +5,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from apps.accounts.models import SupervisorProfile, UserRole
-from apps.counseling.cohort_journal_service import get_counselor_cohort
+from apps.counseling.cohort_journal_service import (
+    counselor_visible_supervision_cohorts,
+    get_counselor_cohort,
+    supervision_cohort_for_case,
+)
 
 if TYPE_CHECKING:
     from apps.accounts.models import User
@@ -76,8 +80,7 @@ def user_can_view_journal(user: "User", journal: "CounselingJournal") -> bool:
     if user_is_platform_admin(user):
         return True
     if user.role == UserRole.SUPERVISOR:
-        author_cohort = get_counselor_cohort(journal.counselor)
-        return supervisor_can_access_cohort(user, author_cohort)
+        return supervisor_can_access_cohort(user, supervision_cohort_for_case(journal.case))
     return False
 
 
@@ -103,8 +106,7 @@ def user_can_view_initial_counseling_record(
     if user_is_platform_admin(user):
         return True
     if user.role == UserRole.SUPERVISOR:
-        author_cohort = get_counselor_cohort(record.counselor)
-        return supervisor_can_access_cohort(user, author_cohort)
+        return supervisor_can_access_cohort(user, supervision_cohort_for_case(record.case))
     return False
 
 
@@ -113,6 +115,17 @@ def user_can_download_initial_counseling_record_pdf(
     record: "InitialCounselingRecord",
 ) -> bool:
     return user_can_view_initial_counseling_record(user, record)
+
+
+def user_can_open_counselor_supervision(user: "User", counselor: "User", cohort: int | None) -> bool:
+    """수퍼바이저 상담사 일지 화면. cohort는 보려는 사례 기수다."""
+    if not user_can_browse_cohort_journals(user):
+        return False
+    if user_is_platform_admin(user):
+        return True
+    if cohort is None or not supervisor_can_access_cohort(user, cohort):
+        return False
+    return cohort in counselor_visible_supervision_cohorts(counselor)
 
 
 def supervision_cohorts_for_user(user: "User") -> list[int] | None:

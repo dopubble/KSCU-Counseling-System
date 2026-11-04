@@ -4,10 +4,83 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from django.db.models import Count, Q
+from django.db.models import Count, Exists, OuterRef, Q
 
 from apps.accounts.models import CounselorProfile, UserRole, UserStatus
+from apps.counseling.models import Case, TrainingEnrollment
 from apps.sessions_app.models import CounselingJournal, InitialCounselingRecord
+
+
+def legacy_supervision_cohort(counselor) -> int | None:
+    """Enrollment로 기수를 확정할 수 없을 때의 단일 기수 기준.
+
+    Enrollment가 없거나, 있는 기수가 프로필 기수 하나뿐이면 그 기수를 쓴다.
+    기수가 둘 이상이거나 프로필과 다르면 None이다. 그때는 수퍼바이저에게 열지 않는다.
+    """
+    profile_cohort = get_counselor_cohort(counselor)
+    if counselor is None or not getattr(counselor, "pk", None) or not profile_cohort:
+        return profile_cohort
+    enrolled = {
+        int(cohort)
+        for cohort in TrainingEnrollment.objects.filter(counselor_id=counselor.pk).values_list(
+            "cohort", flat=True
+        )
+    }
+    if not enrolled or enrolled == {int(profile_cohort)}:
+        return int(profile_cohort)
+    return None
+
+
+def supervision_cohort_for_case(case) -> int | None:
+    """수퍼바이저 열람 기수. 사례 Enrollment가 있으면 그 기수다."""
+    if case is None:
+        return None
+    if case.training_enrollment_id:
+        enrollment = case.training_enrollment
+        return int(enrollment.cohort) if enrollment is not None else None
+    return legacy_supervision_cohort(case.counselor)
+
+
+def counselor_visible_supervision_cohorts(counselor) -> set[int]:
+    """이 상담사가 수퍼바이저 목록에 나타나는 기수."""
+    if counselor is None or not getattr(counselor, "pk", None):
+        return set()
+    cohorts = {
+        int(cohort)
+        for cohort in Case.objects.filter(
+            counselor_id=counselor.pk,
+            training_enrollment__isnull=False,
+        ).values_list("training_enrollment__cohort", flat=True)
+    }
+    legacy = legacy_supervision_cohort(counselor)
+    if legacy:
+        cohorts.add(int(legacy))
+    return cohorts
+
+
+def _legacy_enrollment_mismatch():
+    return TrainingEnrollment.objects.filter(counselor_id=OuterRef("counselor_id")).exclude(
+        cohort=OuterRef("counselor__counselor_profile__cohort")
+    )
+
+
+def supervision_record_cohort_q(allowed_cohorts: list[int] | None):
+    """사례 Enrollment 기수, 또는 단일 기수 레거시 프로필 기수.
+
+    관리자(allowed_cohorts=None)는 기수가 있는 기록과, 프로필 기수가 있는
+    Enrollment 없는 기록을 그대로 본다. 기수를 확정할 수 없는 기록은
+    수퍼바이저 목록에만 넣지 않는다.
+    """
+    enrolled = Q(case__training_enrollment__isnull=False)
+    if allowed_cohorts is None:
+        return enrolled | Q(
+            case__training_enrollment__isnull=True,
+            counselor__counselor_profile__cohort__isnull=False,
+        )
+    legacy = Q(case__training_enrollment__isnull=True) & ~Exists(_legacy_enrollment_mismatch())
+    legacy &= Q(counselor__counselor_profile__cohort__in=allowed_cohorts)
+    enrolled &= Q(case__training_enrollment__cohort__in=allowed_cohorts)
+    return enrolled | legacy
 
 
 def get_counselor_cohort(counselor) -> int | None:
@@ -67,72 +140,119 @@ def get_cohort_journals_for_supervision(
     return dict(by_session)
 
 
+def _legacy_profile_cohort(profile_cohort, enrolled: set[int]) -> int | None:
+    if not profile_cohort:
+        return None
+    cohort = int(profile_cohort)
+    if not enrolled or enrolled == {cohort}:
+        return cohort
+    return None
+
+
 def get_supervision_counselors_by_cohort(*, allowed_cohorts: list[int] | None) -> list[dict]:
     """
-    수퍼비전 상담사 목록을 기수별로 반환한다.
+    수퍼비전 상담사 목록을 사례 기수별로 반환한다.
 
     상담사 조건은 사례발표 동기 집계와 같다.
     승인(is_approved), 역할 COUNSELOR, 상태 ACTIVE, 기수 있음.
-    완료 일지 수는 같은 쿼리의 Count로 집계한다.
+    같은 상담사가 여러 기수 사례를 가지면 기수 섹션마다 따로 나온다.
+    완료 일지 수는 그 기수 사례만 센다.
     """
-    qs = CounselorProfile.objects.filter(
-        cohort__isnull=False,
-        is_approved=True,
-        user__role=UserRole.COUNSELOR,
-        user__status=UserStatus.ACTIVE,
-    ).select_related("user")
-    if allowed_cohorts is not None:
-        if not allowed_cohorts:
-            return []
-        qs = qs.filter(cohort__in=allowed_cohorts)
-
-    profiles = qs.annotate(
-        completed_journal_count=Count(
-            "user__journals",
-            filter=Q(user__journals__is_draft=False),
+    if allowed_cohorts is not None and not allowed_cohorts:
+        return []
+    profiles = list(
+        CounselorProfile.objects.filter(
+            cohort__isnull=False,
+            is_approved=True,
+            user__role=UserRole.COUNSELOR,
+            user__status=UserStatus.ACTIVE,
         )
-    ).order_by("cohort", "user__name")
+        .select_related("user")
+        .order_by("user__name")
+    )
+    if not profiles:
+        return []
+    counselor_ids = [profile.user_id for profile in profiles]
+    enrolled: dict[int, set[int]] = defaultdict(set)
+    for counselor_id, cohort in TrainingEnrollment.objects.filter(
+        counselor_id__in=counselor_ids
+    ).values_list("counselor_id", "cohort"):
+        enrolled[counselor_id].add(int(cohort))
+    case_cohorts: dict[int, set[int]] = defaultdict(set)
+    for counselor_id, cohort in Case.objects.filter(
+        counselor_id__in=counselor_ids,
+        training_enrollment__isnull=False,
+    ).values_list("counselor_id", "training_enrollment__cohort"):
+        case_cohorts[counselor_id].add(int(cohort))
+    journal_counts: dict[tuple[int, int | None], int] = defaultdict(int)
+    for row in (
+        CounselingJournal.objects.filter(is_draft=False, counselor_id__in=counselor_ids)
+        .values("counselor_id", "case__training_enrollment__cohort")
+        .annotate(total=Count("pk"))
+    ):
+        journal_counts[
+            (row["counselor_id"], row["case__training_enrollment__cohort"])
+        ] = row["total"]
 
+    allowed = set(allowed_cohorts) if allowed_cohorts is not None else None
     groups: dict[int, dict] = {}
-    ordered: list[dict] = []
     for profile in profiles:
-        group = groups.get(profile.cohort)
-        if group is None:
-            group = {
-                "cohort": profile.cohort,
-                "label": f"{profile.cohort}기",
-                "counselors": [],
-            }
-            groups[profile.cohort] = group
-            ordered.append(group)
-        group["counselors"].append(
-            {
-                "id": profile.user_id,
-                "name": profile.user.name,
-                "completed_journal_count": profile.completed_journal_count,
-            }
-        )
+        counselor_id = profile.user_id
+        visible = set(case_cohorts[counselor_id])
+        legacy = _legacy_profile_cohort(profile.cohort, enrolled[counselor_id])
+        if legacy:
+            visible.add(legacy)
+        if allowed is not None:
+            visible &= allowed
+        for cohort in visible:
+            count = journal_counts.get((counselor_id, cohort), 0)
+            if legacy == cohort:
+                count += journal_counts.get((counselor_id, None), 0)
+            group = groups.get(cohort)
+            if group is None:
+                group = {
+                    "cohort": cohort,
+                    "label": f"{cohort}기",
+                    "counselors": [],
+                }
+                groups[cohort] = group
+            group["counselors"].append(
+                {
+                    "id": counselor_id,
+                    "name": profile.user.name,
+                    "completed_journal_count": count,
+                }
+            )
+    ordered = [groups[cohort] for cohort in sorted(groups)]
+    for group in ordered:
+        group["counselors"].sort(key=lambda row: row["name"])
     return ordered
 
 
-def get_counselor_journals_for_supervision(counselor):
+def get_counselor_journals_for_supervision(counselor, *, cohort=None):
     """
     특정 상담사의 완료(비초안) 상담일지.
 
-    조회 기준은 CounselingJournal.counselor 이다.
-    기수 권한은 호출 전에 user_can_browse_counselor_journals 로 검사한다.
+    cohort를 주면 그 기수 사례의 일지만 반환한다.
+    기수 권한은 호출 전에 검사한다.
     """
     if counselor is None or not getattr(counselor, "pk", None):
         return CounselingJournal.objects.none()
 
+    queryset = CounselingJournal.objects.filter(
+        counselor_id=counselor.pk,
+        is_draft=False,
+    )
+    if cohort is not None:
+        matched = Q(case__training_enrollment__cohort=cohort)
+        if legacy_supervision_cohort(counselor) == cohort:
+            matched |= Q(case__training_enrollment__isnull=True)
+        queryset = queryset.filter(matched)
     return (
-        CounselingJournal.objects.filter(
-            counselor_id=counselor.pk,
-            is_draft=False,
-        )
-        .select_related(
+        queryset.select_related(
             "case",
             "case__client",
+            "case__training_enrollment",
             "case__initial_counseling_record",
             "case__termination_counseling_record",
             "appointment",
@@ -148,14 +268,11 @@ def get_cohort_initial_records_for_supervision(
     allowed_cohorts: list[int] | None,
 ) -> list[InitialCounselingRecord]:
     """완료(비초안) 초기상담 기록지 목록."""
-    qs = InitialCounselingRecord.objects.filter(
-        is_draft=False,
-        counselor__counselor_profile__cohort__isnull=False,
+    if allowed_cohorts is not None and not allowed_cohorts:
+        return []
+    qs = InitialCounselingRecord.objects.filter(is_draft=False).filter(
+        supervision_record_cohort_q(allowed_cohorts)
     )
-    if allowed_cohorts is not None:
-        if not allowed_cohorts:
-            return []
-        qs = qs.filter(counselor__counselor_profile__cohort__in=allowed_cohorts)
 
     return list(
         qs.select_related(

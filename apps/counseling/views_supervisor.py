@@ -20,13 +20,15 @@ from apps.counseling.cohort_journal_service import (
 )
 from apps.counseling.journal_permissions import (
     build_supervisor_dashboard_context,
+    get_supervisor_assigned_cohorts,
     supervision_cohorts_for_user,
     user_can_browse_cohort_initial_records,
     user_can_browse_cohort_journals,
-    user_can_browse_counselor_journals,
     user_can_download_initial_counseling_record_pdf,
     user_can_download_journal_pdf,
+    user_can_open_counselor_supervision,
     user_can_view_initial_counseling_record,
+    user_is_platform_admin,
 )
 from apps.counseling.privacy import mask_client_name
 from apps.counseling.views import (
@@ -197,29 +199,49 @@ def supervisor_cohort_journals(request):
     )
 
 
+def _selected_supervision_cohort(request) -> int | None:
+    """목록에서 고른 기수. 담당 기수가 하나면 그 기수, 관리자의 빈 조회는 전체."""
+    raw = (request.GET.get("cohort") or "").strip()
+    if not raw:
+        if user_is_platform_admin(request.user):
+            return None
+        assigned = get_supervisor_assigned_cohorts(request.user)
+        if len(assigned) == 1:
+            return assigned[0]
+        raise PermissionDenied("상담일지 열람 권한이 없습니다.")
+    try:
+        cohort = int(raw)
+    except (TypeError, ValueError):
+        raise PermissionDenied("상담일지 열람 권한이 없습니다.")
+    if cohort <= 0:
+        raise PermissionDenied("상담일지 열람 권한이 없습니다.")
+    return cohort
+
+
 @supervisor_required
 def supervisor_counselor_journals(request, counselor_id):
     counselor = get_object_or_404(
         User.objects.select_related("counselor_profile"),
         pk=counselor_id,
     )
-    if not user_can_browse_counselor_journals(request.user, counselor):
+    cohort = _selected_supervision_cohort(request)
+    if not user_can_open_counselor_supervision(request.user, counselor, cohort):
         raise PermissionDenied("상담일지 열람 권한이 없습니다.")
 
-    profile = getattr(counselor, "counselor_profile", None)
-    cohort = profile.cohort if profile is not None else None
     case_groups = _supervisor_counselor_case_groups(
-        get_counselor_journals_for_supervision(counselor)
+        get_counselor_journals_for_supervision(counselor, cohort=cohort)
     )
+    if cohort:
+        page_title = f"[{cohort}기] {counselor.name} 상담일지"
+    else:
+        page_title = f"{counselor.name} 상담일지"
     return render(
         request,
         "supervisor/counselor_journals.html",
         {
             "counselor": counselor,
             "cohort_label": f"{cohort}기" if cohort else "",
-            "page_title": (
-                f"[{cohort}기] {counselor.name} 상담일지" if cohort else f"{counselor.name} 상담일지"
-            ),
+            "page_title": page_title,
             "case_groups": case_groups,
             "case_count": len(case_groups),
             "completed_session_count": sum(group["journal_count"] for group in case_groups),
@@ -260,6 +282,7 @@ def supervisor_initial_record_detail(request, record_pk):
             "case",
             "case__client",
             "case__application",
+            "case__training_enrollment",
             "counselor",
             "counselor__counselor_profile",
         ),
@@ -299,6 +322,7 @@ def supervisor_journal_pdf(request, journal_pk):
             "case",
             "case__client",
             "case__application",
+            "case__training_enrollment",
             "counselor",
             "counselor__counselor_profile",
         ),
@@ -341,6 +365,7 @@ def supervisor_initial_record_pdf(request, record_pk):
             "case",
             "case__client",
             "case__application",
+            "case__training_enrollment",
             "counselor",
             "counselor__counselor_profile",
         ),
