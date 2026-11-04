@@ -12,7 +12,11 @@ from django.utils.safestring import mark_safe
 
 from apps.accounts.models import CounselorProfile, User, UserRole, UserStatus
 from apps.counseling.cohort_journal_service import get_counselor_cohort
-from apps.counseling.models import CasePresentationComment, CasePresentationPost
+from apps.counseling.models import (
+    CasePresentationComment,
+    CasePresentationPost,
+    TrainingEnrollment,
+)
 
 PRESENTATION_BOARD_FORM_DIR = Path(settings.BASE_DIR) / "data" / "forms"
 
@@ -148,13 +152,46 @@ def user_can_browse_all_presentation_cohorts(user: User) -> bool:
     return user_is_platform_staff(user) or user_is_supervisor_viewer(user)
 
 
+def counselor_presentation_cohorts(user: User) -> set[int]:
+    """상담사가 볼 수 있는 사례발표 기수.
+
+    Enrollment가 있으면 그 기수만 본다. 참여 기록은 COMPLETED도 포함한다.
+    Enrollment가 하나도 없으면 기존처럼 CounselorProfile.cohort 하나다.
+    """
+    if user is None or not getattr(user, "pk", None):
+        return set()
+    cached = getattr(user, "_presentation_cohorts", None)
+    if cached is not None:
+        return cached
+    enrolled = {
+        int(cohort)
+        for cohort in TrainingEnrollment.objects.filter(counselor_id=user.pk).values_list(
+            "cohort", flat=True
+        )
+    }
+    if not enrolled:
+        profile_cohort = get_counselor_cohort(user)
+        if profile_cohort:
+            enrolled = {int(profile_cohort)}
+    user._presentation_cohorts = enrolled
+    return enrolled
+
+
 def resolve_viewer_cohort(user: User, *, requested_cohort: int | None = None) -> int | None:
-    """열람 대상 기수. 상담사는 본인 기수, 수퍼바이저·관리자는 요청 기수(없으면 전체)."""
+    """열람 대상 기수. 상담사는 참여 기수, 수퍼바이저·관리자는 요청 기수(없으면 전체)."""
     if user_can_browse_all_presentation_cohorts(user):
         return requested_cohort
     if user.role != UserRole.COUNSELOR:
         return None
-    return get_counselor_cohort(user)
+    allowed = counselor_presentation_cohorts(user)
+    if requested_cohort is not None:
+        return requested_cohort if requested_cohort in allowed else None
+    profile_cohort = get_counselor_cohort(user)
+    if profile_cohort in allowed:
+        return profile_cohort
+    if len(allowed) == 1:
+        return next(iter(allowed))
+    return None
 
 
 def user_can_view_presentation_board(user: User, cohort: int) -> bool:
@@ -164,7 +201,16 @@ def user_can_view_presentation_board(user: User, cohort: int) -> bool:
         return True
     if user.role != UserRole.COUNSELOR:
         return False
-    return get_counselor_cohort(user) == cohort
+    return cohort in counselor_presentation_cohorts(user)
+
+
+def counselor_profile_cohort_matches(user: User, cohort: int) -> bool:
+    """작성·수정·삭제는 기존처럼 현재 CounselorProfile.cohort에서만 허용한다."""
+    return bool(
+        user.is_authenticated
+        and user.role == UserRole.COUNSELOR
+        and get_counselor_cohort(user) == cohort
+    )
 
 
 def presentation_board_cohort_options() -> list[int]:
@@ -182,37 +228,42 @@ def require_presentation_board_access(user: User, cohort: int) -> None:
 
 
 def user_can_create_presentation_post(user: User, cohort: int) -> bool:
-    if user.role != UserRole.COUNSELOR:
-        return False
-    return user_can_view_presentation_board(user, cohort)
+    """새 글은 현재 프로필 기수에서만 작성한다. COMPLETED 기수로 넓히지 않는다."""
+    return counselor_profile_cohort_matches(user, cohort)
 
 
 def user_can_delete_presentation_post(user: User, post: CasePresentationPost) -> bool:
     if user_is_platform_staff(user):
         return True
-    return post.author_id == user.pk
+    return post.author_id == user.pk and counselor_profile_cohort_matches(user, post.cohort)
 
 
 def user_can_comment_on_presentation_post(user: User, post: CasePresentationPost) -> bool:
-    """게시판 열람 권한이 있는 사용자는 댓글 작성 가능(발표자 포함)."""
+    """댓글은 기존과 같이 현재 프로필 기수, 또는 관리자·수퍼바이저만 작성한다."""
     if not user_can_view_presentation_board(user, post.cohort):
         return False
-    if user_is_platform_staff(user):
+    if user_is_platform_staff(user) or user_is_supervisor_viewer(user):
         return True
-    if user.role in (UserRole.SUPERVISOR, UserRole.COUNSELOR):
-        return True
-    return False
+    return counselor_profile_cohort_matches(user, post.cohort)
 
 
 def user_can_delete_presentation_comment(user: User, comment: CasePresentationComment) -> bool:
     if user_is_platform_staff(user):
         return True
-    return comment.author_id == user.pk
+    if comment.author_id != user.pk:
+        return False
+    if user_is_supervisor_viewer(user):
+        return True
+    return counselor_profile_cohort_matches(user, comment.post.cohort)
 
 
 def user_can_edit_presentation_comment(user: User, comment: CasePresentationComment) -> bool:
     """댓글 작성자만 본인 댓글을 수정할 수 있습니다."""
-    return comment.author_id == user.pk
+    if comment.author_id != user.pk:
+        return False
+    if user_is_platform_staff(user) or user_is_supervisor_viewer(user):
+        return True
+    return counselor_profile_cohort_matches(user, comment.post.cohort)
 
 
 def get_presentation_form_path(template_key: str) -> Path:

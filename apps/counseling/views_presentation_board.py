@@ -23,12 +23,17 @@ from apps.counseling.forms import (
     PresentationBoardPostCaseForm,
     PresentationBoardPostForm,
 )
-from apps.counseling.models import CasePresentationComment, CasePresentationPost
+from apps.counseling.models import (
+    CasePresentationComment,
+    CasePresentationPost,
+    TrainingEnrollment,
+)
 from apps.counseling.presentation_board import (
     PRESENTATION_BULK_ZIP_PASSWORD_NOTICE,
     PRESENTATION_FILE_PASSWORD_MIN_LENGTH,
     PRESENTATION_FILE_PASSWORD_NOTICE,
     PRESENTATION_FORM_TEMPLATES,
+    counselor_profile_cohort_matches,
     count_presentation_comment_peers,
     count_presentation_peer_submissions,
     get_presentation_comment_peer_user_ids,
@@ -43,6 +48,7 @@ from apps.counseling.presentation_board import (
     user_can_delete_presentation_comment,
     user_can_delete_presentation_post,
     user_can_edit_presentation_comment,
+    user_can_view_presentation_board,
     user_is_platform_staff,
     user_is_supervisor_viewer,
 )
@@ -65,9 +71,13 @@ def _parse_cohort_param(raw) -> int | None:
     return value if value > 0 else None
 
 
+def _requested_cohort(request) -> int | None:
+    return _parse_cohort_param(request.GET.get("cohort") or request.POST.get("cohort"))
+
+
 def _resolve_list_cohort_filter(request) -> int | None:
     """목록 필터 기수. 수퍼바이저·관리자는 None이면 전 기수."""
-    requested = _parse_cohort_param(request.GET.get("cohort") or request.POST.get("cohort"))
+    requested = _requested_cohort(request)
     user = request.user
 
     if user_can_browse_all_presentation_cohorts(user):
@@ -75,6 +85,8 @@ def _resolve_list_cohort_filter(request) -> int | None:
             require_presentation_board_access(user, requested)
         return requested
 
+    if requested is not None and not user_can_view_presentation_board(user, requested):
+        raise PermissionDenied("사례발표 게시판 열람 권한이 없습니다.")
     cohort = resolve_viewer_cohort(user, requested_cohort=requested)
     if cohort is None:
         raise PermissionDenied("기수 정보가 없어 사례발표 게시판을 이용할 수 없습니다.")
@@ -83,22 +95,40 @@ def _resolve_list_cohort_filter(request) -> int | None:
 
 
 def _board_cohort_or_403(request) -> int:
-    requested = _parse_cohort_param(request.GET.get("cohort") or request.POST.get("cohort"))
-    cohort = resolve_viewer_cohort(request.user, requested_cohort=requested)
-    if cohort is None:
-        if user_can_browse_all_presentation_cohorts(request.user) and requested:
-            cohort = requested
-        elif user_can_browse_all_presentation_cohorts(request.user):
+    requested = _requested_cohort(request)
+    if user_can_browse_all_presentation_cohorts(request.user):
+        cohort = requested
+        if cohort is None:
             cohort = (
                 CounselorProfile.objects.exclude(cohort__isnull=True)
                 .order_by("-cohort")
                 .values_list("cohort", flat=True)
                 .first()
             )
+    else:
+        if requested is not None and not user_can_view_presentation_board(
+            request.user, requested
+        ):
+            raise PermissionDenied("사례발표 게시판 열람 권한이 없습니다.")
+        cohort = resolve_viewer_cohort(request.user, requested_cohort=requested)
     if cohort is None:
         raise PermissionDenied("기수 정보가 없어 사례발표 게시판을 이용할 수 없습니다.")
     require_presentation_board_access(request.user, cohort)
     return cohort
+
+
+def _dashboard_url_for_board(user, cohort: int | None) -> str:
+    base = reverse("counselor:dashboard")
+    if cohort is None or not getattr(user, "is_authenticated", False):
+        return base
+    enrollment_id = (
+        TrainingEnrollment.objects.filter(counselor_id=user.pk, cohort=cohort)
+        .values_list("pk", flat=True)
+        .first()
+    )
+    if enrollment_id is None:
+        return base
+    return f"{base}?enrollment={enrollment_id}"
 
 
 def _presentation_posts_query(cohort: int | None):
@@ -264,6 +294,7 @@ def presentation_board(request):
             "post_form": PresentationBoardPostForm(
                 author_name=request.user.name,
                 author=request.user,
+                cohort=cohort_filter,
             ),
             "form_templates": PRESENTATION_FORM_TEMPLATES,
             "can_create_post": (
@@ -279,6 +310,7 @@ def presentation_board(request):
             "show_cohort_column": can_filter and cohort_filter is None,
             "bulk_zip_password_notice": PRESENTATION_BULK_ZIP_PASSWORD_NOTICE,
             "bulk_download_url": reverse("counselor:presentation_board_bulk_download"),
+            "dashboard_url": _dashboard_url_for_board(request.user, cohort_filter),
         },
     )
 
@@ -308,6 +340,13 @@ def presentation_board_detail(request, post_pk):
     )
     can_comment = user_can_comment_on_presentation_post(request.user, post)
     cohort_filter = _parse_cohort_param(request.GET.get("cohort"))
+    if user_can_browse_all_presentation_cohorts(request.user):
+        back_cohort = cohort_filter
+    else:
+        back_cohort = post.cohort
+    can_link_case = post.author_id == request.user.pk and counselor_profile_cohort_matches(
+        request.user, post.cohort
+    )
     return render(
         request,
         "counselor/presentation_board_detail.html",
@@ -326,12 +365,14 @@ def presentation_board_detail(request, post_pk):
             "is_staff_viewer": user_is_platform_staff(request.user),
             "is_supervisor_viewer": user_is_supervisor_viewer(request.user),
             "is_author": post.author_id == request.user.pk,
+            "can_link_case": can_link_case,
             "case_form": (
                 PresentationBoardPostCaseForm(
                     author=request.user,
+                    cohort=post.cohort,
                     initial={"case": post.case_id},
                 )
-                if post.author_id == request.user.pk
+                if can_link_case
                 else None
             ),
             "page_subtitle": f"{post.cohort}기 · {post.author.name}",
@@ -340,7 +381,8 @@ def presentation_board_detail(request, post_pk):
                 "counselor:presentation_board_post_file",
                 kwargs={"post_pk": post.pk},
             ),
-            "board_list_url": _presentation_board_list_url(cohort=cohort_filter),
+            "board_list_url": _presentation_board_list_url(cohort=back_cohort),
+            "dashboard_url": _dashboard_url_for_board(request.user, back_cohort),
         },
     )
 
@@ -357,6 +399,7 @@ def presentation_board_post_create(request):
         request.FILES,
         author_name=request.user.name,
         author=request.user,
+        cohort=cohort,
     )
     if not form.is_valid():
         for errors in form.errors.values():
@@ -385,10 +428,13 @@ def presentation_board_post_case_edit(request, post_pk):
     require_presentation_board_access(request.user, post.cohort)
     if post.author_id != request.user.pk:
         raise PermissionDenied("본인 게시글만 사례를 연결할 수 있습니다.")
+    if not counselor_profile_cohort_matches(request.user, post.cohort):
+        raise PermissionDenied("현재 수련 기수의 게시글만 사례를 연결할 수 있습니다.")
 
     form = PresentationBoardPostCaseForm(
         request.POST,
         author=request.user,
+        cohort=post.cohort,
     )
     if not form.is_valid():
         for errors in form.errors.values():

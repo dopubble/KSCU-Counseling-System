@@ -19,8 +19,8 @@ def _build_trail(kwargs: dict) -> list[dict]:
         url_name = kwargs.get(f"c{index}_url_name") or ""
         url_arg = kwargs.get(f"c{index}_url_arg") or ""
         icon = kwargs.get(f"c{index}_icon") or ""
-        url = None
-        if url_name:
+        url = kwargs.get(f"c{index}_url") or None
+        if url_name and not url:
             try:
                 if url_arg:
                     url = reverse(url_name, args=[url_arg])

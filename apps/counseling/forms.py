@@ -1,6 +1,7 @@
 import os
 
 from django import forms
+from django.db.models import Q
 
 from apps.accounts.models import ClientProfile
 from apps.counseling.constants import (
@@ -8,7 +9,7 @@ from apps.counseling.constants import (
     COUNSELING_TYPE_VALUES,
     normalize_counseling_types,
 )
-from apps.counseling.models import Case, CounselingMethod
+from apps.counseling.models import Case, CounselingMethod, TrainingEnrollment
 from apps.counseling.privacy import mask_client_name
 from apps.counseling.presentation_board import (
     PRESENTATION_COMMENT_ACCEPT_ATTR,
@@ -602,15 +603,43 @@ class BoardPostForm(forms.Form):
         return cleaned
 
 
-def counselor_case_queryset(author):
-    """상담사 본인 담당 사례. 다른 상담사 사례는 선택지에 없다."""
+def author_has_multiple_enrollments(author) -> bool:
+    if author is None or not getattr(author, "pk", None):
+        return False
+    return (
+        TrainingEnrollment.objects.filter(counselor_id=author.pk).order_by().values("pk")[:2].count()
+        > 1
+    )
+
+
+def counselor_case_queryset(author, *, cohort=None):
+    """상담사 본인 담당 사례. 다른 상담사 사례는 선택지에 없다.
+
+    cohort를 넘기면 다른 Enrollment 기수의 사례는 뺀다.
+    기수가 둘 이상인 상담사는 Enrollment가 없는 사례도 빼서
+    어느 기수 글에나 붙이지 못하게 한다.
+    Enrollment가 하나 이하인 기존 상담사는 기수 없는 사례를 그대로 둔다.
+    """
     if author is None or not getattr(author, "pk", None):
         return Case.objects.none()
-    return (
-        Case.objects.filter(counselor=author)
-        .select_related("client", "application")
-        .order_by("case_number")
+    queryset = Case.objects.filter(counselor=author).select_related(
+        "client", "application", "training_enrollment"
     )
+    if cohort is not None:
+        matched = Q(training_enrollment__cohort=cohort)
+        if not author_has_multiple_enrollments(author):
+            matched = matched | Q(training_enrollment__isnull=True)
+        queryset = queryset.filter(matched)
+    return queryset.order_by("case_number")
+
+
+def presentation_case_matches_cohort(case, cohort, *, author=None) -> bool:
+    """연결된 사례의 Enrollment 기수가 게시글 기수와 같아야 한다."""
+    if case is None or cohort is None:
+        return True
+    if case.training_enrollment_id:
+        return case.training_enrollment.cohort == cohort
+    return not author_has_multiple_enrollments(author)
 
 
 def case_report_choice_label(case) -> str:
@@ -636,11 +665,12 @@ class PresentationBoardPostCaseForm(forms.Form):
         widget=forms.Select(attrs={"class": "form-select"}),
     )
 
-    def __init__(self, *args, author=None, **kwargs):
+    def __init__(self, *args, author=None, cohort=None, **kwargs):
         self.author = author
+        self.cohort = cohort
         super().__init__(*args, **kwargs)
         field = self.fields["case"]
-        field.queryset = counselor_case_queryset(author)
+        field.queryset = counselor_case_queryset(author, cohort=cohort)
         field.label_from_instance = case_report_choice_label
 
     def clean_case(self):
@@ -649,6 +679,8 @@ class PresentationBoardPostCaseForm(forms.Form):
             return case
         if case.counselor_id != self.author.pk:
             raise forms.ValidationError("본인 담당 사례만 연결할 수 있습니다.")
+        if not presentation_case_matches_cohort(case, self.cohort, author=self.author):
+            raise forms.ValidationError("게시글과 같은 수련 기수의 사례만 연결할 수 있습니다.")
         return case
 
 
@@ -699,14 +731,15 @@ class PresentationBoardPostForm(forms.Form):
         ),
     )
 
-    def __init__(self, *args, author_name: str = "", author=None, **kwargs):
+    def __init__(self, *args, author_name: str = "", author=None, cohort=None, **kwargs):
         self.author_name = author_name
         self.author = author
+        self.cohort = cohort
         super().__init__(*args, **kwargs)
         if author_name:
             self.fields["title"].initial = default_presentation_post_title(author_name)
         case_field = self.fields["case"]
-        case_field.queryset = counselor_case_queryset(author)
+        case_field.queryset = counselor_case_queryset(author, cohort=cohort)
         case_field.label_from_instance = case_report_choice_label
 
     def clean_case(self):
@@ -715,6 +748,8 @@ class PresentationBoardPostForm(forms.Form):
             return case
         if case.counselor_id != self.author.pk:
             raise forms.ValidationError("본인 담당 사례만 연결할 수 있습니다.")
+        if not presentation_case_matches_cohort(case, self.cohort, author=self.author):
+            raise forms.ValidationError("게시글과 같은 수련 기수의 사례만 연결할 수 있습니다.")
         return case
 
     def clean_title(self):

@@ -21,7 +21,7 @@
         </a>
     </div>
 
-    {% page_header title=post.title subtitle=page_subtitle heading_tag="h1" title_class="h4 fw-semibold site-page-title mb-0" header_class="site-page-header mb-4" c1_label="사례발표 게시판" c1_url_name="counselor:presentation_board" c1_icon="bi-megaphone" c2_label="상세" %}
+    {% page_header title=post.title subtitle=page_subtitle heading_tag="h1" title_class="h4 fw-semibold site-page-title mb-0" header_class="site-page-header mb-4" c1_label="사례발표 게시판" c1_url=board_list_url c1_icon="bi-megaphone" c2_label="상세" %}
 
     <div class="card border-0 shadow-sm mb-4">
         <div class="card-body">
@@ -37,7 +37,7 @@
             {% presentation_file_password_required post.author_id as post_download_requires_password %}
             {% include "counselor/partials/presentation_board_file_download_button.html" with download_url=post_file_download_url filename=post.filename button_class="btn btn-outline-primary" show_icon=True requires_password=post_download_requires_password %}
             {% endif %}
-            {% if is_author and case_form %}
+            {% if can_link_case and case_form %}
             <form method="post"
                   action="{% url 'counselor:presentation_board_post_case' post.pk %}"
                   class="mt-3 pt-3 border-top">

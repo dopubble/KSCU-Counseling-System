@@ -1582,14 +1582,18 @@ def client_request_appointment(request, pk):
     return redirect("client:case_detail", pk=case.pk)
 
 
-def _counselor_active_cases(user):
+def _counselor_active_cases(user, training_enrollment=None):
     """상담사 대시보드용 활성 사례 — 본인에게 배정된 사례만.
 
     완료 회기는 CounselingJournal.is_draft=False 수다.
     예약 상태나 remaining_sessions로 세지 않는다.
+    training_enrollment를 넘기면 그 수련 단위의 사례만 본다.
     """
+    queryset = Case.objects.filter(status=CaseStatus.ACTIVE, counselor=user)
+    if training_enrollment is not None:
+        queryset = queryset.filter(training_enrollment=training_enrollment)
     return (
-        Case.objects.filter(status=CaseStatus.ACTIVE, counselor=user)
+        queryset
         .select_related("client", "application", "counselor", "termination_counseling_record")
         .annotate(
             completed_session_count=Count(
@@ -1602,10 +1606,13 @@ def _counselor_active_cases(user):
     )
 
 
-def _counselor_closed_cases(user):
+def _counselor_closed_cases(user, training_enrollment=None):
     """상담사 대시보드용 종결 사례 — 본인에게 배정된 사례만 (기록 열람용)"""
+    queryset = Case.objects.filter(status=CaseStatus.CLOSED, counselor=user)
+    if training_enrollment is not None:
+        queryset = queryset.filter(training_enrollment=training_enrollment)
     return (
-        Case.objects.filter(status=CaseStatus.CLOSED, counselor=user)
+        queryset
         .select_related("client", "application", "counselor", "termination_counseling_record")
         .order_by(F("closed_at").desc(nulls_last=True), "-opened_at")
     )
@@ -1808,22 +1815,29 @@ def _label_case_operations(cases):
 @counselor_required
 def counselor_dashboard(request):
     """상담사 전용 대시보드 — 활성 사례 목록 + 종결 사례 열람"""
-    cases = _label_case_operations(_counselor_active_cases(request.user))
-    closed_cases = _label_case_operations(_counselor_closed_cases(request.user))
-    pending_appointments = (
-        Appointment.objects.filter(
-            counselor=request.user,
-            status=AppointmentStatus.PENDING,
-        )
-        .select_related("case", "client", "case__application")
-        .order_by("scheduled_at")
-    )
     submit_feedback = _pop_records_submit_feedback(request)
     selected_enrollment, enrollment_choices, enrollment_forbidden = (
         resolve_dashboard_training_enrollment(request.user, request.GET.get("enrollment"))
     )
     if enrollment_forbidden:
         raise Http404("수련 기수를 찾을 수 없습니다.")
+    cases = _label_case_operations(
+        _counselor_active_cases(request.user, selected_enrollment)
+    )
+    closed_cases = _label_case_operations(
+        _counselor_closed_cases(request.user, selected_enrollment)
+    )
+    pending_appointments = Appointment.objects.filter(
+        counselor=request.user,
+        status=AppointmentStatus.PENDING,
+    )
+    if selected_enrollment is not None:
+        pending_appointments = pending_appointments.filter(
+            case__training_enrollment=selected_enrollment
+        )
+    pending_appointments = pending_appointments.select_related(
+        "case", "client", "case__application"
+    ).order_by("scheduled_at")
     if selected_enrollment is None:
         training_progress = get_counselor_training_progress(None)
         certificate_approval = {

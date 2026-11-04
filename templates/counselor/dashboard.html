@@ -44,7 +44,7 @@
             </div>
         </div>
         <div class="col-sm-4">
-            <a href="{% url 'counselor:presentation_board' %}" class="text-decoration-none">
+            <a href="{% url 'counselor:presentation_board' %}{% if selected_training_enrollment %}?cohort={{ selected_training_enrollment.cohort }}{% endif %}" class="text-decoration-none">
                 <div class="card border-0 shadow-sm h-100 border-primary-subtle">
                     <div class="card-body">
                         <p class="text-muted small mb-1">수퍼비전</p>

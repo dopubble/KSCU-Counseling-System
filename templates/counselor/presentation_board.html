@@ -18,7 +18,7 @@
     {% if is_supervisor_viewer %}
     {% page_header title="사례발표 게시판" subtitle=page_subtitle heading_tag="h1" title_class="h3 fw-semibold site-page-title mb-0" header_class="site-page-header mb-4" c1_label="수퍼비전" c1_url_name="supervisor:dashboard" c1_icon="bi-eye" c2_label="사례발표 게시판" %}
     {% else %}
-    {% page_header title="사례발표 게시판" subtitle=page_subtitle heading_tag="h1" title_class="h3 fw-semibold site-page-title mb-0" header_class="site-page-header mb-4" c1_label="대시보드" c1_url_name="counselor:dashboard" c1_icon="bi-briefcase" c2_label="사례발표 게시판" %}
+    {% page_header title="사례발표 게시판" subtitle=page_subtitle heading_tag="h1" title_class="h3 fw-semibold site-page-title mb-0" header_class="site-page-header mb-4" c1_label="대시보드" c1_url=dashboard_url c1_icon="bi-briefcase" c2_label="사례발표 게시판" %}
     {% endif %}
 
     <div class="card border-0 shadow-sm mb-3 presentation-board-toolbar">
