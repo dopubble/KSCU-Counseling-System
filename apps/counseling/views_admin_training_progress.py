@@ -1,16 +1,21 @@
-"""관리자 수련현황 통합 조회."""
+"""관리자 수련현황 통합 조회. 목록과 상세의 기준키는 TrainingEnrollment다."""
 
 from django.http import Http404
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 
 from apps.accounts.decorators import role_required
 from apps.accounts.models import CounselorProfile, User, UserRole
+from apps.counseling.models import TrainingEnrollment
 from apps.counseling.training_certificate import get_training_certificate_approval_status
+from apps.counseling.training_enrollment import (
+    resolve_legacy_counselor_training_enrollment,
+    training_enrollment_cohorts,
+)
 from apps.counseling.training_progress import (
     get_cohort_counselors_training_progress,
     get_counselor_training_progress,
 )
-from apps.reports.views import get_available_cohorts
 
 
 def _parse_required_cohort(raw, cohorts: list[int]) -> int | None:
@@ -75,9 +80,50 @@ def _list_display(progress: dict) -> dict:
     }
 
 
+def legacy_training_enrollment_or_404(counselor):
+    enrollment = resolve_legacy_counselor_training_enrollment(counselor)
+    if enrollment is None:
+        raise Http404("수련 기수를 찾을 수 없습니다.")
+    return enrollment
+
+
+def redirect_to_enrollment_training_progress(enrollment, *, url_name, request):
+    target = reverse(url_name, kwargs={"enrollment_id": enrollment.pk})
+    cohort = request.GET.get("cohort")
+    if cohort:
+        return redirect(f"{target}?cohort={cohort}")
+    return redirect(target)
+
+
+def render_enrollment_training_progress(request, enrollment, template):
+    counselor = enrollment.counselor
+    try:
+        profile = counselor.counselor_profile
+    except CounselorProfile.DoesNotExist:
+        profile = None
+    # 수련실적은 Enrollment 기준이다.
+    # 승인 카드와 PDF는 아직 User 단위 certificate-metrics-v2이며 기수 승인이 아니다.
+    return render(
+        request,
+        template,
+        {
+            "counselor": counselor,
+            "profile": profile,
+            "cohort": enrollment.cohort,
+            "training_enrollment": enrollment,
+            "training_progress": get_counselor_training_progress(
+                counselor,
+                training_enrollment=enrollment,
+            ),
+            "list_cohort": enrollment.cohort,
+            "certificate_approval": get_training_certificate_approval_status(counselor),
+        },
+    )
+
+
 @role_required(UserRole.ADMIN)
 def admin_training_progress(request):
-    cohorts = get_available_cohorts()
+    cohorts = training_enrollment_cohorts()
     selected_cohort = _parse_required_cohort(request.GET.get("cohort"), cohorts)
     rows = []
     if selected_cohort is not None:
@@ -86,6 +132,7 @@ def admin_training_progress(request):
                 {
                     "counselor": entry["counselor"],
                     "profile": entry["profile"],
+                    "enrollment": entry["enrollment"],
                     "progress": entry["progress"],
                     "display": _list_display(entry["progress"]),
                 }
@@ -105,27 +152,29 @@ def admin_training_progress(request):
 
 @role_required(UserRole.ADMIN)
 def admin_counselor_training_progress_detail(request, counselor_id):
+    """기존 URL. 기수가 하나로 정해지면 Enrollment 상세로 보낸다."""
     counselor = get_object_or_404(
         User.objects.select_related("counselor_profile"),
         pk=counselor_id,
         role=UserRole.COUNSELOR,
     )
-    try:
-        profile = counselor.counselor_profile
-    except CounselorProfile.DoesNotExist as exc:
-        raise Http404("상담사 프로필이 없습니다.") from exc
+    enrollment = legacy_training_enrollment_or_404(counselor)
+    return redirect_to_enrollment_training_progress(
+        enrollment,
+        url_name="admin_panel:enrollment_training_progress_detail",
+        request=request,
+    )
 
-    progress = get_counselor_training_progress(counselor)
-    cohort = profile.cohort
-    return render(
+
+@role_required(UserRole.ADMIN)
+def admin_enrollment_training_progress_detail(request, enrollment_id):
+    enrollment = get_object_or_404(
+        TrainingEnrollment.objects.select_related("counselor", "counselor__counselor_profile"),
+        pk=enrollment_id,
+        counselor__role=UserRole.COUNSELOR,
+    )
+    return render_enrollment_training_progress(
         request,
+        enrollment,
         "admin_panel/counselor_training_progress_detail.html",
-        {
-            "counselor": counselor,
-            "profile": profile,
-            "cohort": cohort,
-            "training_progress": progress,
-            "list_cohort": cohort or request.GET.get("cohort") or "",
-            "certificate_approval": get_training_certificate_approval_status(counselor),
-        },
     )

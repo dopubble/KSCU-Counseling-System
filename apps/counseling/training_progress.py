@@ -64,6 +64,7 @@ from apps.counseling.models import (
     Case,
     CasePresentationComment,
     CasePresentationPost,
+    TrainingEnrollment,
     CounselingMethod,
     SupervisionAttendance,
     SupervisionAttendanceStatus,
@@ -670,12 +671,15 @@ def get_counselor_training_progress(counselor, training_enrollment=None) -> dict
     )
 
 
-def _cohort_case_metrics_by_counselor(user_ids: list) -> dict:
+def _cohort_case_metrics_by_counselor(user_ids: list, *, enrollment_ids=None) -> dict:
     """counselor_id → case metric totals."""
     if not user_ids:
         return {}
+    cases = Case.objects.filter(counselor_id__in=user_ids)
+    if enrollment_ids is not None:
+        cases = cases.filter(training_enrollment_id__in=enrollment_ids)
     rows = (
-        Case.objects.filter(counselor_id__in=user_ids)
+        cases
         .annotate(
             completed_journal_count=_completed_journal_count(),
             intake_submitted=_intake_submitted_exists(),
@@ -698,11 +702,16 @@ def _cohort_case_metrics_by_counselor(user_ids: list) -> dict:
     }
 
 
-def _cohort_intake_method_minutes(user_ids: list) -> dict[int, dict[str, int]]:
+def _cohort_intake_method_minutes(
+    user_ids: list, *, enrollment_ids=None
+) -> dict[int, dict[str, int]]:
     if not user_ids:
         return {}
+    cases = Case.objects.filter(counselor_id__in=user_ids)
+    if enrollment_ids is not None:
+        cases = cases.filter(training_enrollment_id__in=enrollment_ids)
     rows = (
-        Case.objects.filter(counselor_id__in=user_ids)
+        cases
         .annotate(intake_submitted=_intake_submitted_exists())
         .filter(intake_submitted=True)
         .annotate(
@@ -728,15 +737,20 @@ def _cohort_intake_method_minutes(user_ids: list) -> dict[int, dict[str, int]]:
     }
 
 
-def _cohort_journal_method_minutes(user_ids: list) -> dict[int, dict[str, int]]:
+def _cohort_journal_method_minutes(
+    user_ids: list, *, enrollment_ids=None
+) -> dict[int, dict[str, int]]:
     if not user_ids:
         return {}
+    journals = CounselingJournal.objects.filter(
+        counselor_id__in=user_ids,
+        is_draft=False,
+        case__counselor_id=F("counselor_id"),
+    )
+    if enrollment_ids is not None:
+        journals = journals.filter(case__training_enrollment_id__in=enrollment_ids)
     rows = (
-        CounselingJournal.objects.filter(
-            counselor_id__in=user_ids,
-            is_draft=False,
-            case__counselor_id=F("counselor_id"),
-        )
+        journals
         .annotate(
             effective_method=_effective_method_expr(
                 snapshot_field="counseling_method",
@@ -830,34 +844,43 @@ def _cohort_supervision_method_minutes(
     }
 
 
-def _cohort_presentation_participation_by_author(user_ids: list) -> dict:
+def _cohort_presentation_participation_by_author(user_ids: list, *, cohort=None) -> dict:
     if not user_ids:
         return {}
-    rows = (
-        CasePresentationComment.objects.filter(author_id__in=user_ids)
-        .values("author_id")
-        .annotate(total=Count("post_id", distinct=True))
-    )
+    comments = CasePresentationComment.objects.filter(author_id__in=user_ids)
+    if cohort is not None:
+        comments = comments.filter(post__cohort=cohort)
+    rows = comments.values("author_id").annotate(total=Count("post_id", distinct=True))
     return {row["author_id"]: row["total"] or 0 for row in rows}
 
 
-def _cohort_legacy_null_case_report_counts(user_ids: list) -> dict:
+def _cohort_legacy_null_case_report_counts(user_ids: list, *, cohort=None) -> dict:
     """기수 상담사들의 case=NULL 레거시 게시글 수. 한 번의 group by로 집계한다."""
     if not user_ids:
         return {}
-    rows = (
-        CasePresentationPost.objects.filter(
-            author_id__in=user_ids,
-            case__isnull=True,
-        )
-        .values("author_id")
-        .annotate(total=Count("pk"))
+    posts = CasePresentationPost.objects.filter(
+        author_id__in=user_ids,
+        case__isnull=True,
     )
+    if cohort is not None:
+        posts = posts.filter(cohort=cohort)
+    rows = posts.values("author_id").annotate(total=Count("pk"))
     return {row["author_id"]: row["total"] or 0 for row in rows}
 
 
+def _attached_counselor_profile(user):
+    try:
+        return user.counselor_profile
+    except CounselorProfile.DoesNotExist:
+        return None
+
+
 def get_cohort_counselors_training_progress(cohort: int) -> list[dict]:
-    """기수 상담사 수련현황을 일괄 집계한다. N명에 대해 개인 helper를 반복하지 않는다."""
+    """기수 TrainingEnrollment별 수련현황을 일괄 집계한다.
+
+    소속은 CounselorProfile.cohort가 아니라 Enrollment.cohort다.
+    각 row의 숫자는 get_counselor_training_progress(counselor, training_enrollment)와 같다.
+    """
     try:
         cohort_number = int(cohort)
     except (TypeError, ValueError):
@@ -865,39 +888,56 @@ def get_cohort_counselors_training_progress(cohort: int) -> list[dict]:
     if cohort_number <= 0:
         return []
 
-    profiles = list(
-        CounselorProfile.objects.filter(
+    enrollments = list(
+        TrainingEnrollment.objects.filter(
             cohort=cohort_number,
-            user__role=UserRole.COUNSELOR,
+            counselor__role=UserRole.COUNSELOR,
         )
-        .select_related("user")
-        .order_by("user__name", "user__email")
+        .select_related("counselor", "counselor__counselor_profile")
+        .order_by("counselor__name", "counselor__email", "pk")
     )
-    if not profiles:
+    if not enrollments:
         return []
 
-    user_ids = [profile.user_id for profile in profiles]
-    profile_ids = [profile.pk for profile in profiles]
-    case_by_user = _cohort_case_metrics_by_counselor(user_ids)
-    intake_methods = _cohort_intake_method_minutes(user_ids)
-    journal_methods = _cohort_journal_method_minutes(user_ids)
+    user_ids = [enrollment.counselor_id for enrollment in enrollments]
+    enrollment_ids = [enrollment.pk for enrollment in enrollments]
+    profiles = {
+        enrollment.counselor_id: _attached_counselor_profile(enrollment.counselor)
+        for enrollment in enrollments
+    }
+    profile_ids = [profile.pk for profile in profiles.values() if profile is not None]
+    case_by_user = _cohort_case_metrics_by_counselor(
+        user_ids, enrollment_ids=enrollment_ids
+    )
+    intake_methods = _cohort_intake_method_minutes(
+        user_ids, enrollment_ids=enrollment_ids
+    )
+    journal_methods = _cohort_journal_method_minutes(
+        user_ids, enrollment_ids=enrollment_ids
+    )
     supervision_total, supervision_completed = _cohort_supervision_totals(cohort_number)
     attendance_by_profile = _cohort_supervision_attendance_by_profile(
         cohort_number, profile_ids
     )
     supervision_methods = _cohort_supervision_method_minutes(cohort_number, profile_ids)
-    presentation_by_user = _cohort_presentation_participation_by_author(user_ids)
-    legacy_null_by_user = _cohort_legacy_null_case_report_counts(user_ids)
+    presentation_by_user = _cohort_presentation_participation_by_author(
+        user_ids, cohort=cohort_number
+    )
+    legacy_null_by_user = _cohort_legacy_null_case_report_counts(
+        user_ids, cohort=cohort_number
+    )
 
     rows: list[dict] = []
-    for profile in profiles:
-        case_row = case_by_user.get(profile.user_id, {})
-        attendance = attendance_by_profile.get(profile.pk, {})
+    for enrollment in enrollments:
+        profile = profiles.get(enrollment.counselor_id)
+        case_row = case_by_user.get(enrollment.counselor_id, {})
+        attendance = attendance_by_profile.get(profile.pk, {}) if profile else {}
         required = case_row.get("intake_required_count", 0) or 0
         attended_minutes = attendance.get("attended_minutes", 0) or 0
+        counselor_id = enrollment.counselor_id
         case_report_submitted = _case_report_submitted_total(
             linked_distinct=case_row.get("case_report_submitted_count", 0) or 0,
-            legacy_null=legacy_null_by_user.get(profile.user_id, 0),
+            legacy_null=legacy_null_by_user.get(counselor_id, 0),
             required=required,
         )
         progress = _build_training_progress(
@@ -912,18 +952,19 @@ def get_cohort_counselors_training_progress(cohort: int) -> list[dict]:
             supervision_attended=attendance.get("attended", 0) or 0,
             supervision_attended_minutes=attended_minutes,
             case_report_submitted=case_report_submitted,
-            public_presentation_participation=presentation_by_user.get(
-                profile.user_id, 0
-            )
+            public_presentation_participation=presentation_by_user.get(counselor_id, 0)
             or 0,
-            intake_method_minutes=intake_methods.get(profile.user_id),
-            counseling_method_minutes=journal_methods.get(profile.user_id),
-            supervision_method_minutes=supervision_methods.get(profile.pk),
+            intake_method_minutes=intake_methods.get(counselor_id),
+            counseling_method_minutes=journal_methods.get(counselor_id),
+            supervision_method_minutes=(
+                supervision_methods.get(profile.pk) if profile is not None else None
+            ),
         )
         rows.append(
             {
+                "enrollment": enrollment,
                 "profile": profile,
-                "counselor": profile.user,
+                "counselor": enrollment.counselor,
                 "progress": progress,
             }
         )

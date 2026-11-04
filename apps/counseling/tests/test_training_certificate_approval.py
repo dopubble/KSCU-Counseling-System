@@ -116,6 +116,11 @@ def _case(counselor, client, number, method=CounselingMethod.IN_PERSON, sessions
         total_sessions=sessions,
         remaining_sessions=sessions,
         status=CaseStatus.ACTIVE,
+        training_enrollment=(
+            TrainingEnrollment.objects.filter(counselor=counselor).get()
+            if TrainingEnrollment.objects.filter(counselor=counselor).count() == 1
+            else None
+        ),
     )
 
 
@@ -420,7 +425,7 @@ class CertificateApprovalFlowTests(TestCase):
         http.force_login(self.admin)
         self.assertEqual(http.post(self.admin_approve).status_code, 403)
         self.assertEqual(TrainingCertificateApproval.objects.count(), 0)
-        detail = http.get(self.admin_detail)
+        detail = http.get(self.admin_detail, follow=True)
         token = detail.cookies["csrftoken"].value
         approved = http.post(
             self.admin_approve,
@@ -467,8 +472,8 @@ class CertificateApprovalFlowTests(TestCase):
             kwargs={"counselor_id": counselor.pk},
         )
         partial = _status_line("미승인", 3, 2)
-        self.assertContains(_http(self.admin).get(admin_detail), partial)
-        self.assertContains(_http(supervisor).get(supervisor_detail), partial)
+        self.assertContains(_http(self.admin).get(admin_detail, follow=True), partial)
+        self.assertContains(_http(supervisor).get(supervisor_detail, follow=True), partial)
 
         approve_url = reverse(
             "admin_panel:counselor_training_certificate_approve",
@@ -487,7 +492,7 @@ class CertificateApprovalFlowTests(TestCase):
 
         _journals(pending, 4)
         _submit(pending)
-        again = _http(supervisor).get(supervisor_detail)
+        again = _http(supervisor).get(supervisor_detail, follow=True)
         self.assertContains(again, _status_line("재승인 필요", 3, 3))
         self.assertNotContains(again, "사례 제출 현황")
         self.assertContains(again, "재승인 필요")
@@ -512,7 +517,7 @@ class CertificateApprovalFlowTests(TestCase):
             kwargs={"counselor_id": none_submitted.pk},
         )
         self.assertContains(
-            _http(self.admin).get(none_detail),
+            _http(self.admin).get(none_detail, follow=True),
             _status_line("미승인", 2, 0),
         )
         blocked = _http(self.admin).post(
@@ -537,7 +542,7 @@ class CertificateApprovalFlowTests(TestCase):
         )
         complete_supervisor = _supervisor("전부수퍼@cert.example.com", "전부수퍼", [38])
         self.assertContains(
-            _http(complete_supervisor).get(complete_detail),
+            _http(complete_supervisor).get(complete_detail, follow=True),
             _status_line("미승인", 2, 2),
         )
 
@@ -558,8 +563,8 @@ class CertificateApprovalFlowTests(TestCase):
             "supervisor:counselor_training_progress_detail",
             kwargs={"counselor_id": counselor.pk},
         )
-        admin_page = _http(self.admin).get(admin_detail)
-        supervisor_page = _http(supervisor).get(supervisor_detail)
+        admin_page = _http(self.admin).get(admin_detail, follow=True)
+        supervisor_page = _http(supervisor).get(supervisor_detail, follow=True)
         self.assertContains(admin_page, _status_line("미승인", 4, 0))
         self.assertContains(supervisor_page, _status_line("미승인", 4, 0))
         self.assertNotContains(admin_page, "사례 제출 현황")
@@ -578,11 +583,11 @@ class CertificateApprovalFlowTests(TestCase):
             _journals(case, 2)
             _submit(case)
         self.assertContains(
-            _http(self.admin).get(admin_detail),
+            _http(self.admin).get(admin_detail, follow=True),
             _status_line("미승인", 4, 2),
         )
         self.assertContains(
-            _http(supervisor).get(supervisor_detail),
+            _http(supervisor).get(supervisor_detail, follow=True),
             _status_line("미승인", 4, 2),
         )
         approved = _http(self.admin).post(
@@ -593,17 +598,17 @@ class CertificateApprovalFlowTests(TestCase):
         )
         self.assertEqual(approved.status_code, 302)
         self.assertContains(
-            _http(self.admin).get(admin_detail),
+            _http(self.admin).get(admin_detail, follow=True),
             _status_line("승인완료", 4, 2),
         )
         self.assertContains(
-            _http(supervisor).get(supervisor_detail),
+            _http(supervisor).get(supervisor_detail, follow=True),
             _status_line("승인완료", 4, 2),
         )
 
         _journals(cases[1], 3)
         _submit(cases[1])
-        again = _http(supervisor).get(supervisor_detail)
+        again = _http(supervisor).get(supervisor_detail, follow=True)
         self.assertContains(again, _status_line("재승인 필요", 4, 3))
         self.assertNotContains(again, "사례 제출 현황")
         self.assertEqual(
@@ -1109,8 +1114,8 @@ class CertificateApprovalFlowTests(TestCase):
         self.assertEqual(progress["journal_completed_count"], 11)
         self.assertEqual(progress["intake_completed_count"], 1)
 
-        admin_page = _http(self.admin).get(self.admin_detail)
-        supervisor_page = _http(self.supervisor).get(self.supervisor_detail)
+        admin_page = _http(self.admin).get(self.admin_detail, follow=True)
+        supervisor_page = _http(self.supervisor).get(self.supervisor_detail, follow=True)
         self.assertEqual(admin_page.context["training_progress"], progress)
         self.assertEqual(supervisor_page.context["training_progress"], progress)
         certificate = build_counselor_training_certificate_context(self.counselor)
@@ -1121,7 +1126,7 @@ class CertificateApprovalFlowTests(TestCase):
         self.assertNotContains(admin_page, "사례 제출 현황")
 
     def test_detail_cards_follow_approval_state(self):
-        admin_page = _http(self.admin).get(self.admin_detail)
+        admin_page = _http(self.admin).get(self.admin_detail, follow=True)
         body = admin_page.content.decode()
         self.assertContains(admin_page, "상태:")
         self.assertContains(admin_page, "미승인")
@@ -1131,7 +1136,7 @@ class CertificateApprovalFlowTests(TestCase):
         self.assertNotIn(f'href="{self.admin_pdf}"', body)
 
         _http(self.supervisor).post(self.supervisor_approve)
-        approved = _http(self.supervisor).get(self.supervisor_detail)
+        approved = _http(self.supervisor).get(self.supervisor_detail, follow=True)
         approved_body = approved.content.decode()
         self.assertContains(approved, "승인완료")
         self.assertContains(approved, "김수퍼")
@@ -1140,7 +1145,7 @@ class CertificateApprovalFlowTests(TestCase):
         self.assertNotContains(approved, "수련확인증 재승인")
 
         _journals(self.case, 1)
-        again = _http(self.admin).get(self.admin_detail)
+        again = _http(self.admin).get(self.admin_detail, follow=True)
         again_body = again.content.decode()
         self.assertContains(again, "재승인 필요")
         self.assertContains(again, "수련확인증 재승인")
@@ -1269,7 +1274,7 @@ class CertificateApprovalRevocationTests(TestCase):
         }
 
     def test_unapproved_card_has_no_revoke_button(self):
-        page = _http(self.admin).get(self.admin_detail)
+        page = _http(self.admin).get(self.admin_detail, follow=True)
         self.assertContains(page, "미승인")
         self.assertNotContains(page, "승인 취소")
         self.assertNotContains(page, "revokeTrainingCertificateModal")
@@ -1283,7 +1288,7 @@ class CertificateApprovalRevocationTests(TestCase):
             (self.admin, self.admin_detail),
             (self.supervisor, self.supervisor_detail),
         ):
-            page = _http(user).get(detail)
+            page = _http(user).get(detail, follow=True)
             self.assertContains(page, "승인완료")
             self.assertContains(page, ">승인 취소</button>")
             self.assertContains(
@@ -1429,7 +1434,7 @@ class CertificateApprovalRevocationTests(TestCase):
         pdf = _http(self.counselor).get(self.counselor_pdf)
         self.assertEqual(pdf.status_code, 200)
         self.assertTrue(pdf.content.startswith(b"%PDF"))
-        page = _http(self.admin).get(self.admin_detail)
+        page = _http(self.admin).get(self.admin_detail, follow=True)
         self.assertContains(page, ">승인 취소</button>")
         self.assertNotContains(page, "최근 승인 취소:")
 
@@ -1439,7 +1444,7 @@ class CertificateApprovalRevocationTests(TestCase):
         self.assertEqual(TrainingCertificateApproval.objects.count(), 2)
         self.assertEqual(TrainingCertificateApprovalRevocation.objects.count(), 1)
         _assert_blocked(self, _http(self.admin).get(self.admin_pdf))
-        again = _http(self.supervisor).get(self.supervisor_detail)
+        again = _http(self.supervisor).get(self.supervisor_detail, follow=True)
         self.assertContains(again, "재승인 필요")
         self.assertContains(again, "수련확인증 재승인")
         self.assertNotContains(again, "revokeTrainingCertificateModal")
@@ -1609,8 +1614,8 @@ class SupervisorDetailTargetCounselorTests(TestCase):
         expected = _status_line("미승인", 2, 1)
         peer_line = _status_line("미승인", 4, 0)
 
-        supervisor_page = _http(supervisor).get(supervisor_detail)
-        admin_page = _http(admin).get(admin_detail)
+        supervisor_page = _http(supervisor).get(supervisor_detail, follow=True)
+        admin_page = _http(admin).get(admin_detail, follow=True)
         self.assertEqual(supervisor_page.context["counselor"].pk, target.pk)
         self.assertEqual(admin_page.context["counselor"].pk, target.pk)
         self.assertEqual(
@@ -1642,7 +1647,8 @@ class SupervisorDetailTargetCounselorTests(TestCase):
             reverse(
                 "supervisor:counselor_training_progress_detail",
                 kwargs={"counselor_id": last.pk},
-            )
+            ),
+            follow=True,
         )
         self.assertContains(peer_page, peer_line)
         self.assertEqual(peer_page.context["counselor"].pk, last.pk)
@@ -1655,7 +1661,7 @@ class SupervisorDetailTargetCounselorTests(TestCase):
             approved_role=UserRole.ADMIN,
             content_hash="a" * 64,
         )
-        again = _http(supervisor).get(supervisor_detail)
+        again = _http(supervisor).get(supervisor_detail, follow=True)
         self.assertContains(again, expected)
         self.assertEqual(again.context["counselor"].pk, target.pk)
         self.assertEqual(
@@ -1678,8 +1684,10 @@ class SupervisorDetailTargetCounselorTests(TestCase):
         self.assertContains(
             listing,
             reverse(
-                "supervisor:counselor_training_progress_detail",
-                kwargs={"counselor_id": target.pk},
+                "supervisor:enrollment_training_progress_detail",
+                kwargs={
+                    "enrollment_id": TrainingEnrollment.objects.get(counselor=target).pk
+                },
             ),
         )
         self.assertContains(listing, "나나나")

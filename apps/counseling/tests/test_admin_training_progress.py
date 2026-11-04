@@ -20,6 +20,8 @@ from apps.counseling.models import (
     SupervisionAttendanceStatus,
     SupervisionSession,
     SupervisionSessionStatus,
+    TrainingEnrollment,
+    TrainingEnrollmentStatus,
 )
 from apps.counseling.training_progress import (
     get_cohort_counselors_training_progress,
@@ -45,7 +47,20 @@ def _counselor(name, cohort):
         user=user,
         defaults={"cohort": cohort, "is_approved": True},
     )
+    if cohort is not None:
+        TrainingEnrollment.objects.create(
+            counselor=user,
+            cohort=cohort,
+            status=TrainingEnrollmentStatus.ACTIVE,
+        )
     return user
+
+
+def _single_enrollment(counselor):
+    rows = list(TrainingEnrollment.objects.filter(counselor=counselor))
+    if len(rows) == 1:
+        return rows[0]
+    return None
 
 
 def _client_user(name):
@@ -69,6 +84,7 @@ def _case(counselor, client, case_number, *, total_sessions=10, remaining_sessio
         counseling_method=CounselingMethod.IN_PERSON,
         total_sessions=total_sessions,
         remaining_sessions=remaining_sessions,
+        training_enrollment=_single_enrollment(counselor),
     )
 
 
@@ -162,7 +178,7 @@ class AdminTrainingProgressAccessTests(TestCase):
     def test_admin_can_open_list_and_detail(self):
         self.http.force_login(self.admin)
         listing = self.http.get(self.url)
-        detail = self.http.get(self.detail_url)
+        detail = self.http.get(self.detail_url, follow=True)
         self.assertEqual(listing.status_code, 200)
         self.assertEqual(detail.status_code, 200)
         self.assertContains(listing, "수련현황")
@@ -221,8 +237,10 @@ class AdminTrainingProgressListTests(TestCase):
     def test_name_links_to_detail_without_certificate_column(self):
         response = self.http.get(self.url, {"cohort": "1"})
         detail = reverse(
-            "admin_panel:counselor_training_progress_detail",
-            kwargs={"counselor_id": self.kim.pk},
+            "admin_panel:enrollment_training_progress_detail",
+            kwargs={
+                "enrollment_id": TrainingEnrollment.objects.get(counselor=self.kim).pk
+            },
         )
         certificate = reverse(
             "admin_panel:counselor_training_certificate",
@@ -244,6 +262,7 @@ class AdminTrainingProgressListTests(TestCase):
         self.assertContains(response, "해당 기수에 등록된 상담사가 없습니다.")
 
     def test_no_cohorts_message(self):
+        TrainingEnrollment.objects.all().delete()
         CounselorProfile.objects.all().update(cohort=None)
         response = self.http.get(self.url)
         self.assertEqual(response.status_code, 200)
@@ -344,7 +363,10 @@ class AdminTrainingProgressBatchParityTests(TestCase):
         )
 
     def test_batch_matches_individual_progress(self):
-        individual = get_counselor_training_progress(self.counselor)
+        enrollment = TrainingEnrollment.objects.get(counselor=self.counselor, cohort=3)
+        individual = get_counselor_training_progress(
+            self.counselor, training_enrollment=enrollment
+        )
         batch_rows = get_cohort_counselors_training_progress(3)
         self.assertEqual(len(batch_rows), 1)
         batch = batch_rows[0]["progress"]
@@ -452,7 +474,7 @@ class AdminTrainingProgressDetailTests(TestCase):
     def test_detail_shows_progress_and_actions(self):
         case = _case(self.counselor, _client_user("상세내담"), "CASE-DETAIL")
         _intake(case)
-        response = self.http.get(self.url, {"cohort": "6"})
+        response = self.http.get(self.url, {"cohort": "6"}, follow=True)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "상세상담 상담사 수련현황")
         self.assertContains(response, "6기")
@@ -498,7 +520,7 @@ class AdminTrainingProgressDetailTests(TestCase):
             _journal(in_person, number, counseling_method=None)
         for number in range(1, 7):
             _journal(remote, number, counseling_method=None)
-        response = self.http.get(self.url, {"cohort": "6"})
+        response = self.http.get(self.url, {"cohort": "6"}, follow=True)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "대면 4시간 / 비대면 6시간")
         self.assertContains(response, "총 10시간")
@@ -514,7 +536,7 @@ class AdminTrainingProgressDetailTests(TestCase):
         listing = self.http.get(
             reverse("admin_panel:training_progress"), {"cohort": "6"}
         )
-        detail = self.http.get(self.url, {"cohort": "6"})
+        detail = self.http.get(self.url, {"cohort": "6"}, follow=True)
         detail_body = detail.content.decode()
         report_section = detail_body[
             detail_body.index("사례보고서") : detail_body.index("수련시간")
@@ -527,7 +549,10 @@ class AdminTrainingProgressDetailTests(TestCase):
         self.assertNotIn("공개사례발표회 참여", detail_body)
         self.assertIn("사례발표 게시글 제출 기준", report_section)
         self.assertNotIn("담당 사례에 연결된 사례발표 게시글 기준", report_section)
-        individual = get_counselor_training_progress(self.counselor)
+        enrollment = TrainingEnrollment.objects.get(counselor=self.counselor, cohort=6)
+        individual = get_counselor_training_progress(
+            self.counselor, training_enrollment=enrollment
+        )
         batch_rows = get_cohort_counselors_training_progress(6)
         batch = next(row["progress"] for row in batch_rows if row["counselor"].pk == self.counselor.pk)
         self.assertEqual(individual["case_report_required_count"], 4)
@@ -541,7 +566,7 @@ class AdminTrainingProgressDetailTests(TestCase):
         listing = self.http.get(
             reverse("admin_panel:training_progress"), {"cohort": "6"}
         )
-        detail = self.http.get(self.url, {"cohort": "6"})
+        detail = self.http.get(self.url, {"cohort": "6"}, follow=True)
         detail_body = detail.content.decode()
         report_section = detail_body[
             detail_body.index("사례보고서") : detail_body.index("수련시간")

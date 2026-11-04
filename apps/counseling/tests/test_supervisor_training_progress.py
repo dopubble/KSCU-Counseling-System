@@ -68,6 +68,13 @@ def _client_user(name):
     return _user(f"{name}@client.example.com", name, UserRole.CLIENT)
 
 
+def _single_enrollment(counselor):
+    rows = list(TrainingEnrollment.objects.filter(counselor=counselor))
+    if len(rows) == 1:
+        return rows[0]
+    return None
+
+
 def _case(counselor, client, case_number, *, total_sessions=10, remaining_sessions=10):
     application = CounselingApplication.objects.create(
         client=client,
@@ -85,6 +92,7 @@ def _case(counselor, client, case_number, *, total_sessions=10, remaining_sessio
         counseling_method=CounselingMethod.IN_PERSON,
         total_sessions=total_sessions,
         remaining_sessions=remaining_sessions,
+        training_enrollment=_single_enrollment(counselor),
     )
 
 
@@ -213,7 +221,15 @@ class SupervisorTrainingProgressAccessTests(TestCase):
         self.assertContains(ok, "1기상담")
         self.assertNotContains(ok, "2기상담")
         body = ok.content.decode()
-        self.assertIn(f'href="{self.detail_c1}?cohort=1"', body)
+        enrollment_detail = reverse(
+            "supervisor:enrollment_training_progress_detail",
+            kwargs={
+                "enrollment_id": TrainingEnrollment.objects.get(
+                    counselor=self.counselor_c1
+                ).pk
+            },
+        )
+        self.assertIn(f'href="{enrollment_detail}?cohort=1"', body)
         self.assertNotIn("수련확인증", body)
         self.assertNotIn(self.cert_c1, body)
 
@@ -222,7 +238,7 @@ class SupervisorTrainingProgressAccessTests(TestCase):
 
     def test_detail_and_certificate_forbid_other_cohort(self):
         self.http.force_login(self.supervisor)
-        self.assertEqual(self.http.get(self.detail_c1).status_code, 200)
+        self.assertEqual(self.http.get(self.detail_c1, follow=True).status_code, 200)
         self.assertEqual(self.http.get(self.detail_c2).status_code, 403)
         case = _case(self.counselor_c1, _client_user("승인내담"), "SV-CERT-OK")
         case.records_submitted_at = timezone.now()
@@ -359,9 +375,10 @@ class SupervisorTrainingProgressDetailTests(TestCase):
             reverse(
                 "admin_panel:counselor_training_progress_detail",
                 kwargs={"counselor_id": self.counselor.pk},
-            )
+            ),
+            follow=True,
         )
-        sv_detail = self.http.get(self.url)
+        sv_detail = self.http.get(self.url, follow=True)
         self.assertEqual(admin_detail.status_code, 200)
         self.assertEqual(sv_detail.status_code, 200)
         self.assertEqual(
@@ -392,7 +409,10 @@ class SupervisorTrainingProgressParityTests(TestCase):
         _intake(case)
         for number in range(1, 6):
             _journal(case, number, counseling_method=CounselingMethod.REMOTE)
-        individual = get_counselor_training_progress(counselor)
+        enrollment = TrainingEnrollment.objects.get(counselor=counselor, cohort=7)
+        individual = get_counselor_training_progress(
+            counselor, training_enrollment=enrollment
+        )
         batch = get_cohort_counselors_training_progress(7)
         batch_progress = next(
             entry["progress"] for entry in batch if entry["counselor"].pk == counselor.pk
@@ -408,7 +428,8 @@ class SupervisorTrainingProgressParityTests(TestCase):
             reverse(
                 "supervisor:counselor_training_progress_detail",
                 kwargs={"counselor_id": counselor.pk},
-            )
+            ),
+            follow=True,
         )
         row = listing.context["rows"][0]
         for key in PROGRESS_COMPARE_KEYS:

@@ -57,7 +57,7 @@
                     <tr>
                         <td class="text-muted">{{ forloop.counter }}</td>
                         <td class="fw-semibold text-nowrap">
-                            <a href="{% url 'admin_panel:counselor_training_progress_detail' row.counselor.pk %}{% if selected_cohort %}?cohort={{ selected_cohort }}{% endif %}">
+                            <a href="{% url 'admin_panel:enrollment_training_progress_detail' row.enrollment.pk %}{% if selected_cohort %}?cohort={{ selected_cohort }}{% endif %}">
                                 {{ row.counselor.name }}
                             </a>
                         </td>

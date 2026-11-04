@@ -40,6 +40,11 @@ urlpatterns = [
         name="counselor_training_progress_detail",
     ),
     path(
+        "training-progress/enrollments/<uuid:enrollment_id>/",
+        views_admin_training_progress.admin_enrollment_training_progress_detail,
+        name="enrollment_training_progress_detail",
+    ),
+    path(
         "counselors/<uuid:counselor_id>/training-certificate/",
         views_training_certificate.admin_counselor_training_certificate,
         name="counselor_training_certificate",

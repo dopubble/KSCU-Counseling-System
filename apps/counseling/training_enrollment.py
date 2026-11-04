@@ -75,3 +75,30 @@ def resolve_dashboard_training_enrollment(counselor, raw):
     if enrollments:
         return enrollments[0], enrollments, False
     return None, enrollments, False
+
+
+def resolve_legacy_counselor_training_enrollment(counselor):
+    """기존 counselor_id 상세 URL이 가리킬 수련 단위.
+
+    Enrollment가 하나면 그 행이다.
+    여러 개이고 ACTIVE가 정확히 하나면 그 ACTIVE다.
+    없거나 어느 기수인지 하나로 정할 수 없으면 None이다.
+    """
+    enrollments = counselor_training_enrollments(counselor)
+    if len(enrollments) == 1:
+        return enrollments[0]
+    active = [
+        item for item in enrollments if item.status == TrainingEnrollmentStatus.ACTIVE
+    ]
+    if len(active) == 1:
+        return active[0]
+    return None
+
+
+def training_enrollment_cohorts() -> list[int]:
+    """수련현황 기수 선택. TrainingEnrollment에 있는 기수만, 내림차순."""
+    return list(
+        TrainingEnrollment.objects.values_list("cohort", flat=True)
+        .distinct()
+        .order_by("-cohort")
+    )

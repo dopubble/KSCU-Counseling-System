@@ -75,6 +75,12 @@ def _create_counselor(name: str, *, cohort=1) -> User:
         user=user,
         defaults={"cohort": cohort, "is_approved": True},
     )
+    if cohort is not None:
+        TrainingEnrollment.objects.create(
+            counselor=user,
+            cohort=cohort,
+            status=TrainingEnrollmentStatus.ACTIVE,
+        )
     return user
 
 
@@ -94,9 +100,13 @@ def _create_case(
         client=client,
         counseling_types=["진로상담"],
         reason="test",
-        counseling_method=counseling_method,
-        status=ApplicationStatus.IN_PROGRESS,
-    )
+    counseling_method=counseling_method,
+    status=ApplicationStatus.IN_PROGRESS,
+)
+    if training_enrollment is None:
+        enrollments = list(TrainingEnrollment.objects.filter(counselor=counselor))
+        if len(enrollments) == 1:
+            training_enrollment = enrollments[0]
     return Case.objects.create(
         application=application,
         client=client,
@@ -918,11 +928,7 @@ class CounselorTrainingProgressTests(TestCase):
 class CounselorTrainingProgressDashboardTests(TestCase):
     def setUp(self):
         self.counselor = _create_counselor("화면상담사")
-        self.enrollment = TrainingEnrollment.objects.create(
-            counselor=self.counselor,
-            cohort=1,
-            status=TrainingEnrollmentStatus.ACTIVE,
-        )
+        self.enrollment = TrainingEnrollment.objects.get(counselor=self.counselor)
         self.http = HttpClient()
         self.http.force_login(self.counselor)
         self.url = reverse("counselor:dashboard")

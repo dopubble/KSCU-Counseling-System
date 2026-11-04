@@ -11,8 +11,8 @@
         <div>
             <h2 class="site-page-title mb-1">{{ counselor.name }} 상담사 수련현황</h2>
             <p class="text-muted small mb-0">
-                기수:
-                {% if cohort %}{{ cohort }}기{% else %}—{% endif %}
+                수련 기수:
+                {% if cohort %}{{ cohort }}기{% if training_enrollment.status == "ACTIVE" %} (현재){% endif %}{% else %}—{% endif %}
             </p>
         </div>
         <div class="d-flex flex-wrap gap-2">
