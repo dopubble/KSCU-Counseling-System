@@ -141,12 +141,25 @@ class ConsentDocument(models.Model):
         return f"{self.client.name} - {self.get_doc_type_display()}"
 
     def build_storage_basename(self, ext: str) -> str:
-        """[N기]상담사명_내담자명_서류종류.ext"""
+        """저장 경로용 이름. 업로드 시점의 프로필 기수를 유지한다."""
         from apps.counseling.cohort_journal_service import get_counselor_cohort
 
         case = getattr(self.application, "case", None)
         counselor = case.counselor if case else None
         cohort = get_counselor_cohort(counselor) if counselor else None
+        return self._format_consent_basename(cohort, ext)
+
+    def record_cohort_for_download(self) -> int | None:
+        """다운로드 파일명에 쓸 기수. 사례 Enrollment가 있으면 그 기수다."""
+        from apps.counseling.cohort_journal_service import supervision_cohort_for_case
+
+        case = getattr(self.application, "case", None)
+        return supervision_cohort_for_case(case)
+
+    def _format_consent_basename(self, cohort, ext: str) -> str:
+        """[N기]상담사명_내담자명_서류종류.ext"""
+        case = getattr(self.application, "case", None)
+        counselor = case.counselor if case else None
         cohort_part = f"[{cohort}기]" if cohort else "[기수미정]"
         counselor_name = (counselor.name if counselor else "상담사미배정").replace(" ", "")
         client_name = self.client.name.replace(" ", "")
@@ -164,7 +177,7 @@ class ConsentDocument(models.Model):
             ext = stored.rsplit(".", 1)[-1]
         else:
             ext = "bin"
-        return self.build_storage_basename(ext)
+        return self._format_consent_basename(self.record_cohort_for_download(), ext)
 
     @property
     def is_submitted(self) -> bool:

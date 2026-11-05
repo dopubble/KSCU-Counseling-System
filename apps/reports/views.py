@@ -1,4 +1,4 @@
-from django.db.models import Count, Q
+from django.db.models import Case as WhenCohort, Count, Exists, F, IntegerField, OuterRef, Q, Value, When
 from django.conf import settings
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -17,6 +17,7 @@ from apps.counseling.models import (
     CaseStatus,
     CounselingApplication,
     CounselingMethod,
+    TrainingEnrollment,
 )
 from apps.counseling.services import (
     count_cancel_pending_appointments,
@@ -460,15 +461,40 @@ def appointment_calendar_events(request):
     return JsonResponse({"events": events})
 
 
+def _profile_cohort_mismatch(counselor_ref: str, profile_ref: str):
+    """이 상담사에게 프로필 기수와 다른 Enrollment가 있는지."""
+    return TrainingEnrollment.objects.filter(counselor_id=OuterRef(counselor_ref)).exclude(
+        cohort=OuterRef(profile_ref)
+    )
+
+
+def record_cohort_expression(*, counselor_ref: str, profile_ref: str, enrollment_ref: str):
+    """사례 Enrollment 기수. 없으면 단일 기수 레거시 프로필만 사용한다."""
+    mismatch = _profile_cohort_mismatch(counselor_ref, profile_ref)
+    return WhenCohort(
+        When(**{f"{enrollment_ref}__isnull": False}, then=F(f"{enrollment_ref}__cohort")),
+        When(Exists(mismatch), then=Value(None, output_field=IntegerField())),
+        default=F(profile_ref),
+        output_field=IntegerField(),
+    )
+
+
 def build_cohort_confirmed_method_stats():
     """기수별 CONFIRMED 예약의 대면/비대면 건수.
 
-    건수 기준은 Appointment 1건. 기수는 상담사 CounselorProfile.cohort,
+    건수 기준은 Appointment 1건. 기수는 Case.training_enrollment.cohort,
     상담방식은 Case.counseling_method (IN_PERSON / REMOTE).
     """
     grouped = (
         Appointment.objects.filter(status=AppointmentStatus.CONFIRMED)
-        .values("counselor__counselor_profile__cohort")
+        .annotate(
+            stat_cohort=record_cohort_expression(
+                counselor_ref="case__counselor_id",
+                profile_ref="case__counselor__counselor_profile__cohort",
+                enrollment_ref="case__training_enrollment",
+            ),
+        )
+        .values("stat_cohort")
         .annotate(
             in_person_count=Count(
                 "pk",
@@ -491,7 +517,7 @@ def build_cohort_confirmed_method_stats():
             continue
         rows.append(
             {
-                "cohort": item["counselor__counselor_profile__cohort"],
+                "cohort": item["stat_cohort"],
                 "in_person_count": in_person_count,
                 "remote_count": remote_count,
                 "total_count": total_count,
@@ -504,6 +530,18 @@ def build_cohort_confirmed_method_stats():
         "total_count": sum(row["total_count"] for row in rows),
     }
     return rows, totals
+
+
+def _consent_submission_cohorts() -> list[int]:
+    """동의서 목록 필터. 현재 프로필 기수와 사례 Enrollment 기수를 함께 보여 준다."""
+    enrolled = Case.objects.filter(
+        counselor__isnull=False,
+        training_enrollment__isnull=False,
+    ).values_list("training_enrollment__cohort", flat=True)
+    return sorted(
+        {int(value) for value in set(get_available_cohorts()) | set(enrolled)},
+        reverse=True,
+    )
 
 
 @role_required(UserRole.ADMIN)
@@ -539,7 +577,7 @@ def statistics(request):
 @role_required(UserRole.ADMIN)
 def consent_submissions(request):
     """기수별 동의서 제출 현황."""
-    cohorts = get_available_cohorts()
+    cohorts = _consent_submission_cohorts()
     selected_cohort = _parse_cohort_param(request.GET.get("cohort"))
     status_filter = request.GET.get("status", "active")
 
@@ -549,16 +587,24 @@ def consent_submissions(request):
             "counselor",
             "counselor__counselor_profile",
             "application",
+            "training_enrollment",
         )
         .filter(counselor__isnull=False)
+        .annotate(
+            record_cohort=record_cohort_expression(
+                counselor_ref="counselor_id",
+                profile_ref="counselor__counselor_profile__cohort",
+                enrollment_ref="training_enrollment",
+            ),
+        )
         .order_by(
-            "counselor__counselor_profile__cohort",
+            "record_cohort",
             "counselor__name",
             "client__name",
         )
     )
     if selected_cohort is not None:
-        cases_qs = cases_qs.filter(counselor__counselor_profile__cohort=selected_cohort)
+        cases_qs = cases_qs.filter(record_cohort=selected_cohort)
     if status_filter == "active":
         cases_qs = cases_qs.filter(status=CaseStatus.ACTIVE)
 
@@ -569,7 +615,6 @@ def consent_submissions(request):
 
     rows = []
     for case in cases:
-        profile = getattr(case.counselor, "counselor_profile", None)
         slots = {
             doc_type: by_app_type.get((case.application_id, doc_type))
             for doc_type in COUNSELOR_REQUIRED_DOC_TYPES
@@ -578,7 +623,7 @@ def consent_submissions(request):
         rows.append(
             {
                 "case": case,
-                "cohort": profile.cohort if profile else None,
+                "cohort": case.record_cohort,
                 "doc_columns": [
                     {"doc_type": doc_type, "doc": slots[doc_type]}
                     for doc_type in COUNSELOR_REQUIRED_DOC_TYPES

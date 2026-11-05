@@ -49,6 +49,7 @@ def consent_file(request, pk):
     consent = get_object_or_404(
         ConsentDocument.objects.select_related(
             "application__case__counselor",
+            "application__case__training_enrollment",
             "application__case__client",
             "client",
         ),
