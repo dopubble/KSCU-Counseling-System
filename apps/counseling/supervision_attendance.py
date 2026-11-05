@@ -2,6 +2,7 @@
 
 from django import forms
 from django.db import transaction
+from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 
 from apps.accounts.models import CounselorProfile
@@ -14,6 +15,8 @@ from apps.counseling.models import (
     SupervisionAttendanceStatus,
     SupervisionSession,
     SupervisionSessionStatus,
+    TrainingEnrollment,
+    TrainingEnrollmentStatus,
 )
 from apps.scheduling.constants import DEFAULT_APPOINTMENT_DURATION_MINUTES
 
@@ -66,6 +69,14 @@ class SupervisionSessionForm(forms.ModelForm):
         cohort = self.cleaned_data["cohort"]
         if cohort < 1:
             raise forms.ValidationError("기수는 1 이상이어야 합니다.")
+        if (
+            self.instance.pk
+            and self.instance.cohort != cohort
+            and SupervisionAttendance.objects.filter(session_id=self.instance.pk).exists()
+        ):
+            raise forms.ValidationError(
+                "출석 기록이 있는 회차의 기수는 바꿀 수 없습니다."
+            )
         return cohort
 
     def clean_session_number(self):
@@ -113,17 +124,45 @@ def assert_cohort_access(user, cohort: int) -> None:
         raise PermissionDenied("이 기수의 수퍼비전 출석을 관리할 수 없습니다.")
 
 
-def session_roster(session: SupervisionSession) -> list[dict]:
-    """기수 상담사와 기존 출석 상태를 한 번에 붙인다."""
-    profiles = list(
-        CounselorProfile.objects.filter(cohort=session.cohort)
-        .select_related("user")
-        .order_by("user__name", "user__email")
+def _new_attendance_profiles(cohort: int):
+    """이 기수에 새로 넣을 상담사.
+
+    진행 중인 Enrollment가 있으면 그 기수다.
+    Enrollment가 하나도 없는 상담사만 프로필 기수를 쓴다.
+    완료·중단 Enrollment만 있는 상담사는 새 명단에 넣지 않는다.
+    """
+    active_users = TrainingEnrollment.objects.filter(
+        cohort=cohort,
+        status=TrainingEnrollmentStatus.ACTIVE,
+    ).values("counselor_id")
+    has_enrollment = TrainingEnrollment.objects.filter(counselor_id=OuterRef("user_id"))
+    return CounselorProfile.objects.annotate(has_enrollment=Exists(has_enrollment)).filter(
+        Q(user_id__in=active_users) | Q(has_enrollment=False, cohort=cohort)
     )
-    attendance_by_profile = {
-        row.counselor_id: row
-        for row in SupervisionAttendance.objects.filter(session=session)
+
+
+def _roster_profiles(session: SupervisionSession):
+    """기존 출석 행과 새 대상자를 합친다. 기존 행은 현재 기수와 상관없이 남긴다."""
+    attendances = list(
+        SupervisionAttendance.objects.filter(session=session).select_related(
+            "counselor",
+            "counselor__user",
+        )
+    )
+    attendance_by_profile = {row.counselor_id: row for row in attendances}
+    profiles = {
+        profile.pk: profile
+        for profile in _new_attendance_profiles(session.cohort).select_related("user")
     }
+    for row in attendances:
+        profiles.setdefault(row.counselor_id, row.counselor)
+    ordered = sorted(profiles.values(), key=lambda profile: (profile.user.name, profile.user.email))
+    return ordered, attendance_by_profile
+
+
+def session_roster(session: SupervisionSession) -> list[dict]:
+    """회차 명단과 기존 출석 상태를 한 번에 붙인다. 조회만 하고 행을 만들지 않는다."""
+    profiles, attendance_by_profile = _roster_profiles(session)
     roster = []
     for profile in profiles:
         attendance = attendance_by_profile.get(profile.pk)
@@ -142,8 +181,11 @@ def session_roster(session: SupervisionSession) -> list[dict]:
 
 
 def save_session_attendance(session: SupervisionSession, user, posted) -> int:
-    """기수 상담사 전원을 저장한다. 체크된 상담사는 출석, 나머지는 결석이다."""
-    profiles = list(CounselorProfile.objects.filter(cohort=session.cohort))
+    """화면에 나온 명단만 저장한다. 체크된 상담사는 출석, 나머지는 결석이다.
+
+    명단에 없는 상담사의 기존 행은 지우거나 다른 회차로 옮기지 않는다.
+    """
+    profiles, _attendance_by_profile = _roster_profiles(session)
     saved = 0
     now = timezone.now()
     with transaction.atomic():
