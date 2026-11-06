@@ -1,11 +1,17 @@
 """관리자 수련현황 통합 조회. 목록과 상세의 기준키는 TrainingEnrollment다."""
 
+from django.contrib import messages
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
 from apps.accounts.decorators import role_required
 from apps.accounts.models import CounselorProfile, User, UserRole
+from apps.counseling.cohort_reenrollment import (
+    CohortReenrollmentError,
+    describe_cohort_reenrollment,
+    register_next_cohort,
+)
 from apps.counseling.models import TrainingEnrollment
 from apps.counseling.training_certificate import get_training_certificate_approval_status
 from apps.counseling.training_enrollment import (
@@ -179,4 +185,39 @@ def admin_enrollment_training_progress_detail(request, enrollment_id):
         request,
         enrollment,
         "admin_panel/counselor_training_progress_detail.html",
+    )
+
+
+@role_required(UserRole.ADMIN)
+def admin_counselor_cohort_reenrollment(request, counselor_id):
+    """기존 수련 이력이 있는 상담사에게 더 높은 기수를 등록한다. GET은 확인만 한다."""
+    counselor = get_object_or_404(
+        User.objects.select_related("counselor_profile"),
+        pk=counselor_id,
+        role=UserRole.COUNSELOR,
+    )
+    preview = describe_cohort_reenrollment(counselor)
+    errors = []
+    if request.method == "POST":
+        try:
+            created = register_next_cohort(counselor, request.POST.get("cohort"))
+        except CohortReenrollmentError as exc:
+            errors = exc.messages
+            preview = describe_cohort_reenrollment(counselor)
+        else:
+            messages.success(
+                request, f"{created.cohort}기 수련 등록이 완료되었습니다."
+            )
+            return redirect(
+                "admin_panel:enrollment_training_progress_detail",
+                enrollment_id=created.pk,
+            )
+    return render(
+        request,
+        "admin_panel/cohort_reenrollment.html",
+        {
+            "counselor": counselor,
+            "preview": preview,
+            "errors": errors,
+        },
     )

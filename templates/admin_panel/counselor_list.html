@@ -60,6 +60,7 @@
                         <th scope="col">계정 상태</th>
                         <th scope="col">가입일</th>
                         <th scope="col">수련확인증</th>
+                        <th scope="col">기수 등록</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -89,6 +90,14 @@
                                class="btn btn-sm btn-outline-primary"
                                target="_blank"
                                rel="noopener">수련확인증</a>
+                        </td>
+                        <td class="text-nowrap">
+                            {% if profile.enrollment_count %}
+                            <a href="{% url 'admin_panel:counselor_cohort_reenrollment' profile.user.pk %}"
+                               class="btn btn-sm btn-outline-primary">새 기수 등록</a>
+                            {% else %}
+                            <span class="text-muted">—</span>
+                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}

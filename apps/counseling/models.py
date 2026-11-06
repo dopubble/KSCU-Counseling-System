@@ -618,7 +618,7 @@ class TrainingEnrollment(models.Model):
         verbose_name_plural = "수련 등록"
         ordering = ["counselor_id", "cohort"]
         constraints = [
-            # 2기는 기존 ACTIVE를 COMPLETED로 바꾼 뒤에만 만든다. 1단계에서는 그 전환을 하지 않는다.
+            # 같은 상담사·같은 기수는 하나다. 진행 중 등록도 상담사당 하나다.
             models.UniqueConstraint(
                 fields=["counselor", "cohort"],
                 name="uniq_training_enrollment_counselor_cohort",

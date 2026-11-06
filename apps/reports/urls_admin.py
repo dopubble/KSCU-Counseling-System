@@ -30,6 +30,11 @@ urlpatterns = [
     ),
     path("counselors/", views.counselor_list, name="counselor_list"),
     path(
+        "counselors/<uuid:counselor_id>/cohort-reenrollment/",
+        views_admin_training_progress.admin_counselor_cohort_reenrollment,
+        name="counselor_cohort_reenrollment",
+    ),
+    path(
         "training-progress/",
         views_admin_training_progress.admin_training_progress,
         name="training_progress",

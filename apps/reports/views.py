@@ -383,6 +383,7 @@ def counselor_list(request):
     profiles = (
         CounselorProfile.objects.select_related("user")
         .filter(user__role=UserRole.COUNSELOR)
+        .annotate(enrollment_count=Count("user__training_enrollments"))
         .order_by("cohort", "user__name")
     )
     if selected_cohort is not None:

@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% load ui_tags %}
+
+{% block title %}{{ counselor.name }} 새 기수 등록{% endblock %}
+
+{% block content %}
+{% page_header show_heading=False c1_label="대시보드" c1_url_name="admin_panel:dashboard" c1_icon="bi-speedometer2" c2_label="상담사 명단" c2_url_name="admin_panel:counselor_list" c3_label="새 기수 등록" %}
+
+<div class="site-page-heading mt-4 mb-4">
+    <h2 class="site-page-title mb-1">새 기수 등록</h2>
+    <p class="text-muted small mb-0">기존 상담사 계정에 새로운 수련 기수를 등록합니다. 새 계정은 만들지 않습니다.</p>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body">
+        <dl class="row mb-4">
+            <dt class="col-sm-3">상담사</dt>
+            <dd class="col-sm-9">{{ counselor.name }}</dd>
+            <dt class="col-sm-3">이메일</dt>
+            <dd class="col-sm-9">{{ counselor.email }}</dd>
+            <dt class="col-sm-3">현재 등록 기수</dt>
+            <dd class="col-sm-9">
+                {% if preview.active %}
+                {{ preview.active.cohort }}기
+                {% elif preview.highest %}
+                {{ preview.highest.cohort }}기
+                {% else %}
+                없음
+                {% endif %}
+            </dd>
+            <dt class="col-sm-3">현재 수련 상태</dt>
+            <dd class="col-sm-9">
+                {% if preview.active %}
+                {{ preview.active.get_status_display }}
+                {% elif preview.highest %}
+                {{ preview.highest.get_status_display }}
+                {% else %}
+                —
+                {% endif %}
+            </dd>
+        </dl>
+
+        {% if preview.active %}
+        <h3 class="h6 fw-semibold">기존 {{ preview.active.cohort }}기 상담사례</h3>
+        <ul class="mb-4">
+            <li>전체 {{ preview.readiness.case_count }}건</li>
+            <li>진행 중 {{ preview.readiness.open_count }}건</li>
+            <li>최종 제출 미완료 {{ preview.readiness.unsubmitted_count }}건</li>
+            <li>예정된 예약 {{ preview.readiness.upcoming_count }}건</li>
+        </ul>
+        {% elif preview.eligible %}
+        <p class="mb-4">현재 진행 중인 기수가 없습니다. 기존 완료·중단 기수는 변경하지 않습니다.</p>
+        {% endif %}
+
+        <div class="alert alert-light border">
+            <ul class="mb-0">
+                <li>기존 수련기록은 삭제되지 않습니다.</li>
+                {% if preview.active %}
+                <li>기존 기수의 참여 상태는 COMPLETED로 변경됩니다.</li>
+                {% else %}
+                <li>이미 완료되거나 중단된 기수는 변경하지 않습니다.</li>
+                {% endif %}
+                <li>새로운 기수는 ACTIVE로 등록됩니다.</li>
+                <li>상담사 계정과 이메일은 그대로 유지됩니다.</li>
+                <li>기존 수련확인증 승인 이력은 보존됩니다.</li>
+            </ul>
+        </div>
+
+        {% if not preview.eligible %}
+        <div class="alert alert-warning">수련 등록 이력이 없는 상담사는 이 화면에서 등록할 수 없습니다.</div>
+        {% endif %}
+        {% for error in errors %}
+        <div class="alert alert-danger">{{ error }}</div>
+        {% endfor %}
+
+        <form method="post" class="mt-3">
+            {% csrf_token %}
+            {% if preview.eligible %}
+            <div class="mb-3" style="max-width: 16rem;">
+                <label for="newCohort" class="form-label fw-semibold">신규 등록 기수</label>
+                <input type="number"
+                       class="form-control"
+                       id="newCohort"
+                       name="cohort"
+                       min="{{ preview.suggested_cohort }}"
+                       step="1"
+                       required
+                       value="{{ preview.suggested_cohort }}"
+                       {% if preview.blockers %}disabled{% endif %}>
+            </div>
+            {% endif %}
+            <div class="d-flex gap-2">
+                <a href="{% url 'admin_panel:counselor_list' %}" class="btn btn-outline-secondary">취소</a>
+                {% if preview.eligible %}
+                <button type="submit" class="btn btn-primary" {% if preview.blockers %}disabled{% endif %}>새 기수 등록</button>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
