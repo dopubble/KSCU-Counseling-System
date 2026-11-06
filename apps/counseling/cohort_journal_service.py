@@ -7,7 +7,7 @@ from collections import defaultdict
 from django.db.models import Count, Exists, OuterRef, Q
 
 from apps.accounts.models import CounselorProfile, UserRole, UserStatus
-from apps.counseling.models import Case, TrainingEnrollment
+from apps.counseling.models import TrainingEnrollment
 from apps.sessions_app.models import CounselingJournal, InitialCounselingRecord
 
 
@@ -42,15 +42,18 @@ def supervision_cohort_for_case(case) -> int | None:
 
 
 def counselor_visible_supervision_cohorts(counselor) -> set[int]:
-    """이 상담사가 수퍼바이저 목록에 나타나는 기수."""
+    """이 상담사가 수퍼바이저 목록에 나타나는 기수.
+
+    소속은 TrainingEnrollment다. 사례가 없어도 등록한 기수에 나온다.
+    Enrollment가 없거나 프로필과 같은 단일 기수면 기존 프로필 기수를 유지한다.
+    """
     if counselor is None or not getattr(counselor, "pk", None):
         return set()
     cohorts = {
         int(cohort)
-        for cohort in Case.objects.filter(
-            counselor_id=counselor.pk,
-            training_enrollment__isnull=False,
-        ).values_list("training_enrollment__cohort", flat=True)
+        for cohort in TrainingEnrollment.objects.filter(counselor_id=counselor.pk).values_list(
+            "cohort", flat=True
+        )
     }
     legacy = legacy_supervision_cohort(counselor)
     if legacy:
@@ -151,12 +154,14 @@ def _legacy_profile_cohort(profile_cohort, enrolled: set[int]) -> int | None:
 
 def get_supervision_counselors_by_cohort(*, allowed_cohorts: list[int] | None) -> list[dict]:
     """
-    수퍼비전 상담사 목록을 사례 기수별로 반환한다.
+    수퍼비전 상담사 목록을 등록 기수별로 반환한다.
 
     상담사 조건은 사례발표 동기 집계와 같다.
     승인(is_approved), 역할 COUNSELOR, 상태 ACTIVE, 기수 있음.
-    같은 상담사가 여러 기수 사례를 가지면 기수 섹션마다 따로 나온다.
-    완료 일지 수는 그 기수 사례만 센다.
+    기수 소속은 TrainingEnrollment다. 사례나 완료 일지가 없어도 그 기수에 나온다.
+    Enrollment가 없거나 프로필 기수와 같은 단일 기수면 기존처럼 프로필 기수에 나온다.
+    같은 상담사가 여러 기수에 등록돼 있으면 기수 섹션마다 따로 나온다.
+    완료 일지 수는 그 기수 Enrollment에 연결된 사례만 센다.
     """
     if allowed_cohorts is not None and not allowed_cohorts:
         return []
@@ -178,12 +183,6 @@ def get_supervision_counselors_by_cohort(*, allowed_cohorts: list[int] | None) -
         counselor_id__in=counselor_ids
     ).values_list("counselor_id", "cohort"):
         enrolled[counselor_id].add(int(cohort))
-    case_cohorts: dict[int, set[int]] = defaultdict(set)
-    for counselor_id, cohort in Case.objects.filter(
-        counselor_id__in=counselor_ids,
-        training_enrollment__isnull=False,
-    ).values_list("counselor_id", "training_enrollment__cohort"):
-        case_cohorts[counselor_id].add(int(cohort))
     journal_counts: dict[tuple[int, int | None], int] = defaultdict(int)
     for row in (
         CounselingJournal.objects.filter(is_draft=False, counselor_id__in=counselor_ids)
@@ -198,7 +197,7 @@ def get_supervision_counselors_by_cohort(*, allowed_cohorts: list[int] | None) -
     groups: dict[int, dict] = {}
     for profile in profiles:
         counselor_id = profile.user_id
-        visible = set(case_cohorts[counselor_id])
+        visible = set(enrolled[counselor_id])
         legacy = _legacy_profile_cohort(profile.cohort, enrolled[counselor_id])
         if legacy:
             visible.add(legacy)

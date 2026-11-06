@@ -364,3 +364,272 @@ class SupervisorEnrollmentRecordTests(TestCase):
         self.assertEqual(self.counselor.counselor_profile.cohort, 2)
         self.assertEqual(self.first.status, TrainingEnrollmentStatus.COMPLETED)
         self.assertEqual(self.second.status, TrainingEnrollmentStatus.ACTIVE)
+
+
+def _cohort_section(body: str, label: str) -> str:
+    marker = f">{label}</h2>"
+    start = body.index(marker)
+    rest = body[start:]
+    nxt = rest.find("<h2", len(marker))
+    if nxt == -1:
+        return rest
+    return rest[:nxt]
+
+
+class EnrollmentRosterWithoutCasesTests(TestCase):
+    """재등록 상담사는 사례가 없는 새 기수에도 0건으로 나온다."""
+
+    def setUp(self):
+        self.counselor = _create_counselor("홍길동", cohort=2)
+        self.first = TrainingEnrollment.objects.create(
+            counselor=self.counselor,
+            cohort=1,
+            status=TrainingEnrollmentStatus.COMPLETED,
+        )
+        self.second = TrainingEnrollment.objects.create(
+            counselor=self.counselor,
+            cohort=2,
+            status=TrainingEnrollmentStatus.ACTIVE,
+        )
+        self.case_a = _create_case(self.counselor, _create_client("일재담"), "CASE-ROSTER-A")
+        self.case_b = _create_case(self.counselor, _create_client("이재담"), "CASE-ROSTER-B")
+        self.case_a.training_enrollment = self.first
+        self.case_b.training_enrollment = self.first
+        self.case_a.save(update_fields=["training_enrollment"])
+        self.case_b.save(update_fields=["training_enrollment"])
+        self.journals = [
+            _create_journal(self.case_a, self.counselor, session_number=number)
+            for number in range(1, 7)
+        ] + [
+            _create_journal(self.case_b, self.counselor, session_number=number)
+            for number in range(1, 5)
+        ]
+        self.only_first = _create_counselor("일만등록", cohort=1)
+        self.only_first_enrollment = TrainingEnrollment.objects.create(
+            counselor=self.only_first,
+            cohort=1,
+            status=TrainingEnrollmentStatus.ACTIVE,
+        )
+        self.only_first_case = _create_case(
+            self.only_first, _create_client("단재담"), "CASE-ROSTER-ONLY"
+        )
+        self.only_first_case.training_enrollment = self.only_first_enrollment
+        self.only_first_case.save(update_fields=["training_enrollment"])
+        self.only_first_journal = _create_journal(
+            self.only_first_case, self.only_first, session_number=1
+        )
+        self.legacy = _create_counselor("레거시단독", cohort=1)
+        self.legacy_case = _create_case(self.legacy, _create_client("레재담"), "CASE-ROSTER-LEGACY")
+        self.legacy_journal = _create_journal(self.legacy_case, self.legacy, session_number=1)
+        self.supervisor_one = _supervisor("sv-roster-1@example.com", "일교수", [1])
+        self.supervisor_two = _supervisor("sv-roster-2@example.com", "이교수", [2])
+        self.supervisor_both = _supervisor("sv-roster-both@example.com", "박교수", [1, 2])
+        self.detail_url = reverse(
+            "supervisor:counselor_journals",
+            kwargs={"counselor_id": self.counselor.pk},
+        )
+
+    def _login(self, user):
+        http = HttpClient()
+        http.force_login(user)
+        return http
+
+    def test_reenrolled_counselor_is_listed_in_both_cohorts_with_separate_counts(self):
+        response = self._login(self.supervisor_both).get(reverse("supervisor:cohort_journals"))
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        first = _cohort_section(body, "1기")
+        second = _cohort_section(body, "2기")
+
+        self.assertIn("홍길동", first)
+        self.assertIn("상담일지 10건", first)
+        self.assertIn("일만등록", first)
+        self.assertIn("레거시단독", first)
+        self.assertIn(f"{self.detail_url}?cohort=1", first)
+        self.assertIn("홍길동", second)
+        self.assertIn("상담일지 0건", second)
+        self.assertIn(f"{self.detail_url}?cohort=2", second)
+        self.assertNotIn("일만등록", second)
+        self.assertNotIn("레거시단독", second)
+        self.assertNotIn("상담일지 10건", second)
+        self.assertNotIn("상담일지 1건", second)
+
+        empty = self._login(self.supervisor_two).get(f"{self.detail_url}?cohort=2")
+        self.assertEqual(empty.status_code, 200)
+        self.assertContains(empty, "[2기] 홍길동 상담일지")
+        self.assertContains(empty, "아직 작성 완료된 상담일지가 없습니다.")
+        self.assertNotContains(empty, "일*담")
+        self.assertNotContains(empty, "이*담")
+
+        cohort_two_case = _create_case(self.counselor, _create_client("삼재담"), "CASE-ROSTER-2")
+        cohort_two_case.training_enrollment = self.second
+        cohort_two_case.save(update_fields=["training_enrollment"])
+        cohort_two_journal = _create_journal(cohort_two_case, self.counselor, session_number=1)
+
+        listed = self._login(self.supervisor_both).get(reverse("supervisor:cohort_journals"))
+        listed_body = listed.content.decode()
+        self.assertIn("상담일지 10건", _cohort_section(listed_body, "1기"))
+        self.assertNotIn("상담일지 11건", _cohort_section(listed_body, "1기"))
+        self.assertIn("상담일지 1건", _cohort_section(listed_body, "2기"))
+        self.assertNotIn("상담일지 10건", _cohort_section(listed_body, "2기"))
+
+        cohort_one = self._login(self.supervisor_both).get(f"{self.detail_url}?cohort=1")
+        self.assertContains(cohort_one, "일*담")
+        self.assertContains(cohort_one, "이*담")
+        self.assertContains(cohort_one, "사례 2건 | 완료 상담 10회기")
+        self.assertNotContains(cohort_one, "삼*담")
+
+        cohort_two = self._login(self.supervisor_both).get(f"{self.detail_url}?cohort=2")
+        self.assertContains(cohort_two, "삼*담")
+        self.assertContains(cohort_two, "사례 1건 | 완료 상담 1회기")
+        self.assertNotContains(cohort_two, "일*담")
+        self.assertNotContains(cohort_two, "이*담")
+
+        self.assertEqual(
+            self._login(self.supervisor_one).get(f"{self.detail_url}?cohort=2").status_code,
+            403,
+        )
+        self.assertEqual(
+            self._login(self.supervisor_two).get(f"{self.detail_url}?cohort=1").status_code,
+            403,
+        )
+        self.assertEqual(
+            self._login(self.supervisor_one).get(reverse("supervisor:cohort_journals")).status_code,
+            200,
+        )
+        one_only = self._login(self.supervisor_one).get(reverse("supervisor:cohort_journals"))
+        self.assertContains(one_only, "1기")
+        self.assertContains(one_only, "홍길동")
+        self.assertContains(one_only, "일만등록")
+        self.assertContains(one_only, "레거시단독")
+        self.assertNotContains(one_only, "2기")
+        two_only = self._login(self.supervisor_two).get(reverse("supervisor:cohort_journals"))
+        self.assertContains(two_only, "2기")
+        self.assertContains(two_only, "홍길동")
+        self.assertNotContains(two_only, "1기")
+        self.assertNotContains(two_only, "일만등록")
+        self.assertNotContains(two_only, "레거시단독")
+
+        for journal in self.journals:
+            self.assertTrue(user_can_view_journal(self.supervisor_one, journal))
+            self.assertTrue(user_can_download_journal_pdf(self.supervisor_one, journal))
+            self.assertFalse(user_can_view_journal(self.supervisor_two, journal))
+            self.assertFalse(user_can_download_journal_pdf(self.supervisor_two, journal))
+        self.assertTrue(user_can_view_journal(self.supervisor_two, cohort_two_journal))
+        self.assertTrue(user_can_download_journal_pdf(self.supervisor_two, cohort_two_journal))
+        self.assertFalse(user_can_view_journal(self.supervisor_one, cohort_two_journal))
+        self.assertFalse(user_can_download_journal_pdf(self.supervisor_one, cohort_two_journal))
+        self.assertTrue(user_can_view_journal(self.supervisor_one, self.legacy_journal))
+        self.assertFalse(user_can_view_journal(self.supervisor_two, self.legacy_journal))
+        self.assertTrue(user_can_view_journal(self.supervisor_one, self.only_first_journal))
+        self.assertFalse(user_can_view_journal(self.supervisor_two, self.only_first_journal))
+
+        denied_pdf = self._login(self.supervisor_two).post(
+            reverse("supervisor:journal_pdf", kwargs={"journal_pk": self.journals[0].pk}),
+            {"pdf_password": "test1234"},
+        )
+        self.assertEqual(denied_pdf.status_code, 403)
+        denied_new = self._login(self.supervisor_one).post(
+            reverse("supervisor:journal_pdf", kwargs={"journal_pk": cohort_two_journal.pk}),
+            {"pdf_password": "test1234"},
+        )
+        self.assertEqual(denied_new.status_code, 403)
+
+        self.counselor.counselor_profile.refresh_from_db()
+        self.first.refresh_from_db()
+        self.second.refresh_from_db()
+        self.case_a.refresh_from_db()
+        self.case_b.refresh_from_db()
+        self.assertEqual(self.counselor.counselor_profile.cohort, 2)
+        self.assertEqual(self.first.status, TrainingEnrollmentStatus.COMPLETED)
+        self.assertEqual(self.second.status, TrainingEnrollmentStatus.ACTIVE)
+        self.assertEqual(self.case_a.training_enrollment_id, self.first.pk)
+        self.assertEqual(self.case_b.training_enrollment_id, self.first.pk)
+
+
+class MismatchedProfileCohortRosterTests(TestCase):
+    """Enrollment가 하나인데 프로필 기수가 달라도 프로필 기수를 만들지 않는다."""
+
+    def setUp(self):
+        self.counselor = _create_counselor("불일치상담", cohort=2)
+        self.enrollment = TrainingEnrollment.objects.create(
+            counselor=self.counselor,
+            cohort=1,
+            status=TrainingEnrollmentStatus.ACTIVE,
+        )
+        self.linked_case = _create_case(self.counselor, _create_client("연재담"), "CASE-MISMATCH-1")
+        self.linked_case.training_enrollment = self.enrollment
+        self.linked_case.save(update_fields=["training_enrollment"])
+        self.linked_journal = _create_journal(self.linked_case, self.counselor, session_number=1)
+        self.linked_journal.subjective = "연결일지비밀"
+        self.linked_journal.save(update_fields=["subjective", "updated_at"])
+        self.orphan_case = _create_case(self.counselor, _create_client("미재담"), "CASE-MISMATCH-ORPHAN")
+        self.orphan_journal = _create_journal(self.orphan_case, self.counselor, session_number=1)
+        self.orphan_journal.subjective = "미연결일지비밀"
+        self.orphan_journal.save(update_fields=["subjective", "updated_at"])
+        self.supervisor_one = _supervisor("sv-mismatch-1@example.com", "일담당", [1])
+        self.supervisor_two = _supervisor("sv-mismatch-2@example.com", "이담당", [2])
+        self.detail_url = reverse(
+            "supervisor:counselor_journals",
+            kwargs={"counselor_id": self.counselor.pk},
+        )
+
+    def _login(self, user):
+        http = HttpClient()
+        http.force_login(user)
+        return http
+
+    def test_profile_cohort_does_not_create_a_roster_or_reveal_records(self):
+        both = _supervisor("sv-mismatch-both@example.com", "복수담당", [1, 2])
+        listed = self._login(both).get(reverse("supervisor:cohort_journals"))
+        body = listed.content.decode()
+        first = _cohort_section(body, "1기")
+        self.assertIn("불일치상담", first)
+        self.assertIn("상담일지 1건", first)
+        self.assertNotIn("상담일지 2건", first)
+        self.assertNotIn(">2기</h2>", body)
+
+        one_only = self._login(self.supervisor_one).get(reverse("supervisor:cohort_journals"))
+        self.assertContains(one_only, "불일치상담")
+        self.assertContains(one_only, "상담일지 1건")
+        self.assertNotContains(one_only, "2기")
+        two_only = self._login(self.supervisor_two).get(reverse("supervisor:cohort_journals"))
+        self.assertNotContains(two_only, "불일치상담")
+        self.assertContains(two_only, "등록된 상담사가 없습니다.")
+
+        detail = self._login(self.supervisor_one).get(f"{self.detail_url}?cohort=1")
+        self.assertEqual(detail.status_code, 200)
+        self.assertContains(detail, "연*담")
+        self.assertNotContains(detail, "미*담")
+        self.assertNotContains(detail, "연결일지비밀")
+        self.assertNotContains(detail, "미연결일지비밀")
+        self.assertEqual(
+            self._login(self.supervisor_two).get(f"{self.detail_url}?cohort=2").status_code,
+            403,
+        )
+        self.assertEqual(
+            self._login(self.supervisor_one).get(f"{self.detail_url}?cohort=2").status_code,
+            403,
+        )
+        self.assertEqual(
+            self._login(self.supervisor_two).get(f"{self.detail_url}?cohort=1").status_code,
+            403,
+        )
+
+        self.assertTrue(user_can_view_journal(self.supervisor_one, self.linked_journal))
+        self.assertTrue(user_can_download_journal_pdf(self.supervisor_one, self.linked_journal))
+        self.assertFalse(user_can_view_journal(self.supervisor_two, self.linked_journal))
+        self.assertFalse(user_can_download_journal_pdf(self.supervisor_two, self.linked_journal))
+        self.assertFalse(user_can_view_journal(self.supervisor_one, self.orphan_journal))
+        self.assertFalse(user_can_download_journal_pdf(self.supervisor_one, self.orphan_journal))
+        self.assertFalse(user_can_view_journal(self.supervisor_two, self.orphan_journal))
+        denied = self._login(self.supervisor_two).post(
+            reverse("supervisor:journal_pdf", kwargs={"journal_pk": self.linked_journal.pk}),
+            {"pdf_password": "test1234"},
+        )
+        self.assertEqual(denied.status_code, 403)
+        denied_orphan = self._login(self.supervisor_one).post(
+            reverse("supervisor:journal_pdf", kwargs={"journal_pk": self.orphan_journal.pk}),
+            {"pdf_password": "test1234"},
+        )
+        self.assertEqual(denied_orphan.status_code, 403)
