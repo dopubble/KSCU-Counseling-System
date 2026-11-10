@@ -1134,16 +1134,14 @@ class OwnCaseSupervisionRemarkTests(TestCase):
         first_context = build_counselor_training_certificate_context(counselor, first)
         second_context = build_counselor_training_certificate_context(counselor, second)
         self.assertEqual(first_context["own_case_supervision_posts"], 1)
-        self.assertEqual(
-            first_context["rows"][2][3],
-            "내 사례로 슈퍼비전 받은시간 : 2시간",
-        )
+        self.assertEqual(first_context["rows"][2][3], "")
+        self.assertIn(["개인 수퍼비전", "2시간", "—", ""], first_context["rows"])
         self.assertEqual(first_context["progress"]["supervision_attended_minutes"], 810)
         self.assertEqual(second_context["own_case_supervision_posts"], 3)
         self.assertEqual(
             [row for row in second_context["rows"] if row[0] in ("집단 수퍼비전", "개인 수퍼비전")],
             [
-                ["집단 수퍼비전", "0분", "—", "내 사례로 슈퍼비전 받은시간 : 0시간"],
+                ["집단 수퍼비전", "0분", "—", ""],
                 ["개인 수퍼비전", "0시간", "—", ""],
             ],
         )
@@ -1685,7 +1683,7 @@ class RecognizedSupervisionCreditTests(TestCase):
         self._attend_many(1)
         context = self._context()
         self.assertIn(
-            ["집단 수퍼비전", "3시간", "비대면", "내 사례로 슈퍼비전 받은시간 : 0시간"],
+            ["집단 수퍼비전", "3시간", "비대면", ""],
             context["rows"],
         )
         self.assertIn(["개인 수퍼비전", "0시간", "—", ""], context["rows"])
@@ -1694,7 +1692,7 @@ class RecognizedSupervisionCreditTests(TestCase):
         self._attend_many(5)
         context = self._context()
         self.assertIn(
-            ["집단 수퍼비전", "15시간", "비대면", "내 사례로 슈퍼비전 받은시간 : 0시간"],
+            ["집단 수퍼비전", "15시간", "비대면", ""],
             context["rows"],
         )
         self.assertEqual(
@@ -1708,7 +1706,7 @@ class RecognizedSupervisionCreditTests(TestCase):
         self._post("발표1")
         context = self._context()
         self.assertIn(
-            ["집단 수퍼비전", "13시간 30분", "비대면", "내 사례로 슈퍼비전 받은시간 : 2시간"],
+            ["집단 수퍼비전", "13시간 30분", "비대면", ""],
             context["rows"],
         )
         self.assertIn(["개인 수퍼비전", "2시간", "—", ""], context["rows"])
@@ -1721,7 +1719,7 @@ class RecognizedSupervisionCreditTests(TestCase):
         self._post("발표2")
         context = self._context()
         self.assertIn(
-            ["집단 수퍼비전", "12시간", "비대면", "내 사례로 슈퍼비전 받은시간 : 4시간"],
+            ["집단 수퍼비전", "12시간", "비대면", ""],
             context["rows"],
         )
         self.assertIn(["개인 수퍼비전", "4시간", "—", ""], context["rows"])
@@ -1735,7 +1733,7 @@ class RecognizedSupervisionCreditTests(TestCase):
         self.assertEqual(
             supervision,
             [
-                ["집단 수퍼비전", "0분", "—", "내 사례로 슈퍼비전 받은시간 : 0시간"],
+                ["집단 수퍼비전", "0분", "—", ""],
                 ["개인 수퍼비전", "0시간", "—", ""],
             ],
         )
@@ -1750,7 +1748,7 @@ class RecognizedSupervisionCreditTests(TestCase):
         context = self._context()
         self.assertEqual(context["supervision_credit"]["recognized_count"], 1)
         self.assertIn(
-            ["집단 수퍼비전", "1시간 30분", "비대면", "내 사례로 슈퍼비전 받은시간 : 2시간"],
+            ["집단 수퍼비전", "1시간 30분", "비대면", ""],
             context["rows"],
         )
         self.assertIn(["개인 수퍼비전", "2시간", "—", ""], context["rows"])
@@ -1763,7 +1761,7 @@ class RecognizedSupervisionCreditTests(TestCase):
         context = self._context()
         self.assertEqual(context["supervision_credit"]["recognized_count"], 2)
         self.assertIn(
-            ["집단 수퍼비전", "3시간", "비대면", "내 사례로 슈퍼비전 받은시간 : 4시간"],
+            ["집단 수퍼비전", "3시간", "비대면", ""],
             context["rows"],
         )
         self.assertIn(["개인 수퍼비전", "4시간", "—", ""], context["rows"])
@@ -1783,13 +1781,13 @@ class RecognizedSupervisionCreditTests(TestCase):
         first = self._context(self.enrollment)
         other = self._context(second)
         self.assertIn(
-            ["집단 수퍼비전", "15시간", "비대면", "내 사례로 슈퍼비전 받은시간 : 0시간"],
+            ["집단 수퍼비전", "15시간", "비대면", ""],
             first["rows"],
         )
         self.assertEqual(
             [row for row in other["rows"] if row[0] in ("집단 수퍼비전", "개인 수퍼비전")],
             [
-                ["집단 수퍼비전", "0분", "—", "내 사례로 슈퍼비전 받은시간 : 0시간"],
+                ["집단 수퍼비전", "0분", "—", ""],
                 ["개인 수퍼비전", "0시간", "—", ""],
             ],
         )
@@ -1841,7 +1839,7 @@ class RecognizedSupervisionCreditTests(TestCase):
         )
         self.assertEqual(renewed["status"], "approved")
         self.assertIn(
-            ["집단 수퍼비전", "3시간", "비대면", "내 사례로 슈퍼비전 받은시간 : 0시간"],
+            ["집단 수퍼비전", "3시간", "비대면", ""],
             renewed["context"]["rows"],
         )
         self.assertTrue(

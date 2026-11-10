@@ -274,7 +274,7 @@ class CertificateSubmittedCaseFilterTests(TestCase):
         self.assertEqual(context["progress"]["supervision_in_person_minutes"], 0)
         self.assertEqual(_bucket_minutes(context, "counseling"), 0)
         self.assertIn(
-            ["집단 수퍼비전", "3시간", "비대면", "내 사례로 슈퍼비전 받은시간 : 0시간"],
+            ["집단 수퍼비전", "3시간", "비대면", ""],
             context["rows"],
         )
 
@@ -691,8 +691,8 @@ class CertificateApprovalFlowTests(TestCase):
         _report(self.counselor, "승인후추가", case=self.case, cohort=31)
         later = get_training_certificate_approval_status(self.counselor)
         self.assertEqual(later["context"]["own_case_supervision_posts"], 1)
-        self.assertIn(
-            "내 사례로 슈퍼비전 받은시간 : 0시간",
+        self.assertNotIn(
+            "내 사례로 슈퍼비전 받은시간",
             [row[3] for row in later["context"]["rows"]],
         )
         self.assertEqual(later["status"], STATUS_REAPPROVAL_REQUIRED)
@@ -731,8 +731,8 @@ class CertificateApprovalFlowTests(TestCase):
         self.assertEqual(before["own_case_supervision_posts"], 1)
         self.assertEqual(before["progress"]["case_report_submitted_count"], 1)
         self.assertEqual(before["progress"]["supervision_remote_minutes"], 90)
-        self.assertIn(
-            "내 사례로 슈퍼비전 받은시간 : 2시간",
+        self.assertNotIn(
+            "내 사례로 슈퍼비전 받은시간",
             [row[3] for row in before["rows"]],
         )
 
@@ -746,7 +746,7 @@ class CertificateApprovalFlowTests(TestCase):
             0,
         )
         self.assertIn(
-            ["집단 수퍼비전", "1시간 30분", "비대면", "내 사례로 슈퍼비전 받은시간 : 2시간"],
+            ["집단 수퍼비전", "1시간 30분", "비대면", ""],
             status["context"]["rows"],
         )
         self.assertIn(
@@ -774,7 +774,7 @@ class CertificateApprovalFlowTests(TestCase):
         status = get_training_certificate_approval_status(self.counselor)
         self.assertEqual(status["context"]["own_case_supervision_posts"], 1)
         self.assertIn(
-            ["집단 수퍼비전", "0분", "—", "내 사례로 슈퍼비전 받은시간 : 0시간"],
+            ["집단 수퍼비전", "0분", "—", ""],
             status["context"]["rows"],
         )
         self.assertIn(["개인 수퍼비전", "0시간", "—", ""], status["context"]["rows"])
@@ -790,10 +790,7 @@ class CertificateApprovalFlowTests(TestCase):
         _report(self.other, "타인보고서", case=None, cohort=32)
         status = get_training_certificate_approval_status(self.counselor)
         self.assertEqual(status["context"]["own_case_supervision_posts"], 0)
-        self.assertEqual(
-            status["context"]["rows"][2][3],
-            "내 사례로 슈퍼비전 받은시간 : 0시간",
-        )
+        self.assertEqual(status["context"]["rows"][2][3], "")
         self.assertEqual(status["content_hash"], approved_hash)
         self.assertEqual(status["status"], STATUS_APPROVED)
         self.assertEqual(_http(self.counselor).get(self.counselor_pdf).status_code, 200)
@@ -832,8 +829,8 @@ class CertificateApprovalFlowTests(TestCase):
         self.assertIn("집단 수퍼비전", [row[0] for row in context["rows"]])
         self.assertIn("개인 수퍼비전", [row[0] for row in context["rows"]])
         self.assertNotIn("사례보고서", [row[0] for row in context["rows"]])
-        self.assertIn(
-            "내 사례로 슈퍼비전 받은시간 : 0시간",
+        self.assertNotIn(
+            "내 사례로 슈퍼비전 받은시간",
             [row[3] for row in context["rows"]],
         )
         displayed = [

@@ -277,14 +277,13 @@ def _recognized_supervision_rows(rows: list[list[str]], credit: dict) -> list[li
     from apps.counseling.training_certificate_pdf import _certificate_time_rows
 
     body = _drop_supervision_rows(rows)
-    remark = own_case_supervision_time_label(credit["recognized_count"])
     individual = _individual_time_text(credit["recognized_count"])
     if credit.get("split_methods"):
         renamed = []
         replaced = False
         for row in rows:
             if row[0] == "수퍼비전" and not replaced:
-                renamed.append(["집단 수퍼비전", row[1], row[2], remark])
+                renamed.append(["집단 수퍼비전", row[1], row[2], ""])
                 replaced = True
                 continue
             if replaced and not (row[0] or "").strip():
@@ -300,7 +299,6 @@ def _recognized_supervision_rows(rows: list[list[str]], credit: dict) -> list[li
         in_person=0,
         remote=0,
         unknown=credit["group_minutes"] or 0,
-        remark=remark,
     )
     if credit["method_label"] and credit["method_label"] != "방식 미확인":
         group_rows[0][2] = credit["method_label"]
