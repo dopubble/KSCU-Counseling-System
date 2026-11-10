@@ -154,13 +154,13 @@ class EnrollmentCertificateIsolationTests(TestCase):
         second = self._context(self.second)
         self.assertEqual(_minutes(first, "counseling"), 60)
         self.assertEqual(_minutes(second, "counseling"), 300)
-        self.assertEqual(_minutes(first, "supervision"), 90)
-        self.assertEqual(_minutes(second, "supervision"), 30)
+        self.assertEqual(_minutes(first, "supervision"), 180)
+        self.assertEqual(_minutes(second, "supervision"), 180)
         self.assertEqual(first["counseling_cases_5plus_count"], 0)
         self.assertEqual(second["counseling_cases_5plus_count"], 1)
         self.assertEqual(
             build_training_certificate_approval_payload(self.counselor, first)["schema"],
-            "certificate-metrics-v3",
+            "certificate-metrics-v4",
         )
         self.assertEqual(
             build_training_certificate_approval_payload(self.counselor, first)[
@@ -176,7 +176,7 @@ class EnrollmentCertificateIsolationTests(TestCase):
         profile.save(update_fields=["cohort", "updated_at"])
         after = calculate_training_certificate_hash(self.counselor, self._context(self.first))
         self.assertEqual(before, after)
-        self.assertEqual(_minutes(self._context(self.first), "supervision"), 90)
+        self.assertEqual(_minutes(self._context(self.first), "supervision"), 180)
 
     def test_approving_one_enrollment_does_not_approve_the_other(self):
         approve_training_certificate(self.counselor, self.admin, self.first)
@@ -206,7 +206,9 @@ class EnrollmentCertificateIsolationTests(TestCase):
         self.assertEqual(second["status"], STATUS_APPROVED)
 
     def test_scoped_v2_hash_stays_approved_until_that_row_is_revoked(self):
-        scoped = self._context(self.first)
+        scoped = build_counselor_training_certificate_context(
+            self.counselor, self.first, supervision_credit="duration"
+        )
         legacy_context = dict(scoped)
         legacy_context.pop("training_enrollment")
         legacy_hash = calculate_training_certificate_hash(self.counselor, legacy_context)

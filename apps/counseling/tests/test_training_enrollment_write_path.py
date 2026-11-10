@@ -219,10 +219,13 @@ class TrainingEnrollmentWritePathTests(TestCase):
         after = build_counselor_training_certificate_context(counselor)
         after_payload = build_training_certificate_approval_payload(counselor, after)
         self.assertEqual(after_payload, before_payload)
-        self.assertEqual(before_payload["schema"], "certificate-metrics-v2")
+        self.assertEqual(before_payload["schema"], "certificate-metrics-v4")
+        self.assertNotIn("training_enrollment_id", before_payload)
+        self.assertNotIn("own_case_supervision_posts", before_payload)
         scoped_payload = build_training_certificate_approval_payload(counselor, scoped)
-        self.assertEqual(scoped_payload["schema"], "certificate-metrics-v3")
+        self.assertEqual(scoped_payload["schema"], "certificate-metrics-v4")
         self.assertEqual(scoped_payload["training_enrollment_id"], str(enrollment.pk))
+        self.assertNotIn("own_case_supervision_posts", scoped_payload)
 
     def test_reapproval_links_the_same_active_enrollment_and_keeps_history(self):
         counselor = _counselor("재승인상담", 4)

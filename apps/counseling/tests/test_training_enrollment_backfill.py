@@ -280,9 +280,13 @@ class TrainingEnrollmentBackfillTests(TestCase):
     def test_backfill_keeps_v2_hash_and_revocation(self):
         counselor = _counselor("해시유지", 6)
         _case(counselor, "ENR-HASH")
-        before_context = build_counselor_training_certificate_context(counselor)
+        before_context = build_counselor_training_certificate_context(
+            counselor, supervision_credit="duration"
+        )
         before_hash = calculate_training_certificate_hash(counselor, before_context)
         before_payload = build_training_certificate_approval_payload(counselor, before_context)
+        self.assertEqual(before_payload["schema"], "certificate-metrics-v2")
+        self.assertIn("own_case_supervision_posts", before_payload)
         approval = TrainingCertificateApproval.objects.create(
             counselor=counselor,
             content_hash=before_hash,
@@ -305,7 +309,9 @@ class TrainingEnrollmentBackfillTests(TestCase):
         _run_backfill()
         approval.refresh_from_db()
         revocation.refresh_from_db()
-        after_context = build_counselor_training_certificate_context(counselor)
+        after_context = build_counselor_training_certificate_context(
+            counselor, supervision_credit="duration"
+        )
         after_payload = build_training_certificate_approval_payload(counselor, after_context)
         self.assertEqual(after_payload, before_payload)
         self.assertEqual(after_payload["schema"], "certificate-metrics-v2")
@@ -315,6 +321,13 @@ class TrainingEnrollmentBackfillTests(TestCase):
             before_hash,
         )
         self.assertEqual(approval.content_hash, before_hash)
+        live = build_counselor_training_certificate_context(counselor)
+        live_payload = build_training_certificate_approval_payload(counselor, live)
+        self.assertEqual(live_payload["schema"], "certificate-metrics-v4")
+        self.assertNotEqual(
+            calculate_training_certificate_hash(counselor, live),
+            approval.content_hash,
+        )
         self.assertEqual(approval.approved_role, UserRole.ADMIN)
         self.assertIsNone(approval.approved_by_id)
         self.assertIsNotNone(approval.training_enrollment_id)

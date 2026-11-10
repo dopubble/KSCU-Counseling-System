@@ -1,7 +1,9 @@
 """수련확인증 계산·승인.
 
 접수면접·상담자 경험·5회기 이상 사례는 records_submitted_at이 있는 Case만 인정한다.
-수퍼비전·사례보고서·확인증 날짜·수련현황 집계는 기존 정책을 유지한다.
+수련확인증의 수퍼비전 인정 시간은 참석 횟수와 사례발표 게시글 수로 계산한다.
+이미 저장된 승인 hash와 맞는 과거 확인증은 승인 당시의 회차 시간으로 발급한다.
+수련현황의 출석률·회차 저장 시간과 확인증 날짜는 기존 정책을 유지한다.
 진행방식은 snapshot 우선, legacy NULL은 기존 fallback이다.
 """
 
@@ -22,6 +24,7 @@ from apps.counseling.models import (
     Case,
     CasePresentationPost,
     CounselingMethod,
+    SupervisionAttendance,
     SupervisionAttendanceStatus,
     SupervisionSession,
     SupervisionSessionStatus,
@@ -33,6 +36,7 @@ from apps.counseling.training_progress import (
     _METHOD_UNKNOWN,
     _effective_method_expr,
     _fold_method_count_rows,
+    _supervision_effective_method_expr,
     _intake_submitted_exists,
     _method_fields_from_buckets,
     format_training_minutes,
@@ -109,7 +113,7 @@ def counseling_cases_5plus_label(count: int) -> str:
     return f"5회기 이상 지속된 사례 총 {count}건 포함"
 
 
-OWN_CASE_SUPERVISION_MINUTES_PER_POST = 90
+OWN_CASE_SUPERVISION_MINUTES_PER_POST = 120
 
 
 def own_case_supervision_post_count(counselor, *, cohort=None) -> int:
@@ -127,14 +131,184 @@ def own_case_supervision_post_count(counselor, *, cohort=None) -> int:
     return posts.count()
 
 
+_GROUP_GENERAL_MINUTES = 180
+_GROUP_PRESENTATION_MINUTES = 90
+_METHOD_LABELS = {
+    CounselingMethod.IN_PERSON: "대면",
+    CounselingMethod.REMOTE: "비대면",
+    _METHOD_UNKNOWN: "방식 미확인",
+}
+
+
 def own_case_supervision_time_label(post_count: int) -> str:
-    """게시글 1건 = 90분. 0분은 0시간으로 적고, 분이 0이면 분 표기를 빼다."""
+    """인정 발표 1회 = 개인 수퍼비전 2시간.
+
+    이 시간은 개인 수퍼비전 항목과 같으며 집단 수퍼비전에 다시 더하지 않는다.
+    게시글은 출석 회차에 연결되지 않는다.
+    """
     minutes = max(int(post_count or 0), 0) * OWN_CASE_SUPERVISION_MINUTES_PER_POST
     if minutes <= 0:
         shown = "0시간"
     else:
         shown = format_training_minutes(minutes)
     return f"내 사례로 슈퍼비전 받은시간 : {shown}"
+
+
+def recognized_supervision_credit(attendance_count, presentation_count) -> dict:
+    """집단·개인 수퍼비전 인정 시간.
+
+    인정 발표 횟수는 참석 횟수와 게시글 수 중 작은 값이다.
+    일반 참석은 3시간, 인정 발표 참석은 집단에서 1.5시간이다.
+    개인 수퍼비전은 인정 발표 1회당 2시간이며 집단 시간에 다시 더하지 않는다.
+    """
+    attendance = max(int(attendance_count or 0), 0)
+    presentations = max(int(presentation_count or 0), 0)
+    recognized = min(attendance, presentations)
+    return {
+        "attendance_count": attendance,
+        "presentation_count": presentations,
+        "recognized_count": recognized,
+        "group_minutes": (
+            (attendance - recognized) * _GROUP_GENERAL_MINUTES
+            + recognized * _GROUP_PRESENTATION_MINUTES
+        ),
+        "individual_minutes": recognized * OWN_CASE_SUPERVISION_MINUTES_PER_POST,
+    }
+
+
+def _certificate_cohort(counselor, training_enrollment):
+    if training_enrollment is not None:
+        return training_enrollment.cohort
+    profile = _counselor_profile(counselor)
+    return getattr(profile, "cohort", None) if profile is not None else None
+
+
+def _present_method_counts(counselor, cohort) -> dict[str, int]:
+    profile = _counselor_profile(counselor)
+    if profile is None or cohort is None:
+        return {}
+    rows = (
+        SupervisionAttendance.objects.filter(
+            counselor_id=profile.pk,
+            status=SupervisionAttendanceStatus.PRESENT,
+            session__status=SupervisionSessionStatus.COMPLETED,
+            session__cohort=cohort,
+        )
+        .annotate(effective_method=_supervision_effective_method_expr())
+        .values("effective_method")
+        .annotate(total=Count("pk"))
+    )
+    counts: dict[str, int] = {}
+    for row in rows:
+        count = int(row["total"] or 0)
+        if count:
+            counts[row["effective_method"]] = count
+    return counts
+
+
+def _zero_supervision_buckets() -> dict[str, int]:
+    return {
+        CounselingMethod.IN_PERSON: 0,
+        CounselingMethod.REMOTE: 0,
+        _METHOD_UNKNOWN: 0,
+    }
+
+
+def _write_supervision_buckets(figures: dict, buckets: dict[str, int]) -> None:
+    figures["supervision_in_person_minutes"] = buckets[CounselingMethod.IN_PERSON]
+    figures["supervision_remote_minutes"] = buckets[CounselingMethod.REMOTE]
+    figures["supervision_unknown_minutes"] = buckets[_METHOD_UNKNOWN]
+    attended = sum(buckets.values())
+    figures["supervision_attended_minutes"] = attended
+    completed = (
+        int(figures.get("intake_completed_minutes") or 0)
+        + int(figures.get("counseling_completed_minutes") or 0)
+        + attended
+    )
+    figures["training_completed_minutes"] = completed
+    figures["training_completed_label"] = format_training_minutes(completed)
+
+
+def _recognized_supervision_buckets(counselor, cohort, credit: dict) -> tuple[dict[str, int], str, bool]:
+    """표시 시간과 맞는 방식별 분. 세 번째는 방식별 행으로 나눌지다."""
+    buckets = _zero_supervision_buckets()
+    counts = _present_method_counts(counselor, cohort)
+    if credit["recognized_count"] == 0:
+        for method, count in counts.items():
+            if method not in buckets:
+                method = _METHOD_UNKNOWN
+            buckets[method] += count * _GROUP_GENERAL_MINUTES
+        if sum(buckets.values()) != credit["group_minutes"]:
+            buckets = _zero_supervision_buckets()
+            buckets[_METHOD_UNKNOWN] = credit["group_minutes"]
+            return buckets, "—", False
+        return buckets, "", True
+    present_methods = [method for method, count in counts.items() if count]
+    if len(present_methods) == 1:
+        method = present_methods[0]
+        if method not in buckets:
+            method = _METHOD_UNKNOWN
+        buckets[method] = credit["group_minutes"]
+        return buckets, _METHOD_LABELS.get(method, "—"), False
+    buckets[_METHOD_UNKNOWN] = credit["group_minutes"]
+    return buckets, "—", False
+
+
+def _drop_supervision_rows(rows: list[list[str]]) -> list[list[str]]:
+    kept: list[list[str]] = []
+    skipping = False
+    for row in rows:
+        if row[0] == "수퍼비전":
+            skipping = True
+            continue
+        if skipping and not (row[0] or "").strip():
+            continue
+        skipping = False
+        kept.append(row)
+    return kept
+
+
+def _individual_time_text(presentation_count: int) -> str:
+    label = own_case_supervision_time_label(presentation_count)
+    return label.split(" : ", 1)[1]
+
+
+def _recognized_supervision_rows(rows: list[list[str]], credit: dict) -> list[list[str]]:
+    from apps.counseling.training_certificate_pdf import _certificate_time_rows
+
+    body = _drop_supervision_rows(rows)
+    remark = own_case_supervision_time_label(credit["recognized_count"])
+    individual = _individual_time_text(credit["recognized_count"])
+    if credit.get("split_methods"):
+        renamed = []
+        replaced = False
+        for row in rows:
+            if row[0] == "수퍼비전" and not replaced:
+                renamed.append(["집단 수퍼비전", row[1], row[2], remark])
+                replaced = True
+                continue
+            if replaced and not (row[0] or "").strip():
+                renamed.append(row)
+                continue
+            if replaced:
+                replaced = False
+            renamed.append(row)
+        renamed.append(["개인 수퍼비전", individual, "—", ""])
+        return renamed
+    group_rows = _certificate_time_rows(
+        "집단 수퍼비전",
+        in_person=0,
+        remote=0,
+        unknown=credit["group_minutes"] or 0,
+        remark=remark,
+    )
+    if credit["method_label"] and credit["method_label"] != "방식 미확인":
+        group_rows[0][2] = credit["method_label"]
+    elif credit["group_minutes"]:
+        group_rows[0][2] = credit["method_label"] or "—"
+    body.extend(group_rows)
+    body.append(["개인 수퍼비전", individual, "—", ""])
+    return body
 
 
 def supervisor_label_for_counselor(counselor, cohort=None) -> str:
@@ -389,31 +563,52 @@ def certificate_training_figures(counselor, training_enrollment=None) -> dict:
     return figures
 
 
-def build_counselor_training_certificate_context(counselor, training_enrollment=None) -> dict:
+def build_counselor_training_certificate_context(
+    counselor, training_enrollment=None, *, supervision_credit="recognized"
+) -> dict:
     """PDF와 승인 hash가 함께 쓰는 확인증 context.
 
     training_enrollment가 있으면 그 수련 단위의 실적·기수·수퍼바이저만 넣는다.
+    supervision_credit가 duration이면 승인 당시의 회차 시간 합계를 유지한다.
     """
     from apps.counseling.training_certificate_pdf import build_training_certificate_context
 
-    cohort = training_enrollment.cohort if training_enrollment is not None else None
+    cohort = _certificate_cohort(counselor, training_enrollment)
+    presentation_count = (
+        own_case_supervision_post_count(counselor, cohort=cohort)
+        if training_enrollment is not None
+        else own_case_supervision_post_count(counselor)
+    )
+    figures = certificate_training_figures(counselor, training_enrollment)
+    credit = None
+    if supervision_credit == "recognized":
+        credit = recognized_supervision_credit(
+            figures.get("supervision_attended_count"),
+            presentation_count,
+        )
+        buckets, method_label, split_methods = _recognized_supervision_buckets(
+            counselor, cohort, credit
+        )
+        _write_supervision_buckets(figures, buckets)
+        credit["method_label"] = method_label
+        credit["split_methods"] = split_methods
     context = build_training_certificate_context(
         counselor,
-        certificate_training_figures(counselor, training_enrollment),
+        figures,
         certificate_date_for_counselor(counselor, cohort),
         supervisor_label=supervisor_label_for_counselor(counselor, cohort),
         counseling_cases_5plus_count=counseling_cases_5plus_count(
             counselor, training_enrollment
         ),
-        own_case_post_count=(
-            own_case_supervision_post_count(counselor, cohort=cohort)
-            if training_enrollment is not None
-            else None
-        ),
+        own_case_post_count=presentation_count,
         cohort_label=(f"{cohort}기" if training_enrollment is not None else ""),
     )
     if training_enrollment is not None:
         context["training_enrollment"] = training_enrollment
+    if credit is not None:
+        context["supervision_credit_mode"] = "recognized"
+        context["supervision_credit"] = credit
+        context["rows"] = _recognized_supervision_rows(context["rows"], credit)
     return context
 
 
@@ -509,6 +704,16 @@ def build_training_certificate_approval_payload(counselor, context: dict) -> dic
         "supervision_minutes": _minute_buckets(progress, "supervision"),
     }
     enrollment = context.get("training_enrollment")
+    if context.get("supervision_credit_mode") == "recognized":
+        credit = context.get("supervision_credit") or {}
+        payload["schema"] = "certificate-metrics-v4"
+        payload.pop("own_case_supervision_posts", None)
+        payload["group_supervision_minutes"] = credit.get("group_minutes")
+        payload["group_supervision_method"] = credit.get("method_label") or ""
+        payload["individual_supervision_minutes"] = credit.get("individual_minutes")
+        if enrollment is not None:
+            payload["training_enrollment_id"] = str(enrollment.pk)
+        return payload
     if enrollment is not None:
         payload["schema"] = "certificate-metrics-v3"
         payload["training_enrollment_id"] = str(enrollment.pk)
@@ -576,6 +781,9 @@ def legacy_metrics_approval_hash(counselor, context: dict) -> str:
     payload["schema"] = "certificate-metrics-v1"
     payload.pop("own_case_supervision_posts", None)
     payload.pop("training_enrollment_id", None)
+    payload.pop("group_supervision_minutes", None)
+    payload.pop("group_supervision_method", None)
+    payload.pop("individual_supervision_minutes", None)
     return _hash_payload(payload)
 
 
@@ -592,6 +800,8 @@ def current_certificate_hashes(counselor, context: dict) -> list[str]:
     """
     current = calculate_training_certificate_hash(counselor, context)
     hashes = [current]
+    if context.get("supervision_credit_mode") == "recognized":
+        return hashes
     if context.get("training_enrollment") is None:
         return hashes
     legacy = build_training_certificate_approval_payload(counselor, context)
@@ -791,22 +1001,38 @@ def get_training_certificate_approval_status(
         training_enrollment = context.get("training_enrollment")
     if training_enrollment is None:
         training_enrollment = _resolved_certificate_enrollment(counselor, None)
-    if context is None or (
-        training_enrollment is not None
-        and context.get("training_enrollment") != training_enrollment
-    ):
-        context = build_counselor_training_certificate_context(
-            counselor, training_enrollment
-        )
-    content_hash = calculate_training_certificate_hash(counselor, context)
+    recognized = build_counselor_training_certificate_context(
+        counselor, training_enrollment, supervision_credit="recognized"
+    )
+    duration = build_counselor_training_certificate_context(
+        counselor, training_enrollment, supervision_credit="duration"
+    )
     if training_enrollment is not None:
         latest = latest_training_certificate_approval(counselor, training_enrollment)
-        match = _latest_enrollment_approval(
-            training_enrollment, current_certificate_hashes(counselor, context)
+        recognized_match = _latest_enrollment_approval(
+            training_enrollment, current_certificate_hashes(counselor, recognized)
+        )
+        duration_match = _latest_enrollment_approval(
+            training_enrollment, current_certificate_hashes(counselor, duration)
         )
     else:
         latest = latest_training_certificate_approval(counselor)
-        match = _latest_matching_approval(counselor, content_hash)
+        recognized_match = _latest_matching_approval(
+            counselor, calculate_training_certificate_hash(counselor, recognized)
+        )
+        duration_match = _latest_matching_approval(
+            counselor, calculate_training_certificate_hash(counselor, duration)
+        )
+    if recognized_match is not None:
+        match = recognized_match
+        context = recognized
+    elif duration_match is not None:
+        match = duration_match
+        context = duration
+    else:
+        match = None
+        context = recognized
+    content_hash = calculate_training_certificate_hash(counselor, context)
     revocation = _revocation_of(match)
     if match is not None and revocation is None:
         status = STATUS_APPROVED
@@ -907,6 +1133,24 @@ def approve_training_certificate(
 _REVOCATION_UNAVAILABLE = "취소할 수 있는 유효한 승인이 없습니다."
 
 
+def _locked_certificate_approval(counselor, enrollment, context):
+    content_hash = calculate_training_certificate_hash(counselor, context)
+    if enrollment is not None:
+        candidates = TrainingCertificateApproval.objects.filter(
+            training_enrollment_id=enrollment.pk,
+            content_hash__in=current_certificate_hashes(counselor, context),
+        )
+    else:
+        candidates = TrainingCertificateApproval.objects.filter(
+            counselor_id=counselor.pk,
+            content_hash=content_hash,
+        )
+    candidates = candidates.order_by("-approved_at", "-pk")
+    if connection.features.has_select_for_update:
+        candidates = candidates.select_for_update()
+    return candidates.first()
+
+
 @transaction.atomic
 def revoke_training_certificate(
     counselor, revoked_by, reason: str = "", training_enrollment=None
@@ -922,22 +1166,17 @@ def revoke_training_certificate(
     enrollment = _resolved_certificate_enrollment(counselor, training_enrollment)
     if not _approver_may_approve(revoked_by, counselor, enrollment):
         raise PermissionDenied("수련확인증 승인을 취소할 수 없습니다.")
-    context = build_counselor_training_certificate_context(counselor, enrollment)
-    content_hash = calculate_training_certificate_hash(counselor, context)
-    if enrollment is not None:
-        candidates = TrainingCertificateApproval.objects.filter(
-            training_enrollment_id=enrollment.pk,
-            content_hash__in=current_certificate_hashes(counselor, context),
-        )
-    else:
-        candidates = TrainingCertificateApproval.objects.filter(
-            counselor_id=counselor.pk,
-            content_hash=content_hash,
-        )
-    candidates = candidates.order_by("-approved_at", "-pk")
-    if connection.features.has_select_for_update:
-        candidates = candidates.select_for_update()
-    candidate = candidates.first()
+    recognized = build_counselor_training_certificate_context(
+        counselor, enrollment, supervision_credit="recognized"
+    )
+    duration = build_counselor_training_certificate_context(
+        counselor, enrollment, supervision_credit="duration"
+    )
+    candidate = _locked_certificate_approval(counselor, enrollment, recognized)
+    if candidate is not None and _revocation_of(candidate) is not None:
+        raise TrainingCertificateRevocationError(_REVOCATION_UNAVAILABLE)
+    if candidate is None:
+        candidate = _locked_certificate_approval(counselor, enrollment, duration)
     if candidate is None or _revocation_of(candidate) is not None:
         raise TrainingCertificateRevocationError(_REVOCATION_UNAVAILABLE)
     try:

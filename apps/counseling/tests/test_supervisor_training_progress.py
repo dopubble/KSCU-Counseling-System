@@ -550,7 +550,7 @@ class SupervisorTrainingCertificateReuseTests(TestCase):
         self.assertEqual(context["rows"][1][2], "대면")
         self.assertEqual(context["rows"][0][0], "접수면접")
         self.assertEqual(context["rows"][2][0], "수퍼비전")
-        self.assertEqual(context["rows"][3][0], "사례보고서")
+        self.assertNotIn("사례보고서", [row[0] for row in context["rows"]])
         # 관리자 URL은 여전히 ADMIN 전용 (수퍼바이저는 전용 endpoint만 사용).
         forbidden = HttpClient()
         forbidden.force_login(supervisor)

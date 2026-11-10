@@ -218,14 +218,6 @@ def build_training_certificate_context(
             remark=supervision_remark,
         )
     )
-    rows.append(
-        [
-            "사례보고서",
-            f"{progress['case_report_submitted_count']}사례",
-            "비대면",
-            "",
-        ]
-    )
     return {
         "title": CERTIFICATE_TITLE,
         "identity": identity,

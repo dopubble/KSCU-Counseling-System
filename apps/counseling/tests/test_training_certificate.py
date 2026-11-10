@@ -126,9 +126,9 @@ class TrainingCertificateContextTests(TestCase):
                 ["접수면접", "0분", "—", ""],
                 ["상담자 경험", "0분", "—", "5회기 이상 지속된 사례 총 0건 포함"],
                 ["수퍼비전", "0분", "—", "내 사례로 슈퍼비전 받은시간 : 0시간"],
-                ["사례보고서", f"{progress['case_report_submitted_count']}사례", "비대면", ""],
             ],
         )
+        self.assertNotIn("사례보고서", [row[0] for row in context["rows"]])
         row_names = [row[0] for row in context["rows"]]
         self.assertNotIn("종결기록지", row_names)
         self.assertNotIn("공개사례발표회", row_names)
@@ -240,7 +240,7 @@ class SupervisorSignatureLayoutTests(TestCase):
             self.assertEqual(context["rows"][0][0], "접수면접")
             self.assertIn("상담자 경험", [row[0] for row in context["rows"]])
             self.assertIn("수퍼비전", [row[0] for row in context["rows"]])
-            self.assertIn("사례보고서", [row[0] for row in context["rows"]])
+            self.assertNotIn("사례보고서", [row[0] for row in context["rows"]])
             self.assertIn(
                 "5회기 이상 지속된 사례 총 1건 포함",
                 [row[3] for row in context["rows"]],
@@ -468,7 +468,7 @@ class TrainingCertificateAccessTests(TestCase):
 
     def test_one_certificate_does_not_query_per_case(self):
         counselor = User.objects.select_related("counselor_profile").get(pk=self.counselor.pk)
-        with self.assertNumQueries(14):
+        with self.assertNumQueries(15):
             response = training_certificate_response(counselor)
         self.assertEqual(response.status_code, 200)
 
@@ -904,7 +904,7 @@ class TrainingCertificateRecordTests(TestCase):
             context["rows"][2],
             ["수퍼비전", "0분", "—", "내 사례로 슈퍼비전 받은시간 : 0시간"],
         )
-        self.assertEqual(context["rows"][3], ["사례보고서", "0사례", "비대면", ""])
+        self.assertNotIn("사례보고서", [row[0] for row in context["rows"]])
         self.assertEqual(progress["training_remote_minutes"], 360)
         self.assertEqual(progress["training_in_person_minutes"], 0)
         self.assertEqual(progress["training_unknown_minutes"], 0)
@@ -932,7 +932,8 @@ class TrainingCertificateRecordTests(TestCase):
         progress = get_counselor_training_progress(counselor)
         self.assertEqual(progress["case_report_submitted_count"], 1)
         context = _certificate_context(counselor, progress)
-        self.assertEqual(context["rows"][3][1], "1사례")
+        self.assertEqual(context["progress"]["case_report_submitted_count"], 1)
+        self.assertNotIn("사례보고서", [row[0] for row in context["rows"]])
 
         other_client = _user("시간내담2@example.com", "시간내담2", UserRole.CLIENT)
         other_case = _case(counselor, other_client, "TIME-2", CounselingMethod.REMOTE)
@@ -946,7 +947,8 @@ class TrainingCertificateRecordTests(TestCase):
         progress = get_counselor_training_progress(counselor)
         self.assertEqual(progress["case_report_submitted_count"], 2)
         context = _certificate_context(counselor, progress)
-        self.assertEqual(context["rows"][3][1], "2사례")
+        self.assertEqual(context["progress"]["case_report_submitted_count"], 2)
+        self.assertNotIn("사례보고서", [row[0] for row in context["rows"]])
 
     def test_supervision_time_uses_present_completed_sessions_only(self):
         counselor = _counselor("출석시간", cohort=6)
@@ -1040,10 +1042,10 @@ class OwnCaseSupervisionRemarkTests(TestCase):
         self.assertEqual(len(wrapped("내 사례로 슈퍼비전 받은시간 : 3시간")), 1)
         self.assertEqual(
             own_case_supervision_time_label(1),
-            "내 사례로 슈퍼비전 받은시간 : 1시간 30분",
+            "내 사례로 슈퍼비전 받은시간 : 2시간",
         )
 
-    def test_one_post_is_ninety_minutes_and_comments_do_not_count(self):
+    def test_one_post_is_two_hours_and_comments_do_not_count(self):
         counselor = _counselor("한건", cohort=41)
         other = _counselor("타인글", cohort=41)
         case = _case(
@@ -1068,11 +1070,11 @@ class OwnCaseSupervisionRemarkTests(TestCase):
         self.assertEqual(context["progress"]["case_report_submitted_count"], 1)
         self.assertEqual(
             context["rows"][2][3],
-            "내 사례로 슈퍼비전 받은시간 : 1시간 30분",
+            "내 사례로 슈퍼비전 받은시간 : 2시간",
         )
         self.assertEqual(context["progress"]["supervision_attended_minutes"], 0)
 
-    def test_two_posts_on_one_case_are_three_hours_not_the_capped_case_count(self):
+    def test_two_posts_on_one_case_are_four_hours_not_the_capped_case_count(self):
         counselor = _counselor("두건", cohort=42)
         case = _case(
             counselor,
@@ -1088,12 +1090,68 @@ class OwnCaseSupervisionRemarkTests(TestCase):
         self.assertEqual(context["own_case_supervision_posts"], 2)
         self.assertEqual(
             context["rows"][2][3],
-            "내 사례로 슈퍼비전 받은시간 : 3시간",
+            "내 사례로 슈퍼비전 받은시간 : 4시간",
         )
         self.assertNotEqual(
             context["own_case_supervision_posts"],
             progress["case_report_submitted_count"],
         )
+
+    def test_posts_do_not_reduce_attendance_minutes_or_go_negative(self):
+        from apps.counseling.models import TrainingEnrollment, TrainingEnrollmentStatus
+        from apps.counseling.training_certificate import (
+            build_counselor_training_certificate_context,
+        )
+
+        counselor = _counselor("분리상담", cohort=2)
+        first = TrainingEnrollment.objects.create(
+            counselor=counselor,
+            cohort=1,
+            status=TrainingEnrollmentStatus.COMPLETED,
+        )
+        second = TrainingEnrollment.objects.create(
+            counselor=counselor,
+            cohort=2,
+            status=TrainingEnrollmentStatus.ACTIVE,
+        )
+        for number, minutes in enumerate((180, 180, 180, 180, 180), start=1):
+            session = _supervision_session(
+                1, number, SupervisionSessionStatus.COMPLETED, minutes
+            )
+            _attend(session, counselor, SupervisionAttendanceStatus.PRESENT)
+        case = _case(
+            counselor,
+            _user("분리내담@example.com", "분리내담", UserRole.CLIENT),
+            "SPLIT-1",
+            CounselingMethod.REMOTE,
+        )
+        case.training_enrollment = first
+        case.save(update_fields=["training_enrollment"])
+        self._post(counselor, "1기보고서", case=case, cohort=1)
+        for index in range(3):
+            self._post(counselor, f"2기보고서{index}", cohort=2)
+
+        first_context = build_counselor_training_certificate_context(counselor, first)
+        second_context = build_counselor_training_certificate_context(counselor, second)
+        self.assertEqual(first_context["own_case_supervision_posts"], 1)
+        self.assertEqual(
+            first_context["rows"][2][3],
+            "내 사례로 슈퍼비전 받은시간 : 2시간",
+        )
+        self.assertEqual(first_context["progress"]["supervision_attended_minutes"], 810)
+        self.assertEqual(second_context["own_case_supervision_posts"], 3)
+        self.assertEqual(
+            [row for row in second_context["rows"] if row[0] in ("집단 수퍼비전", "개인 수퍼비전")],
+            [
+                ["집단 수퍼비전", "0분", "—", "내 사례로 슈퍼비전 받은시간 : 0시간"],
+                ["개인 수퍼비전", "0시간", "—", ""],
+            ],
+        )
+        self.assertEqual(second_context["progress"]["supervision_attended_minutes"], 0)
+        self.assertNotIn("사례보고서", [row[0] for row in first_context["rows"]])
+        self.assertNotIn("사례보고서", [row[0] for row in second_context["rows"]])
+        self.assertGreaterEqual(first_context["progress"]["supervision_attended_minutes"], 0)
+        self.assertEqual(CasePresentationPost.objects.filter(author=counselor).count(), 4)
 
     def test_supervision_remark_spans_method_rows_once(self):
         counselor = _counselor("분할비고", cohort=43)
@@ -1128,7 +1186,7 @@ class OwnCaseSupervisionRemarkTests(TestCase):
         self.assertEqual(
             supervision_rows,
             [
-                ["수퍼비전", "3시간", "대면", "내 사례로 슈퍼비전 받은시간 : 1시간 30분"],
+                ["수퍼비전", "3시간", "대면", "내 사례로 슈퍼비전 받은시간 : 2시간"],
                 ["", "9시간", "비대면", ""],
             ],
         )
@@ -1224,7 +1282,6 @@ class FooterLogoLayoutTests(TestCase):
                 ["접수면접", "1시간", "비대면", ""],
                 ["상담자 경험", "5시간", "비대면", "5회기 이상 지속된 사례 총 1건 포함"],
                 ["수퍼비전", "8시간", "비대면", ""],
-                ["사례보고서", "1사례", "비대면", ""],
             ],
             "method_notice": CERTIFICATE_METHOD_NOTICE,
             "confirmation": CERTIFICATE_CONFIRMATION,
@@ -1411,7 +1468,7 @@ class CounselingCases5PlusTests(TestCase):
             context["rows"][2][3],
             "내 사례로 슈퍼비전 받은시간 : 0시간",
         )
-        self.assertEqual(context["rows"][3][3], "")
+        self.assertEqual(len(context["rows"]), 3)
 
     def test_count_query_is_constant_for_many_cases(self):
         counselor = _counselor("질의상수", cohort=16)
@@ -1587,3 +1644,206 @@ class CertificateDateTests(TestCase):
             supervision_time="0분",
         )
         self.assertEqual(context["issued_on_label"], "—")
+
+
+class RecognizedSupervisionCreditTests(TestCase):
+    def setUp(self):
+        from apps.counseling.models import TrainingEnrollment, TrainingEnrollmentStatus
+
+        self.counselor = _counselor("인정시간", cohort=1)
+        self.enrollment = TrainingEnrollment.objects.create(
+            counselor=self.counselor,
+            cohort=1,
+            status=TrainingEnrollmentStatus.ACTIVE,
+        )
+
+    def _attend_many(self, count, cohort=1):
+        for number in range(1, count + 1):
+            session = _supervision_session(
+                cohort, number, SupervisionSessionStatus.COMPLETED, 50
+            )
+            _attend(session, self.counselor, SupervisionAttendanceStatus.PRESENT)
+
+    def _post(self, title, cohort=1):
+        return CasePresentationPost.objects.create(
+            cohort=cohort,
+            author=self.counselor,
+            title=title,
+            file=SimpleUploadedFile(f"{title}.pdf", b"%PDF-1.4"),
+        )
+
+    def _context(self, enrollment=None):
+        from apps.counseling.training_certificate import (
+            build_counselor_training_certificate_context,
+        )
+
+        return build_counselor_training_certificate_context(
+            self.counselor, self.enrollment if enrollment is None else enrollment
+        )
+
+    def test_one_general_attendance_is_three_hours(self):
+        self._attend_many(1)
+        context = self._context()
+        self.assertIn(
+            ["집단 수퍼비전", "3시간", "비대면", "내 사례로 슈퍼비전 받은시간 : 0시간"],
+            context["rows"],
+        )
+        self.assertIn(["개인 수퍼비전", "0시간", "—", ""], context["rows"])
+
+    def test_five_general_attendances_are_fifteen_hours(self):
+        self._attend_many(5)
+        context = self._context()
+        self.assertIn(
+            ["집단 수퍼비전", "15시간", "비대면", "내 사례로 슈퍼비전 받은시간 : 0시간"],
+            context["rows"],
+        )
+        self.assertEqual(
+            [row for row in context["rows"] if row[0] == "개인 수퍼비전"],
+            [["개인 수퍼비전", "0시간", "—", ""]],
+        )
+        self.assertNotIn("사례보고서", [row[0] for row in context["rows"]])
+
+    def test_one_presentation_among_five_attendances(self):
+        self._attend_many(5)
+        self._post("발표1")
+        context = self._context()
+        self.assertIn(
+            ["집단 수퍼비전", "13시간 30분", "비대면", "내 사례로 슈퍼비전 받은시간 : 2시간"],
+            context["rows"],
+        )
+        self.assertIn(["개인 수퍼비전", "2시간", "—", ""], context["rows"])
+        pdf = build_training_certificate_pdf(context)
+        self.assertTrue(pdf.startswith(b"%PDF"))
+
+    def test_two_presentations_among_five_attendances(self):
+        self._attend_many(5)
+        self._post("발표1")
+        self._post("발표2")
+        context = self._context()
+        self.assertIn(
+            ["집단 수퍼비전", "12시간", "비대면", "내 사례로 슈퍼비전 받은시간 : 4시간"],
+            context["rows"],
+        )
+        self.assertIn(["개인 수퍼비전", "4시간", "—", ""], context["rows"])
+
+    def test_posts_without_attendance_are_not_credited(self):
+        self._post("출석없는발표")
+        context = self._context()
+        supervision = [
+            row for row in context["rows"] if row[0] in ("집단 수퍼비전", "개인 수퍼비전")
+        ]
+        self.assertEqual(
+            supervision,
+            [
+                ["집단 수퍼비전", "0분", "—", "내 사례로 슈퍼비전 받은시간 : 0시간"],
+                ["개인 수퍼비전", "0시간", "—", ""],
+            ],
+        )
+        self.assertNotIn("사례보고서", [row[0] for row in context["rows"]])
+        self.assertEqual(CasePresentationPost.objects.filter(author=self.counselor).count(), 1)
+
+    def test_posts_above_attendance_are_capped_at_attendance(self):
+        self._attend_many(1)
+        self._post("초과1")
+        self._post("초과2")
+        self._post("초과3")
+        context = self._context()
+        self.assertEqual(context["supervision_credit"]["recognized_count"], 1)
+        self.assertIn(
+            ["집단 수퍼비전", "1시간 30분", "비대면", "내 사례로 슈퍼비전 받은시간 : 2시간"],
+            context["rows"],
+        )
+        self.assertIn(["개인 수퍼비전", "2시간", "—", ""], context["rows"])
+
+    def test_two_attendances_and_three_posts_credit_two_presentations(self):
+        self._attend_many(2)
+        self._post("발표1")
+        self._post("발표2")
+        self._post("발표3")
+        context = self._context()
+        self.assertEqual(context["supervision_credit"]["recognized_count"], 2)
+        self.assertIn(
+            ["집단 수퍼비전", "3시간", "비대면", "내 사례로 슈퍼비전 받은시간 : 4시간"],
+            context["rows"],
+        )
+        self.assertIn(["개인 수퍼비전", "4시간", "—", ""], context["rows"])
+
+    def test_cohorts_do_not_share_attendance_or_posts(self):
+        from apps.counseling.models import TrainingEnrollment, TrainingEnrollmentStatus
+
+        self.enrollment.status = TrainingEnrollmentStatus.COMPLETED
+        self.enrollment.save(update_fields=["status", "updated_at"])
+        second = TrainingEnrollment.objects.create(
+            counselor=self.counselor,
+            cohort=2,
+            status=TrainingEnrollmentStatus.ACTIVE,
+        )
+        self._attend_many(5, cohort=1)
+        self._post("2기발표", cohort=2)
+        first = self._context(self.enrollment)
+        other = self._context(second)
+        self.assertIn(
+            ["집단 수퍼비전", "15시간", "비대면", "내 사례로 슈퍼비전 받은시간 : 0시간"],
+            first["rows"],
+        )
+        self.assertEqual(
+            [row for row in other["rows"] if row[0] in ("집단 수퍼비전", "개인 수퍼비전")],
+            [
+                ["집단 수퍼비전", "0분", "—", "내 사례로 슈퍼비전 받은시간 : 0시간"],
+                ["개인 수퍼비전", "0시간", "—", ""],
+            ],
+        )
+
+    def test_duration_approval_keeps_the_approved_hours(self):
+        from apps.counseling.models import TrainingCertificateApproval
+        from apps.counseling.training_certificate import (
+            approve_training_certificate,
+            build_counselor_training_certificate_context,
+            calculate_training_certificate_hash,
+            get_training_certificate_approval_status,
+        )
+
+        self._attend_many(1)
+        client = _user("인정내담@example.com", "인정내담", UserRole.CLIENT)
+        case = _case(self.counselor, client, "CR-1", CounselingMethod.REMOTE)
+        case.training_enrollment = self.enrollment
+        case.save(update_fields=["training_enrollment"])
+        _submit(case)
+        admin = _user("인정관리@example.com", "인정관리", UserRole.ADMIN)
+        duration = build_counselor_training_certificate_context(
+            self.counselor, self.enrollment, supervision_credit="duration"
+        )
+        stored = calculate_training_certificate_hash(self.counselor, duration)
+        approval = TrainingCertificateApproval.objects.create(
+            counselor=self.counselor,
+            training_enrollment=self.enrollment,
+            approved_by=admin,
+            approved_role=UserRole.ADMIN,
+            content_hash=stored,
+        )
+        status = get_training_certificate_approval_status(
+            self.counselor, training_enrollment=self.enrollment
+        )
+        self.assertEqual(status["status"], "approved")
+        self.assertTrue(status["can_issue"])
+        self.assertNotIn("집단 수퍼비전", [row[0] for row in status["context"]["rows"]])
+        self.assertIn(
+            ["수퍼비전", "50분", "비대면", "내 사례로 슈퍼비전 받은시간 : 0시간"],
+            status["context"]["rows"],
+        )
+        self.assertTrue(build_training_certificate_pdf(status["context"]).startswith(b"%PDF"))
+        approve_training_certificate(self.counselor, admin, self.enrollment)
+        self.assertEqual(TrainingCertificateApproval.objects.count(), 2)
+        approval.refresh_from_db()
+        self.assertEqual(approval.content_hash, stored)
+        renewed = get_training_certificate_approval_status(
+            self.counselor, training_enrollment=self.enrollment
+        )
+        self.assertEqual(renewed["status"], "approved")
+        self.assertIn(
+            ["집단 수퍼비전", "3시간", "비대면", "내 사례로 슈퍼비전 받은시간 : 0시간"],
+            renewed["context"]["rows"],
+        )
+        self.assertTrue(
+            build_training_certificate_pdf(renewed["context"]).startswith(b"%PDF")
+        )

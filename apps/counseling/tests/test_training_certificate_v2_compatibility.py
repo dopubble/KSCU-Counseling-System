@@ -171,7 +171,9 @@ class HistoricalV2ApprovalTests(TestCase):
         _supervision(counselor, 1, 90, _when(2026, 3, 2))
         _report(counselor, "1기발표", case=case, cohort=1)
 
-        historical = build_counselor_training_certificate_context(counselor)
+        historical = build_counselor_training_certificate_context(
+            counselor, supervision_credit="duration"
+        )
         historical_payload = build_training_certificate_approval_payload(counselor, historical)
         self.assertEqual(historical_payload["schema"], "certificate-metrics-v2")
         self.assertNotIn("training_enrollment_id", historical_payload)
@@ -200,7 +202,9 @@ class HistoricalV2ApprovalTests(TestCase):
         _supervision(counselor, 2, 30, _when(2026, 9, 8))
         _report(counselor, "2기발표", case=later_case, cohort=2)
 
-        scoped = build_counselor_training_certificate_context(counselor, first)
+        scoped = build_counselor_training_certificate_context(
+            counselor, first, supervision_credit="duration"
+        )
         compatible = _v2_payload(counselor, scoped)
         self.assertEqual(
             {field: compatible[field] for field in _V2_FIELDS},
@@ -302,7 +306,9 @@ class HistoricalV2ApprovalTests(TestCase):
             status=TrainingEnrollmentStatus.ACTIVE,
         )
         case = _case(counselor, first, "CHG-1", journals=5)
-        historical = build_counselor_training_certificate_context(counselor, first)
+        historical = build_counselor_training_certificate_context(
+            counselor, first, supervision_credit="duration"
+        )
         historical_payload = _v2_payload(counselor, historical)
         legacy_context = {
             key: value

@@ -824,7 +824,9 @@ class IsolatedCertificateReenrollmentTests(TestCase):
 
     def test_v2_approval_stays_valid_after_reenrollment(self):
         admin, counselor, enrollment, _case = self._ready_counselor("v2@ex.com")
-        context = build_counselor_training_certificate_context(counselor, enrollment)
+        context = build_counselor_training_certificate_context(
+            counselor, enrollment, supervision_credit="duration"
+        )
         payload = build_training_certificate_approval_payload(counselor, context)
         payload["schema"] = "certificate-metrics-v2"
         payload.pop("training_enrollment_id", None)
