@@ -202,6 +202,63 @@ def _apply_page_context(request, form, *, is_edit=None):
         "editing_application_id": edit_id,
         "platform_name": "숭실사이버대학교 평생교육원 전문상담 플랫폼",
         "apply_login_url": f"{reverse('accounts:login')}?next=/counseling/apply/",
+        "apply_initial_step": form.apply_error_step() if hasattr(form, "apply_error_step") else 1,
+        "availability_rows": _availability_rows(form),
+        "show_locked_academic_fields": _show_locked_academic_fields(request.user),
+    }
+
+
+def _availability_rows(form):
+    from apps.counseling.constants import TIME_SLOT_CHOICES, WEEKDAY_CHOICES
+
+    selected = set()
+    if "weekly_availability" in getattr(form, "fields", {}):
+        value = form["weekly_availability"].value()
+        if isinstance(value, str):
+            selected.add(value)
+        elif isinstance(value, (list, tuple)):
+            selected.update(str(item) for item in value)
+    rows = []
+    for day, day_label in WEEKDAY_CHOICES:
+        slots = []
+        for slot, slot_label in TIME_SLOT_CHOICES:
+            token = f"{day}:{slot}"
+            slots.append(
+                {
+                    "label": slot_label,
+                    "token": token,
+                    "checked": token in selected,
+                }
+            )
+        rows.append({"label": day_label, "slots": slots})
+    return rows
+
+
+def _show_locked_academic_fields(user) -> bool:
+    """기존 회원의 학생 여부·학적정보가 있을 때만 학번과 학과를 보여 준다."""
+    if not getattr(user, "is_authenticated", False):
+        return False
+    try:
+        profile = user.client_profile
+    except ClientProfile.DoesNotExist:
+        return False
+    return bool(
+        profile.is_kcu_student
+        or (profile.student_id or "").strip()
+        or (profile.department or "").strip()
+    )
+
+
+def _schedule_from_apply_data(data, *, student_id, birth_date, department) -> dict:
+    from apps.counseling.constants import normalize_weekly_availability
+
+    birth = birth_date.isoformat() if hasattr(birth_date, "isoformat") else str(birth_date)
+    return {
+        "student_id": student_id or "",
+        "birth_date": birth,
+        "department": department or "",
+        "weekly_availability": normalize_weekly_availability(data.get("weekly_availability") or {}),
+        "other_requests": (data.get("other_requests") or "").strip(),
     }
 
 
@@ -305,13 +362,12 @@ def _save_counseling_application(user, data):
     if not birth_date:
         raise ValueError("birth_date_required")
     _persist_client_birth_date_if_empty(user, birth_date)
-    preferred_schedule = {
-        "student_id": snapshot["student_id"],
-        "birth_date": birth_date.isoformat() if hasattr(birth_date, "isoformat") else str(birth_date),
-        "department": snapshot["department"],
-        "available_weekdays": list(data.get("available_weekdays") or []),
-        "available_time_slots": list(data.get("available_time_slots") or []),
-    }
+    preferred_schedule = _schedule_from_apply_data(
+        data,
+        student_id=snapshot["student_id"],
+        birth_date=birth_date,
+        department=snapshot["department"],
+    )
     if user.role != UserRole.CLIENT:
         preferred_schedule["test_submission"] = True
         preferred_schedule["submitter_role"] = user.role
@@ -348,13 +404,12 @@ def _update_counseling_application(user, application, data):
     _persist_client_birth_date_if_empty(user, birth_date)
     preferred_schedule = dict(application.preferred_schedule or {})
     preferred_schedule.update(
-        {
-            "student_id": snapshot["student_id"],
-            "birth_date": birth_date.isoformat() if hasattr(birth_date, "isoformat") else str(birth_date),
-            "department": snapshot["department"],
-            "available_weekdays": list(data.get("available_weekdays") or []),
-            "available_time_slots": list(data.get("available_time_slots") or []),
-        }
+        _schedule_from_apply_data(
+            data,
+            student_id=snapshot["student_id"],
+            birth_date=birth_date,
+            department=snapshot["department"],
+        )
     )
 
     application.counseling_types = data["counseling_types"]

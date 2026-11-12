@@ -9,6 +9,7 @@ from apps.counseling.constants import (
     TIME_SLOT_CHOICES,
     WEEKDAY_CHOICES,
     choice_labels,
+    weekly_availability_lines as format_weekly_availability_lines,
 )
 from apps.scheduling.constants import DEFAULT_APPOINTMENT_DURATION_MINUTES
 
@@ -125,6 +126,17 @@ class CounselingApplication(models.Model):
     def available_time_slot_label(self) -> str:
         schedule = self.preferred_schedule or {}
         return choice_labels(schedule.get("available_time_slots"), TIME_SLOT_CHOICES)
+
+    def weekly_availability_lines(self) -> list[str]:
+        schedule = self.preferred_schedule or {}
+        return format_weekly_availability_lines(schedule.get("weekly_availability"))
+
+    def other_requests_text(self) -> str:
+        schedule = self.preferred_schedule or {}
+        value = schedule.get("other_requests") or ""
+        if not isinstance(value, str):
+            return ""
+        return value
 
     def get_counseling_types_display(self, separator: str = ", ") -> str:
         raw = self.counseling_types

@@ -125,9 +125,8 @@ def create_client_account(account: dict) -> User:
     if email_is_registered(email):
         raise EmailAlreadyRegistered()
     is_kcu = bool(account.get("is_kcu_student"))
-    department = (account.get("department") or "").strip()
-    if not is_kcu:
-        department = ""
+    department = (account.get("department") or "").strip() if is_kcu else ""
+    student_id = (account.get("student_id") or "").strip() if is_kcu else ""
     try:
         with transaction.atomic():
             user = User.objects.create_user(
@@ -152,7 +151,7 @@ def create_client_account(account: dict) -> User:
         user=user,
         birth_date=account["birth_date"],
         is_kcu_student=is_kcu,
-        student_id=(account.get("student_id") or "").strip(),
+        student_id=student_id,
         department=department,
     )
     return user

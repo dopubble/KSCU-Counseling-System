@@ -55,8 +55,7 @@ class CounselingMethodApplyTests(TestCase):
                 "current_medication": "없음",
                 "counseling_types": ["진로상담"],
                 "counseling_method": CounselingMethod.REMOTE,
-                "available_weekdays": ["TUE"],
-                "available_time_slots": ["EVENING"],
+                "weekly_availability": ["TUE:EVENING"],
                 "preferred_date": "2026-07-01",
                 "preferred_time": "14:00",
                 "reason": "스트레스",
@@ -73,8 +72,7 @@ class CounselingMethodApplyTests(TestCase):
                 "clinical_diagnosis": "없음",
                 "current_medication": "없음",
                 "counseling_types": ["진로상담"],
-                "available_weekdays": ["TUE"],
-                "available_time_slots": ["EVENING"],
+                "weekly_availability": ["TUE:EVENING"],
                 "preferred_date": "2026-07-01",
                 "preferred_time": "14:00",
                 "reason": "스트레스",
@@ -112,7 +110,13 @@ class CounselingMethodApplyTests(TestCase):
             counseling_types=["개인상담"],
             reason="비대면 희망",
             counseling_method=CounselingMethod.REMOTE,
-            preferred_schedule={"preferred_date": "2026-01-01", "preferred_time": "09:00", "legacy_marker": "keep"},
+            preferred_schedule={
+                "preferred_date": "2026-01-01",
+                "preferred_time": "09:00",
+                "legacy_marker": "keep",
+                "available_weekdays": ["SUN", "MON"],
+                "available_time_slots": ["EVENING", "MORNING"],
+            },
             status=ApplicationStatus.WAITING_MATCH,
         )
         case = assign_counselor(application, self.counselor, total_sessions=10)
@@ -131,8 +135,8 @@ class CounselingMethodApplyTests(TestCase):
                 "occupation": "",
                 "counseling_types": ["진로상담"],
                 "counseling_method": APPLICATION_COUNSELING_METHOD_BOTH,
-                "available_weekdays": ["SUN", "MON"],
-                "available_time_slots": ["EVENING", "MORNING"],
+                "weekly_availability": {"THU": ["EVENING", "AFTERNOON"]},
+                "other_requests": "목요일 오후와 저녁을 선호합니다.",
                 "preferred_date": date(2026, 7, 3),
                 "preferred_time": time(15, 0),
                 "reason": "요일 변경",
@@ -147,8 +151,15 @@ class CounselingMethodApplyTests(TestCase):
         self.assertEqual(application.preferred_schedule["preferred_date"], "2026-01-01")
         self.assertEqual(application.preferred_schedule["preferred_time"], "09:00")
         self.assertEqual(application.preferred_schedule["available_weekdays"], ["SUN", "MON"])
+        self.assertEqual(application.preferred_schedule["available_time_slots"], ["EVENING", "MORNING"])
+        self.assertEqual(
+            application.preferred_schedule["weekly_availability"],
+            {"THU": ["AFTERNOON", "EVENING"]},
+        )
+        self.assertEqual(application.other_requests_text(), "목요일 오후와 저녁을 선호합니다.")
         self.assertEqual(application.available_weekday_label(), "월요일, 일요일")
         self.assertEqual(application.available_time_slot_label(), "오전, 저녁")
+        self.assertEqual(application.weekly_availability_lines(), ["목요일: 오후, 저녁"])
         self.assertEqual(case.counseling_method, CounselingMethod.REMOTE)
         sync_case_counseling_method_from_application(application)
         case.refresh_from_db()

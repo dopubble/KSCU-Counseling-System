@@ -88,6 +88,78 @@ def choice_labels(raw, choices) -> str:
     return ", ".join(label_map[code] for code in codes)
 
 
+def weekly_availability_tokens() -> list[tuple[str, str]]:
+    """요일:시간대 토큰. 신청 폼 선택지와 서버 검증에 같이 쓴다."""
+    return [
+        (f"{day}:{slot}", f"{day_label} {slot_label}")
+        for day, day_label in WEEKDAY_CHOICES
+        for slot, slot_label in TIME_SLOT_CHOICES
+    ]
+
+
+def normalize_weekly_availability(raw) -> dict[str, list[str]]:
+    """선택한 요일·시간대 조합만 요일 순서로 남긴다.
+
+    허용되지 않은 토큰이 있으면 ValueError. 선택하지 않은 조합은 넣지 않는다.
+    """
+    selected: set[tuple[str, str]] = set()
+    if raw is None:
+        return {}
+    if isinstance(raw, dict):
+        items = []
+        for day, slots in raw.items():
+            if isinstance(slots, str):
+                slots = [slots]
+            if not isinstance(slots, (list, tuple)):
+                raise ValueError("invalid availability")
+            for slot in slots:
+                items.append(f"{day}:{slot}")
+        raw = items
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, (list, tuple)):
+        raise ValueError("invalid availability")
+    allowed_days = {code for code, _label in WEEKDAY_CHOICES}
+    allowed_slots = {code for code, _label in TIME_SLOT_CHOICES}
+    for item in raw:
+        text = str(item).strip()
+        day, sep, slot = text.partition(":")
+        if sep != ":" or day not in allowed_days or slot not in allowed_slots:
+            raise ValueError("invalid availability")
+        selected.add((day, slot))
+    result: dict[str, list[str]] = {}
+    for day, _label in WEEKDAY_CHOICES:
+        slots = [slot for slot, _slot_label in TIME_SLOT_CHOICES if (day, slot) in selected]
+        if slots:
+            result[day] = slots
+    return result
+
+
+def weekly_availability_lines(raw) -> list[str]:
+    """저장된 조합만 표시한다. 없는 조합은 만들지 않는다."""
+    if not isinstance(raw, dict):
+        return []
+    day_labels = dict(WEEKDAY_CHOICES)
+    slot_labels = dict(TIME_SLOT_CHOICES)
+    lines = []
+    for day, _label in WEEKDAY_CHOICES:
+        slots = raw.get(day)
+        if isinstance(slots, str):
+            slots = [slots]
+        if not isinstance(slots, (list, tuple)):
+            continue
+        labels = []
+        seen = set()
+        for slot in slots:
+            code = str(slot).strip()
+            if code in slot_labels and code not in seen:
+                seen.add(code)
+                labels.append(slot_labels[code])
+        if labels and day in day_labels:
+            lines.append(f"{day_labels[day]}: {', '.join(labels)}")
+    return lines
+
+
 def normalize_counseling_types(raw) -> list[str]:
     """유효한 상담 유형만 순서 유지·중복 제거."""
     if raw is None:

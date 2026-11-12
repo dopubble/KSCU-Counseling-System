@@ -100,13 +100,16 @@
                                     {% include "includes/counseling_type_link.html" with href=app_detail_url text=app.counseling_type %}
                                 </td>
                                 <td class="small text-muted">
+                                    {% if app.weekly_availability_lines %}
+                                        <div>일정 {% for line in app.weekly_availability_lines %}{{ line }}{% if not forloop.last %} · {% endif %}{% endfor %}</div>
+                                    {% endif %}
                                     {% if app.preferred_schedule.preferred_date %}
                                         <div>희망일 {{ app.preferred_schedule.preferred_date }} {{ app.preferred_schedule.preferred_time }}</div>
                                     {% endif %}
                                     {% if app.available_weekday_label or app.available_time_slot_label %}
                                         <div>가능 {{ app.available_weekday_label }}{% if app.available_time_slot_label %} / {{ app.available_time_slot_label }}{% endif %}</div>
                                     {% endif %}
-                                    {% if not app.preferred_schedule.preferred_date and not app.available_weekday_label and not app.available_time_slot_label %}
+                                    {% if not app.weekly_availability_lines and not app.preferred_schedule.preferred_date and not app.available_weekday_label and not app.available_time_slot_label %}
                                         —
                                     {% endif %}
                                 </td>

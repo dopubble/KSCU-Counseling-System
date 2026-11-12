@@ -54,8 +54,14 @@ def send_new_application_notification(application) -> bool:
     preferred = "—"
     if ps.get("preferred_date"):
         preferred = f"{ps.get('preferred_date')} {ps.get('preferred_time', '')}".strip()
-    weekdays = application.available_weekday_label() or "—"
-    time_slots = application.available_time_slot_label() or "—"
+    weekly_lines = application.weekly_availability_lines()
+    if weekly_lines:
+        availability = "상담 가능 일정: " + " / ".join(weekly_lines)
+    else:
+        weekdays = application.available_weekday_label() or "—"
+        time_slots = application.available_time_slot_label() or "—"
+        availability = f"가능 요일: {weekdays}\n가능 시간대: {time_slots}"
+    other_requests = application.other_requests_text()
 
     subject = "[KSCU 상담] 새 상담 신청이 접수되었습니다"
     message = (
@@ -63,8 +69,7 @@ def send_new_application_notification(application) -> bool:
         f"거주지역: {getattr(application, 'residence_region', '') or '—'}\n"
         f"상담 유형: {application.counseling_type}\n"
         f"상담 방식: {application.get_counseling_method_display()}\n"
-        f"가능 요일: {weekdays}\n"
-        f"가능 시간대: {time_slots}\n"
+        f"{availability}\n"
         f"희망 일시: {preferred}\n"
         f"신청일: {application.created_at:%Y-%m-%d %H:%M}\n\n"
         f"병원 진단명: {getattr(application, 'clinical_diagnosis', '') or '—'}\n"
@@ -73,6 +78,8 @@ def send_new_application_notification(application) -> bool:
     occupation = getattr(application, "occupation", "") or ""
     if occupation:
         message += f"직업: {occupation}\n"
+    if other_requests:
+        message += f"기타 요청사항:\n{other_requests}\n"
     message += f"\n사유:\n{application.reason}\n"
     return _send(subject, message, recipients)
 

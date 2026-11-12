@@ -16,10 +16,9 @@ from apps.counseling.constants import (
     APPLICATION_COUNSELING_METHOD_CHOICES,
     COUNSELING_TYPE_CHOICES,
     COUNSELING_TYPE_VALUES,
-    TIME_SLOT_CHOICES,
-    WEEKDAY_CHOICES,
-    normalize_choice_list,
     normalize_counseling_types,
+    normalize_weekly_availability,
+    weekly_availability_tokens,
 )
 from apps.counseling.models import Case, CounselingMethod, TrainingEnrollment
 from apps.counseling.privacy import mask_client_name
@@ -92,7 +91,6 @@ class CounselingApplyForm(forms.Form):
                 "placeholder": "예: 서울시, 강원도 / 해외: 캐나다",
             }
         ),
-        help_text="국내는 시·도 단위만, 해외 거주 시 국가명까지 입력해 주세요.",
     )
     clinical_diagnosis = forms.CharField(
         label="병원 진단명",
@@ -143,20 +141,28 @@ class CounselingApplyForm(forms.Form):
             "required": "상담 방식을 선택해 주세요.",
         },
     )
-    available_weekdays = forms.MultipleChoiceField(
-        label="상담 가능 요일",
-        choices=WEEKDAY_CHOICES,
+    weekly_availability = forms.MultipleChoiceField(
+        label="상담 가능한 요일과 시간대",
+        choices=weekly_availability_tokens(),
+        required=False,
         widget=forms.CheckboxSelectMultiple(),
         error_messages={
-            "required": "상담 가능 요일을 하나 이상 선택해 주세요.",
+            "invalid_choice": "선택할 수 없는 요일 또는 시간대입니다.",
         },
     )
-    available_time_slots = forms.MultipleChoiceField(
-        label="상담 가능 시간대",
-        choices=TIME_SLOT_CHOICES,
-        widget=forms.CheckboxSelectMultiple(),
+    other_requests = forms.CharField(
+        label="기타 요청사항",
+        required=False,
+        max_length=500,
+        widget=forms.Textarea(
+            attrs={
+                "class": "form-control",
+                "rows": 4,
+                "maxlength": "500",
+            }
+        ),
         error_messages={
-            "required": "상담 가능 시간대를 하나 이상 선택해 주세요.",
+            "max_length": "기타 요청사항은 500자 이내로 입력해 주세요.",
         },
     )
     email = forms.EmailField(
@@ -222,8 +228,6 @@ class CounselingApplyForm(forms.Form):
         super().__init__(*args, **kwargs)
         self.fields["counseling_types"].widget.attrs.update({"class": "form-check-input"})
         self.fields["counseling_method"].widget.attrs.update({"class": "form-check-input"})
-        self.fields["available_weekdays"].widget.attrs.update({"class": "form-check-input"})
-        self.fields["available_time_slots"].widget.attrs.update({"class": "form-check-input"})
         self.guest_signup = user is None or not getattr(user, "is_authenticated", False)
         if self.guest_signup:
             self.fields["email"].widget.attrs["required"] = "required"
@@ -337,9 +341,10 @@ class CounselingApplyForm(forms.Form):
             if not department:
                 self.add_error("department", "소속 학과를 입력해 주세요.")
             cleaned["department"] = department
+            cleaned["student_id"] = (cleaned.get("student_id") or "").strip()
         else:
             cleaned["department"] = ""
-        cleaned["student_id"] = (cleaned.get("student_id") or "").strip()
+            cleaned["student_id"] = ""
 
     def clean(self):
         cleaned = super().clean()
@@ -358,23 +363,38 @@ class CounselingApplyForm(forms.Form):
             self.add_error("birth_date", "생년월일을 입력해주세요.")
         return cleaned
 
-    def clean_available_weekdays(self):
-        value = normalize_choice_list(
-            self.cleaned_data.get("available_weekdays"),
-            WEEKDAY_CHOICES,
-        )
+    def clean_weekly_availability(self):
+        raw = self.cleaned_data.get("weekly_availability") or []
+        try:
+            value = normalize_weekly_availability(raw)
+        except ValueError:
+            raise forms.ValidationError("선택할 수 없는 요일 또는 시간대입니다.") from None
         if not value:
-            raise forms.ValidationError("상담 가능 요일을 하나 이상 선택해 주세요.")
+            raise forms.ValidationError(
+                "상담 가능한 요일과 시간대를 하나 이상 선택해 주세요."
+            )
         return value
 
-    def clean_available_time_slots(self):
-        value = normalize_choice_list(
-            self.cleaned_data.get("available_time_slots"),
-            TIME_SLOT_CHOICES,
-        )
-        if not value:
-            raise forms.ValidationError("상담 가능 시간대를 하나 이상 선택해 주세요.")
-        return value
+    def clean_other_requests(self):
+        return (self.cleaned_data.get("other_requests") or "").strip()
+
+    def apply_error_step(self) -> int:
+        """서버 검증 실패 시 다시 보여줄 단계. 기본정보 오류가 있으면 1단계."""
+        if not self.is_bound or not self.errors:
+            return 1
+        step2 = {
+            "counseling_method",
+            "weekly_availability",
+            "counseling_types",
+            "reason",
+            "other_requests",
+        }
+        names = set(self.errors)
+        if names - step2:
+            return 1
+        if names & step2:
+            return 2
+        return 1
 
     def clean_counseling_types(self):
         value = normalize_counseling_types(self.cleaned_data.get("counseling_types"))

@@ -93,6 +93,17 @@
                             <th class="table-light">상담방식 선호</th>
                             <td>{{ application.get_counseling_method_display }}</td>
                         </tr>
+                        {% if application.weekly_availability_lines %}
+                        <tr>
+                            <th class="table-light">상담 가능 일정</th>
+                            <td>
+                                {% for line in application.weekly_availability_lines %}
+                                <div>{{ line }}</div>
+                                {% endfor %}
+                            </td>
+                        </tr>
+                        {% endif %}
+                        {% if not application.weekly_availability_lines %}
                         <tr>
                             <th class="table-light">상담 가능 요일</th>
                             <td>{{ application.available_weekday_label|default:"—" }}</td>
@@ -100,6 +111,16 @@
                         <tr>
                             <th class="table-light">상담 가능 시간대</th>
                             <td>{{ application.available_time_slot_label|default:"—" }}</td>
+                        </tr>
+                        {% elif application.available_weekday_label or application.available_time_slot_label %}
+                        <tr>
+                            <th class="table-light">이전 가능 요일·시간대</th>
+                            <td>가능 {{ application.available_weekday_label }}{% if application.available_time_slot_label %} / {{ application.available_time_slot_label }}{% endif %}</td>
+                        </tr>
+                        {% endif %}
+                        <tr>
+                            <th class="table-light">기타 요청사항</th>
+                            <td style="white-space: pre-wrap;">{{ application.other_requests_text|default:"—" }}</td>
                         </tr>
                         <tr>
                             <th class="table-light">희망 상담일</th>

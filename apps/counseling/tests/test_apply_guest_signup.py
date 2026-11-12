@@ -49,8 +49,7 @@ def _guest_data(email="new-client@example.com", **extra):
         "occupation": "학생",
         "counseling_types": ["진로상담"],
         "counseling_method": CounselingMethod.IN_PERSON,
-        "available_weekdays": ["MON", "WED"],
-        "available_time_slots": ["AFTERNOON"],
+        "weekly_availability": ["MON:AFTERNOON", "WED:AFTERNOON"],
         "preferred_date": "2026-08-01",
         "preferred_time": "14:00",
         "reason": "새 상담 신청",
@@ -399,7 +398,10 @@ class GuestApplySignupTests(TestCase):
         visitor_profile = User.objects.get(email="visitor-apply@example.com").client_profile
         self.assertFalse(visitor_profile.is_kcu_student)
         self.assertEqual(visitor_profile.department, "")
-        self.assertEqual(visitor_profile.student_id, "20119999")
+        self.assertEqual(visitor_profile.student_id, "")
+        application = CounselingApplication.objects.get(client=visitor_profile.user)
+        self.assertEqual(application.preferred_schedule["student_id"], "")
+        self.assertEqual(application.preferred_schedule["department"], "")
 
     def test_signup_and_apply_block_the_same_email_regardless_of_case(self):
         signup = SignUpForm(
@@ -482,8 +484,7 @@ class GuestApplySignupTests(TestCase):
                     "current_medication": "없음",
                     "counseling_types": ["진로상담"],
                     "counseling_method": CounselingMethod.IN_PERSON,
-                    "available_weekdays": ["FRI"],
-                    "available_time_slots": ["MORNING", "EVENING"],
+                    "weekly_availability": ["FRI:MORNING", "FRI:EVENING"],
                     "preferred_date": "2026-09-01",
                     "preferred_time": "10:00",
                     "reason": "기존 회원 신청",
@@ -516,8 +517,7 @@ class GuestApplySignupTests(TestCase):
                 "current_medication": "없음",
                 "counseling_types": ["진로상담"],
                 "counseling_method": CounselingMethod.IN_PERSON,
-                "available_weekdays": ["FRI"],
-                "available_time_slots": ["MORNING"],
+                "weekly_availability": ["FRI:MORNING"],
                 "preferred_date": "2026-09-02",
                 "preferred_time": "11:00",
                 "reason": "중복 신청",
@@ -563,8 +563,7 @@ class GuestApplySignupTests(TestCase):
                 "current_medication": "없음",
                 "counseling_types": ["진로상담"],
                 "counseling_method": CounselingMethod.REMOTE,
-                "available_weekdays": ["SAT"],
-                "available_time_slots": ["AFTERNOON"],
+                "weekly_availability": ["SAT:AFTERNOON"],
                 "preferred_date": "2026-09-01",
                 "preferred_time": "10:00",
                 "reason": "관리자 테스트",
@@ -582,11 +581,16 @@ class GuestApplySignupTests(TestCase):
         application = CounselingApplication.objects.get()
         self.assertNotIn("preferred_date", application.preferred_schedule)
         self.assertNotIn("preferred_time", application.preferred_schedule)
+        self.assertNotIn("available_weekdays", application.preferred_schedule)
+        self.assertNotIn("available_time_slots", application.preferred_schedule)
         self.assertEqual(
-            application.preferred_schedule["available_weekdays"],
-            ["MON", "WED"],
+            application.preferred_schedule["weekly_availability"],
+            {"MON": ["AFTERNOON"], "WED": ["AFTERNOON"]},
         )
-        self.assertEqual(application.available_time_slot_label(), "오후")
+        self.assertEqual(
+            application.weekly_availability_lines(),
+            ["월요일: 오후", "수요일: 오후"],
+        )
         counselor = _user("match-counselor@example.com", UserRole.COUNSELOR, "배정상담사")
         from apps.accounts.models import CounselorProfile
 
@@ -649,21 +653,29 @@ class GuestApplySignupTests(TestCase):
         self.assertEqual(guest.status_code, 200)
         html = guest.content.decode()
         self.assertNotIn("추가 정보", html)
-        self.assertNotIn("다음 단계", html)
-        self.assertNotIn("이전 단계", html)
+        self.assertNotIn("계정 설정", html)
         self.assertNotIn("희망 상담일", html)
         self.assertNotIn("희망 상담 시간", html)
+        self.assertNotIn("연락 가능한 휴대폰 번호를 입력해 주세요.", html)
+        self.assertNotIn("국내는 시·도 단위만, 해외 거주 시 국가명까지 입력해 주세요.", html)
+        self.assertIn("대면: 종로캠퍼스 / 비대면: 실시간 Zoom 상담 진행", html)
+        self.assertIn("① 기본정보", html)
+        self.assertIn("② 상담내용", html)
+        self.assertIn("다음 →", html)
+        self.assertIn("← 이전", html)
+        self.assertIn("기타 요청사항", html)
         self.assertNotIn('id="id_preferred_date"', html)
         self.assertNotIn('id="id_preferred_time"', html)
-        self.assertLess(html.index("기본 정보"), html.index("계정 설정"))
-        self.assertLess(html.index("계정 설정"), html.index("상담 내용"))
+        self.assertIn('class="col-12 d-none" id="kcu-academic-fields"', html)
+        self.assertLess(html.index("기본 정보"), html.index('id="id_email"'))
+        self.assertLess(html.index('id="id_email"'), html.index('id="id_password1"'))
+        self.assertLess(html.index('id="id_password1"'), html.index('id="id_password2"'))
+        self.assertLess(html.index('id="id_password2"'), html.index('id="id_phone"'))
         self.assertLess(html.index('id="id_name"'), html.index('id="id_birth_date"'))
         self.assertLess(html.index('id="id_birth_date"'), html.index('id="id_email"'))
-        self.assertLess(html.index('id="id_email"'), html.index('id="id_phone"'))
         self.assertLess(html.index('id="id_phone"'), html.index('id="id_residence_region"'))
-        self.assertLess(html.index("숭실사이버대학교 학생 여부"), html.index('id="id_student_id"'))
-        self.assertLess(html.index('id="id_student_id"'), html.index('id="id_department"'))
-        self.assertLess(html.index('id="id_department"'), html.index('id="id_clinical_diagnosis"'))
+        self.assertLess(html.index("숭실사이버대학교 학생 여부"), html.index("kcu-academic-fields"))
+        self.assertLess(html.index("kcu-academic-fields"), html.index('id="id_clinical_diagnosis"'))
         self.assertIn("대면·비대면 모두 가능", html)
         self.assertIn("월요일", html)
         self.assertIn("일요일", html)
@@ -678,7 +690,9 @@ class GuestApplySignupTests(TestCase):
         logged_html = logged_in.content.decode()
         self.assertNotIn("추가 정보", logged_html)
         self.assertNotIn("계정 설정", logged_html)
+        self.assertNotIn('id="id_password1"', logged_html)
         self.assertIn("상담 내용", logged_html)
+        self.assertIn("대면: 종로캠퍼스 / 비대면: 실시간 Zoom 상담 진행", logged_html)
         self.assertLess(logged_html.index('id="id_name"'), logged_html.index('id="id_birth_date"'))
         self.assertLess(
             logged_html.index('id="id_phone"'),
@@ -689,3 +703,95 @@ class GuestApplySignupTests(TestCase):
         form = CounselingApplyForm(data=_guest_data(email_confirmed=""), user=AnonymousUser())
         self.assertFalse(form.is_valid())
         self.assertIn("이메일 중복확인을 완료해 주세요.", form.errors["email"])
+
+    def test_weekly_availability_and_other_requests_are_validated_and_escaped(self):
+        missing = self.http.post(
+            self.url,
+            _guest_data(email="no-slot@example.com", weekly_availability=[]),
+        )
+        self.assertEqual(missing.status_code, 200)
+        self.assertContains(missing, "상담 가능한 요일과 시간대를 하나 이상 선택해 주세요.")
+        self.assertContains(missing, '<div id="apply-step-2">')
+        self.assertFalse(User.objects.filter(email="no-slot@example.com").exists())
+
+        forged = self.http.post(
+            self.url,
+            _guest_data(email="bad-slot@example.com", weekly_availability=["MON:NOON"]),
+        )
+        self.assertEqual(forged.status_code, 200)
+        self.assertFalse(User.objects.filter(email="bad-slot@example.com").exists())
+
+        too_long = self.http.post(
+            self.url,
+            _guest_data(email="long-note@example.com", other_requests="가" * 501),
+        )
+        self.assertEqual(too_long.status_code, 200)
+        self.assertContains(too_long, "500자")
+        self.assertFalse(User.objects.filter(email="long-note@example.com").exists())
+
+        note = "<script>alert(1)</script>"
+        created = self.http.post(
+            self.url,
+            _guest_data(
+                email="note@example.com",
+                weekly_availability=[
+                    "MON:MORNING",
+                    "TUE:EVENING",
+                    "THU:AFTERNOON",
+                    "THU:EVENING",
+                    "THU:EVENING",
+                ],
+                other_requests=note,
+                reason="호소는 따로",
+            ),
+        )
+        self.assertEqual(created.status_code, 302)
+        application = CounselingApplication.objects.get(client__email="note@example.com")
+        self.assertEqual(application.reason, "호소는 따로")
+        self.assertEqual(
+            application.preferred_schedule["weekly_availability"],
+            {
+                "MON": ["MORNING"],
+                "TUE": ["EVENING"],
+                "THU": ["AFTERNOON", "EVENING"],
+            },
+        )
+        self.assertEqual(application.other_requests_text(), note)
+        self.assertNotIn("preferred_date", application.preferred_schedule)
+        self.assertNotIn("available_weekdays", application.preferred_schedule)
+
+        admin = _user("note-admin@example.com", UserRole.ADMIN, "일정관리")
+        self.http.force_login(admin)
+        detail = self.http.get(
+            reverse("counseling:application_detail", kwargs={"pk": application.pk})
+        )
+        self.assertContains(detail, "상담 가능 일정")
+        self.assertContains(detail, "월요일: 오전")
+        self.assertContains(detail, "화요일: 저녁")
+        self.assertContains(detail, "목요일: 오후, 저녁")
+        self.assertContains(detail, "기타 요청사항")
+        self.assertContains(detail, "&lt;script&gt;alert(1)&lt;/script&gt;")
+        self.assertNotContains(detail, "<script>alert(1)</script>")
+        listing = self.http.get(reverse("admin_panel:matching_list"))
+        self.assertContains(listing, "월요일: 오전")
+
+        legacy = CounselingApplication.objects.create(
+            client=admin,
+            counseling_types=["개인상담"],
+            reason="예전 신청",
+            counseling_method=CounselingMethod.IN_PERSON,
+            preferred_schedule={
+                "preferred_date": "2024-01-02",
+                "preferred_time": "09:00",
+                "available_weekdays": ["MON"],
+                "available_time_slots": ["MORNING"],
+            },
+        )
+        legacy_page = self.http.get(
+            reverse("counseling:application_detail", kwargs={"pk": legacy.pk})
+        )
+        self.assertEqual(legacy_page.status_code, 200)
+        self.assertContains(legacy_page, "2024-01-02")
+        self.assertContains(legacy_page, "상담 가능 요일")
+        self.assertContains(legacy_page, "월요일")
+        self.assertNotContains(legacy_page, "월요일: 오전")

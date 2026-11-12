@@ -7,6 +7,74 @@
 {% if not user.is_authenticated %}
 <link href="{% static 'css/signup.css' %}" rel="stylesheet">
 {% endif %}
+<style>
+.apply-progress-step.is-current { color: var(--bs-primary); }
+.apply-progress-step { color: var(--bs-secondary-color, #6c757d); }
+.availability-head { display: none; }
+.availability-grid { display: flex; flex-direction: column; gap: .75rem; }
+.availability-row {
+    border: 1px solid #dee2e6;
+    border-radius: .5rem;
+    padding: .75rem;
+    background: #fff;
+}
+.availability-day { font-weight: 600; margin-bottom: .5rem; }
+.availability-slots { display: flex; gap: .5rem; }
+.availability-choice { position: relative; flex: 1 1 0; margin: 0; }
+.availability-choice input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+}
+.availability-choice span {
+    display: block;
+    text-align: center;
+    border: 1px solid #ced4da;
+    border-radius: .5rem;
+    padding: .5rem .25rem;
+    background: #fff;
+    cursor: pointer;
+}
+.availability-choice input:checked + span {
+    background: #0d4f8b;
+    border-color: #0d4f8b;
+    color: #fff;
+}
+.availability-choice input:focus-visible + span {
+    outline: 2px solid #0d4f8b;
+    outline-offset: 2px;
+}
+@media (min-width: 768px) {
+    .availability-grid { display: table; width: 100%; border-collapse: collapse; }
+    .availability-head { display: table-row; }
+    .availability-head span,
+    .availability-day,
+    .availability-choice {
+        display: table-cell;
+        vertical-align: middle;
+        padding: .65rem .5rem;
+        border-bottom: 1px solid #e9ecef;
+        text-align: center;
+    }
+    .availability-day { text-align: left; font-weight: 600; width: 7rem; }
+    .availability-row {
+        display: table-row;
+        border: 0;
+        border-radius: 0;
+        padding: 0;
+        background: transparent;
+    }
+    .availability-slots { display: contents; }
+    .availability-choice input {
+        position: static;
+        width: 1.05rem;
+        height: 1.05rem;
+        opacity: 1;
+    }
+    .availability-choice span { display: none; }
+}
+</style>
 {% endblock %}
 
 {% block layout %}
@@ -49,11 +117,17 @@
 
                 <div class="card border-0 shadow-sm">
                     <div class="card-body p-4 p-md-5">
+                        <div class="apply-progress d-flex align-items-center gap-2 mb-4" aria-label="신청 단계">
+                            <span id="apply-step-label-1" class="apply-progress-step fw-semibold{% if apply_initial_step != 2 %} is-current{% endif %}">① 기본정보</span>
+                            <span class="text-muted">→</span>
+                            <span id="apply-step-label-2" class="apply-progress-step fw-semibold{% if apply_initial_step == 2 %} is-current{% endif %}">② 상담내용</span>
+                        </div>
                         <form method="post"
                               action="{% url 'counseling:apply' %}"
                               novalidate
                               id="counseling-apply-form"
-                              onsubmit="return validateCounselingApplyBirthDate(this) && validateGuestApplyAccount(this) && confirm('{% if is_edit %}저장을 완료하시겠습니까?{% else %}상담 신청을 완료하시겠습니까?{% endif %}');">
+                              data-initial-step="{{ apply_initial_step|default:1 }}"
+                              onsubmit="return submitCounselingApply(this);">
                             {% csrf_token %}
 
                             {% if form.errors %}
@@ -75,15 +149,12 @@
                             </div>
                             {% endif %}
 
+                            <div id="apply-step-1"{% if apply_initial_step == 2 %} class="d-none"{% endif %}>
                             <h2 class="h6 text-kscu fw-bold mb-3 pb-2 border-bottom">기본 정보</h2>
+                            <p class="small text-muted mb-3">대면: 종로캠퍼스 / 비대면: 실시간 Zoom 상담 진행</p>
                             {% if user.is_authenticated %}
                             <p class="small text-muted mb-3">
                                 이름·학번·소속 학과는 회원가입 정보에서 자동으로 불러오며 수정할 수 없습니다.
-                                생년월일은 필수 항목입니다.
-                            </p>
-                            {% else %}
-                            <p class="small text-muted mb-3">
-                                이름, 이메일, 연락처를 입력해 주세요.
                                 생년월일은 필수 항목입니다.
                             </p>
                             {% endif %}
@@ -122,17 +193,28 @@
                                     {% endfor %}
                                     {% if form.email.errors %}<div class="text-danger small mt-1">{{ form.email.errors.0 }}</div>{% endif %}
                                 </div>
+                                <div class="col-md-6">
+                                    <label for="id_password1" class="form-label fw-semibold">{{ form.password1.label }} <span class="text-danger">*</span></label>
+                                    {{ form.password1 }}
+                                    {% if form.password1.errors or form.password2.errors %}
+                                    <div class="form-text">비밀번호를 다시 입력해 주세요.</div>
+                                    {% endif %}
+                                    {% if form.password1.errors %}<div class="text-danger small mt-1">{{ form.password1.errors.0 }}</div>{% endif %}
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="id_password2" class="form-label fw-semibold">{{ form.password2.label }} <span class="text-danger">*</span></label>
+                                    {{ form.password2 }}
+                                    {% if form.password2.errors %}<div class="text-danger small mt-1">{{ form.password2.errors.0 }}</div>{% endif %}
+                                </div>
                                 {% endif %}
                                 <div class="col-md-6">
                                     <label for="id_phone" class="form-label fw-semibold">{{ form.phone.label }}</label>
                                     {{ form.phone }}
-                                    <div class="form-text">연락 가능한 휴대폰 번호를 입력해 주세요.</div>
                                     {% if form.phone.errors %}<div class="text-danger small mt-1">{{ form.phone.errors.0 }}</div>{% endif %}
                                 </div>
                                 <div class="col-md-6">
                                     <label for="id_residence_region" class="form-label fw-semibold">{{ form.residence_region.label }} <span class="text-danger">*</span></label>
                                     {{ form.residence_region }}
-                                    {% if form.residence_region.help_text %}<div class="form-text">{{ form.residence_region.help_text }}</div>{% endif %}
                                     {% if form.residence_region.errors %}<div class="text-danger small mt-1">{{ form.residence_region.errors.0 }}</div>{% endif %}
                                 </div>
                                 {% if not user.is_authenticated %}
@@ -148,7 +230,21 @@
                                     </div>
                                     {% if form.is_kcu_student.errors %}<div class="text-danger small mt-1">{{ form.is_kcu_student.errors.0 }}</div>{% endif %}
                                 </div>
-                                {% endif %}
+                                <div class="col-12{% if form.is_kcu_student.value != 'yes' %} d-none{% endif %}" id="kcu-academic-fields">
+                                    <div class="row g-3">
+                                        <div class="col-md-6">
+                                            <label for="id_student_id" class="form-label fw-semibold">{{ form.student_id.label }} <span class="text-muted fw-normal">(선택)</span></label>
+                                            {{ form.student_id }}
+                                            {% if form.student_id.errors %}<div class="text-danger small mt-1">{{ form.student_id.errors.0 }}</div>{% endif %}
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label for="id_department" class="form-label fw-semibold">{{ form.department.label }} <span class="text-danger">*</span></label>
+                                            {{ form.department }}
+                                            {% if form.department.errors %}<div class="text-danger small mt-1">{{ form.department.errors.0 }}</div>{% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                                {% elif show_locked_academic_fields %}
                                 <div class="col-md-6">
                                     <label for="id_student_id" class="form-label fw-semibold">{{ form.student_id.label }} <span class="text-muted fw-normal">(선택)</span></label>
                                     {{ form.student_id }}
@@ -156,11 +252,12 @@
                                     {% if form.student_id.errors %}<div class="text-danger small mt-1">{{ form.student_id.errors.0 }}</div>{% endif %}
                                 </div>
                                 <div class="col-md-6">
-                                    <label for="id_department" class="form-label fw-semibold">{{ form.department.label }} {% if user.is_authenticated %}<span class="text-muted fw-normal">(선택)</span>{% else %}<span class="text-muted fw-normal" id="department-requirement">(학생인 경우 필수)</span>{% endif %}</label>
+                                    <label for="id_department" class="form-label fw-semibold">{{ form.department.label }}</label>
                                     {{ form.department }}
                                     {% if form.department.help_text %}<div class="form-text">{{ form.department.help_text }}</div>{% endif %}
                                     {% if form.department.errors %}<div class="text-danger small mt-1">{{ form.department.errors.0 }}</div>{% endif %}
                                 </div>
+                                {% endif %}
                                 <div class="col-md-6">
                                     <label for="id_clinical_diagnosis" class="form-label fw-semibold">{{ form.clinical_diagnosis.label }} <span class="text-danger">*</span></label>
                                     {{ form.clinical_diagnosis }}
@@ -180,64 +277,27 @@
                             </div>
 
                             {% if not user.is_authenticated %}
-                            <h2 class="h6 text-kscu fw-bold mb-3 pb-2 border-bottom">계정 설정</h2>
-                            <div class="row g-3 mb-4">
-                                <div class="col-md-6">
-                                    <label for="id_password1" class="form-label fw-semibold">{{ form.password1.label }} <span class="text-danger">*</span></label>
-                                    {{ form.password1 }}
-                                    {% if form.password1.errors %}<div class="text-danger small mt-1">{{ form.password1.errors.0 }}</div>{% endif %}
-                                </div>
-                                <div class="col-md-6">
-                                    <label for="id_password2" class="form-label fw-semibold">{{ form.password2.label }} <span class="text-danger">*</span></label>
-                                    {{ form.password2 }}
-                                    {% if form.password2.errors %}<div class="text-danger small mt-1">{{ form.password2.errors.0 }}</div>{% endif %}
-                                </div>
-                            </div>
                             <h2 class="h6 text-kscu fw-bold mb-3 pb-2 border-bottom">동의</h2>
                             {% include "accounts/partials/signup_consent.html" %}
                             {% endif %}
 
+                            <div class="form-actions border-top pt-4 mt-2">
+                                <div class="row g-3 align-items-center">
+                                    <div class="col-12 col-sm-auto">
+                                        <a href="{% url 'home' %}" class="btn btn-outline-secondary btn-lg w-100">
+                                            <i class="bi bi-arrow-left me-1"></i> 홈으로
+                                        </a>
+                                    </div>
+                                    <div class="col-12 col-sm-auto ms-sm-auto">
+                                        <button type="button" class="btn btn-primary btn-lg w-100 px-5" id="apply-next">다음 →</button>
+                                    </div>
+                                </div>
+                            </div>
+                            </div>
+
+                            <div id="apply-step-2"{% if apply_initial_step != 2 %} class="d-none"{% endif %}>
                             <h2 class="h6 text-kscu fw-bold mb-3 pb-2 border-bottom">상담 내용</h2>
                             <div class="row g-3 mb-4">
-                                <div class="col-12">
-                                    <span class="form-label fw-semibold d-block">{{ form.counseling_method.label }} <span class="text-danger">*</span></span>
-                                    <div class="counseling-method-options d-flex flex-wrap gap-3">
-                                        {% for option in form.counseling_method %}
-                                            <div class="form-check">
-                                                {{ option.tag }}
-                                                <label class="form-check-label" for="{{ option.id_for_label }}">{{ option.choice_label }}</label>
-                                            </div>
-                                        {% endfor %}
-                                    </div>
-                                    {% if form.counseling_method.help_text %}<div class="form-text">{{ form.counseling_method.help_text }}</div>{% endif %}
-                                    {% if form.counseling_method.errors %}<div class="text-danger small mt-1">{{ form.counseling_method.errors.0 }}</div>{% endif %}
-                                </div>
-                                <div class="col-12">
-                                    <span class="form-label fw-semibold d-block">{{ form.available_weekdays.label }} <span class="text-danger">*</span></span>
-                                    <div class="form-text mb-2">가능한 요일을 모두 선택할 수 있습니다.</div>
-                                    <div class="d-flex flex-wrap gap-3">
-                                        {% for option in form.available_weekdays %}
-                                        <div class="form-check">
-                                            {{ option.tag }}
-                                            <label class="form-check-label" for="{{ option.id_for_label }}">{{ option.choice_label }}</label>
-                                        </div>
-                                        {% endfor %}
-                                    </div>
-                                    {% if form.available_weekdays.errors %}<div class="text-danger small mt-1">{{ form.available_weekdays.errors.0 }}</div>{% endif %}
-                                </div>
-                                <div class="col-12">
-                                    <span class="form-label fw-semibold d-block">{{ form.available_time_slots.label }} <span class="text-danger">*</span></span>
-                                    <div class="form-text mb-2">가능한 시간대를 모두 선택할 수 있습니다.</div>
-                                    <div class="d-flex flex-wrap gap-3">
-                                        {% for option in form.available_time_slots %}
-                                        <div class="form-check">
-                                            {{ option.tag }}
-                                            <label class="form-check-label" for="{{ option.id_for_label }}">{{ option.choice_label }}</label>
-                                        </div>
-                                        {% endfor %}
-                                    </div>
-                                    {% if form.available_time_slots.errors %}<div class="text-danger small mt-1">{{ form.available_time_slots.errors.0 }}</div>{% endif %}
-                                </div>
                                 <div class="col-12">
                                     <span class="form-label fw-semibold d-block">{{ form.counseling_types.label }} <span class="text-danger">*</span></span>
                                     <div class="form-text mb-2">해당하는 항목을 모두 선택할 수 있습니다.</div>
@@ -257,22 +317,64 @@
                                     <div class="form-text">100자 이내로 작성해 주세요.</div>
                                     {% if form.reason.errors %}<div class="text-danger small mt-1">{{ form.reason.errors.0 }}</div>{% endif %}
                                 </div>
+                                <div class="col-12">
+                                    <span class="form-label fw-semibold d-block">{{ form.counseling_method.label }} <span class="text-danger">*</span></span>
+                                    <div class="counseling-method-options d-flex flex-wrap gap-3">
+                                        {% for option in form.counseling_method %}
+                                            <div class="form-check">
+                                                {{ option.tag }}
+                                                <label class="form-check-label" for="{{ option.id_for_label }}">{{ option.choice_label }}</label>
+                                            </div>
+                                        {% endfor %}
+                                    </div>
+                                    {% if form.counseling_method.help_text %}<div class="form-text">{{ form.counseling_method.help_text }}</div>{% endif %}
+                                    {% if form.counseling_method.errors %}<div class="text-danger small mt-1">{{ form.counseling_method.errors.0 }}</div>{% endif %}
+                                </div>
+                                <div class="col-12" id="weekly-availability-field">
+                                    <span class="form-label fw-semibold d-block">상담 가능한 요일과 시간대를 선택해 주세요. (복수 선택 가능) <span class="text-danger">*</span></span>
+                                    <div class="availability-grid mt-2" role="group" aria-label="요일별 상담 가능 시간대">
+                                        <div class="availability-head">
+                                            <span>요일</span>
+                                            <span>오전</span>
+                                            <span>오후</span>
+                                            <span>저녁</span>
+                                        </div>
+                                        {% for day in availability_rows %}
+                                        <div class="availability-row">
+                                            <div class="availability-day">{{ day.label }}</div>
+                                            <div class="availability-slots">
+                                                {% for slot in day.slots %}
+                                                <label class="availability-choice">
+                                                    <input type="checkbox" name="weekly_availability" value="{{ slot.token }}"{% if slot.checked %} checked{% endif %}>
+                                                    <span>{{ slot.label }}</span>
+                                                </label>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                    {% if form.weekly_availability.errors %}<div class="text-danger small mt-2">{{ form.weekly_availability.errors.0 }}</div>{% endif %}
+                                </div>
+                                <div class="col-12">
+                                    <label for="id_other_requests" class="form-label fw-semibold">{{ form.other_requests.label }} <span class="text-muted fw-normal">(선택)</span></label>
+                                    {{ form.other_requests }}
+                                    <div class="form-text">상담 가능 일정이나 진행 방식에 관해 추가로 전달할 사항이 있다면 입력해 주세요.</div>
+                                    {% if form.other_requests.errors %}<div class="text-danger small mt-1">{{ form.other_requests.errors.0 }}</div>{% endif %}
+                                </div>
                             </div>
-
                             <div class="form-actions border-top pt-4 mt-2">
                                 <div class="row g-3 align-items-center">
                                     <div class="col-12 col-sm-auto">
-                                        <a href="{% url 'home' %}" class="btn btn-outline-secondary btn-lg w-100 w-sm-auto">
-                                            <i class="bi bi-arrow-left me-1"></i> 홈으로
-                                        </a>
+                                        <button type="button" class="btn btn-outline-secondary btn-lg w-100" id="apply-prev">← 이전</button>
                                     </div>
                                     <div class="col-12 col-sm-auto ms-sm-auto">
                                         <button type="submit" name="submit" value="1"
-                                                class="btn btn-primary btn-lg w-100 w-sm-auto px-5 shadow-sm">
+                                                class="btn btn-primary btn-lg w-100 px-5 shadow-sm">
                                             <i class="bi bi-{% if is_edit %}save{% else %}send-fill{% endif %} me-2"></i>{% if is_edit %}저장하기{% elif not user.is_authenticated %}상담 신청하기{% else %}신청하기{% endif %}
                                         </button>
                                     </div>
                                 </div>
+                            </div>
                             </div>
                         </form>
                     </div>
@@ -295,51 +397,227 @@
 
 {% block extra_js %}
 <script>
+function fieldBox(input) {
+    return input.closest(".col-md-6, .col-12, .form-check") || input.parentElement;
+}
+function clearStepErrors(step) {
+    step.querySelectorAll(".client-error").forEach(function (node) { node.remove(); });
+}
+function showFieldError(input, message) {
+    var box = fieldBox(input);
+    if (!box) {
+        return;
+    }
+    var err = document.createElement("div");
+    err.className = "text-danger small mt-1 client-error";
+    err.textContent = message;
+    box.appendChild(err);
+}
+function valueOf(form, selector) {
+    var field = form.querySelector(selector);
+    return field ? (field.value || "").trim() : "";
+}
+function syncAcademicFields(clearHidden) {
+    var yes = document.querySelector('input[name="is_kcu_student"][value="yes"]');
+    var box = document.getElementById("kcu-academic-fields");
+    if (!box || !yes) {
+        return;
+    }
+    var show = yes.checked;
+    box.classList.toggle("d-none", !show);
+    if (!show && clearHidden) {
+        ["#id_student_id", "#id_department"].forEach(function (selector) {
+            var field = document.querySelector(selector);
+            if (field && !field.disabled) {
+                field.value = "";
+            }
+        });
+    }
+}
 function validateCounselingApplyBirthDate(form) {
     var field = form.querySelector("#id_birth_date");
-    if (!field) {
+    if (!field || field.disabled) {
         return true;
     }
-    var value = (field.value || "").trim();
-    if (!value) {
-        field.setCustomValidity("생년월일을 입력해주세요.");
-        if (typeof field.reportValidity === "function") {
-            field.reportValidity();
-        } else {
-            alert("생년월일을 입력해주세요.");
-        }
+    if (!(field.value || "").trim()) {
+        showFieldError(field, "생년월일을 입력해주세요.");
         field.focus();
         return false;
     }
-    field.setCustomValidity("");
     return true;
 }
-{% if user.is_authenticated %}
-function validateGuestApplyAccount() {
-    return true;
-}
-{% else %}
-function validateGuestApplyAccount(form) {
+function validateStep1(form) {
+    var step = document.getElementById("apply-step-1");
+    clearStepErrors(step);
+    var first = null;
+    function fail(selector, message) {
+        var field = form.querySelector(selector);
+        if (!field) {
+            return;
+        }
+        showFieldError(field, message);
+        if (!first) {
+            first = field;
+        }
+    }
+    var name = form.querySelector("#id_name");
+    if (name && !name.disabled && !name.value.trim()) {
+        fail("#id_name", "이름을 입력해 주세요.");
+    }
+    if (!validateCounselingApplyBirthDate(form)) {
+        var birth = form.querySelector("#id_birth_date");
+        if (birth && !first) {
+            first = birth;
+        }
+    }
+    {% if not user.is_authenticated %}
     var email = form.querySelector("#id_email");
-    if (!email) {
-        return true;
+    if (email) {
+        var confirmed = form.querySelector("#id_email_confirmed");
+        var checkedRaw = email.getAttribute("data-checked-value") || "";
+        if (!email.value.trim()) {
+            fail("#id_email", "이메일을 입력해 주세요.");
+        } else if (!confirmed || !confirmed.value || checkedRaw !== email.value.trim()) {
+            fail("#id_email", "이메일 중복확인을 완료해 주세요.");
+        }
+        if (!valueOf(form, "#id_password1")) {
+            fail("#id_password1", "비밀번호를 입력해 주세요.");
+        }
+        if (valueOf(form, "#id_password1") !== valueOf(form, "#id_password2")) {
+            fail("#id_password2", "비밀번호가 일치하지 않습니다.");
+        }
+        var yes = form.querySelector('input[name="is_kcu_student"][value="yes"]');
+        var no = form.querySelector('input[name="is_kcu_student"][value="no"]');
+        if (yes && no && !yes.checked && !no.checked) {
+            fail('input[name="is_kcu_student"]', "숭실사이버대학교 학생 여부를 선택해 주세요.");
+        }
+        if (yes && yes.checked && !valueOf(form, "#id_department")) {
+            fail("#id_department", "소속 학과를 입력해 주세요.");
+        }
+        var terms = form.querySelector("#id_agree_service_terms");
+        var privacy = form.querySelector("#id_agree_privacy");
+        if ((terms && !terms.checked) || (privacy && !privacy.checked)) {
+            fail("#id_agree_service_terms", "이용약관과 개인정보 수집·이용에 동의해 주세요.");
+        }
     }
-    var confirmed = form.querySelector("#id_email_confirmed");
-    var checkedRaw = email.getAttribute("data-checked-value") || "";
-    if (!confirmed || !confirmed.value || checkedRaw !== email.value.trim()) {
-        alert("이메일 중복확인을 완료해 주세요.");
-        email.focus();
-        return false;
+    {% endif %}
+    if (!valueOf(form, "#id_residence_region")) {
+        fail("#id_residence_region", "거주지역을 입력해 주세요.");
     }
-    var terms = form.querySelector("#id_agree_service_terms");
-    var privacy = form.querySelector("#id_agree_privacy");
-    if ((terms && !terms.checked) || (privacy && !privacy.checked)) {
-        alert("이용약관과 개인정보 수집·이용에 동의해 주세요.");
+    if (!valueOf(form, "#id_clinical_diagnosis")) {
+        fail("#id_clinical_diagnosis", "병원 진단명을 입력해 주세요.");
+    }
+    if (!valueOf(form, "#id_current_medication")) {
+        fail("#id_current_medication", "현재 복용 중인 관련 약을 입력해 주세요.");
+    }
+    if (first) {
+        first.focus();
         return false;
     }
     return true;
 }
-
+function validateStep2(form) {
+    var step = document.getElementById("apply-step-2");
+    clearStepErrors(step);
+    var first = null;
+    function fail(node, message) {
+        showFieldError(node, message);
+        if (!first) {
+            first = node;
+        }
+    }
+    if (!form.querySelector('input[name="counseling_types"]:checked')) {
+        var typeBox = form.querySelector(".counseling-type-options");
+        if (typeBox) {
+            fail(typeBox, "상담 희망 분야를 하나 이상 선택해 주세요.");
+        }
+    }
+    if (!valueOf(form, "#id_reason")) {
+        fail(form.querySelector("#id_reason"), "주요 호소 문제를 작성해 주세요.");
+    }
+    if (!form.querySelector('input[name="counseling_method"]:checked')) {
+        var methodBox = form.querySelector(".counseling-method-options");
+        if (methodBox) {
+            fail(methodBox, "상담 방식을 선택해 주세요.");
+        }
+    }
+    if (!form.querySelector('input[name="weekly_availability"]:checked')) {
+        var grid = document.getElementById("weekly-availability-field");
+        if (grid) {
+            fail(grid, "상담 가능한 요일과 시간대를 하나 이상 선택해 주세요.");
+        }
+    }
+    if (first && typeof first.focus === "function") {
+        first.focus();
+    }
+    return !first;
+}
+function showApplyStep(step) {
+    var first = document.getElementById("apply-step-1");
+    var second = document.getElementById("apply-step-2");
+    var label1 = document.getElementById("apply-step-label-1");
+    var label2 = document.getElementById("apply-step-label-2");
+    if (!first || !second) {
+        return;
+    }
+    first.classList.toggle("d-none", step !== 1);
+    second.classList.toggle("d-none", step !== 2);
+    if (label1) {
+        label1.classList.toggle("is-current", step === 1);
+    }
+    if (label2) {
+        label2.classList.toggle("is-current", step === 2);
+    }
+    var card = document.querySelector(".apply-progress");
+    if (card && typeof card.scrollIntoView === "function") {
+        card.scrollIntoView({block: "nearest"});
+    }
+}
+function submitCounselingApply(form) {
+    syncAcademicFields(true);
+    if (!validateStep1(form)) {
+        showApplyStep(1);
+        return false;
+    }
+    if (!validateStep2(form)) {
+        showApplyStep(2);
+        return false;
+    }
+    return confirm("{% if is_edit %}저장을 완료하시겠습니까?{% else %}상담 신청을 완료하시겠습니까?{% endif %}");
+}
+document.addEventListener("DOMContentLoaded", function () {
+    var form = document.getElementById("counseling-apply-form");
+    if (!form) {
+        return;
+    }
+    var initial = form.getAttribute("data-initial-step") === "2" ? 2 : 1;
+    showApplyStep(initial);
+    syncAcademicFields(false);
+    document.querySelectorAll('input[name="is_kcu_student"]').forEach(function (el) {
+        el.addEventListener("change", function () { syncAcademicFields(true); });
+    });
+    var next = document.getElementById("apply-next");
+    var prev = document.getElementById("apply-prev");
+    if (next) {
+        next.addEventListener("click", function () {
+            syncAcademicFields(true);
+            if (validateStep1(form)) {
+                showApplyStep(2);
+            }
+        });
+    }
+    if (prev) {
+        prev.addEventListener("click", function () { showApplyStep(1); });
+    }
+    var email = document.getElementById("id_email");
+    var confirmed = document.getElementById("id_email_confirmed");
+    if (email && confirmed && confirmed.value && confirmed.value === email.value.trim()) {
+        email.setAttribute("data-checked-value", email.value.trim());
+    }
+});
+{% if user.is_authenticated %}
+function validateGuestApplyAccount() { return true; }
+{% else %}
 document.addEventListener("DOMContentLoaded", function () {
     var button = document.getElementById("email-check-button");
     var email = document.getElementById("id_email");
@@ -359,18 +637,6 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     }
     email.addEventListener("input", resetCheck);
-    document.querySelectorAll('input[name="is_kcu_student"]').forEach(function (el) {
-        el.addEventListener("change", function () {
-            var department = document.getElementById("id_department");
-            var yes = document.querySelector('input[name="is_kcu_student"][value="yes"]');
-            if (!department || !yes) {
-                return;
-            }
-            if (!yes.checked) {
-                department.value = "";
-            }
-        });
-    });
     button.addEventListener("click", function () {
         var tokenField = document.querySelector("#counseling-apply-form [name=csrfmiddlewaretoken]");
         var body = new FormData();

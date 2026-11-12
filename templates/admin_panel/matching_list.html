@@ -67,6 +67,14 @@
                     <tr>
                         <td class="fw-semibold">
                             {{ app.client.name }}
+                            {% if app.weekly_availability_lines %}
+                            <div class="small text-muted fw-normal">{% for line in app.weekly_availability_lines %}{{ line }}{% if not forloop.last %} · {% endif %}{% endfor %}</div>
+                            {% elif app.available_weekday_label or app.available_time_slot_label %}
+                            <div class="small text-muted fw-normal">가능 {{ app.available_weekday_label }}{% if app.available_time_slot_label %} / {{ app.available_time_slot_label }}{% endif %}</div>
+                            {% endif %}
+                            {% if app.preferred_schedule.preferred_date %}
+                            <div class="small text-muted fw-normal">희망일 {{ app.preferred_schedule.preferred_date }} {{ app.preferred_schedule.preferred_time }}</div>
+                            {% endif %}
                             {% if app.has_other_active_case %}
                             <span class="badge bg-info text-dark ms-1" title="다른 건으로 진행 중인 상담이 있는 추가 신청">추가 신청</span>
                             {% endif %}

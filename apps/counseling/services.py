@@ -29,10 +29,8 @@ from .cancellation_policy import (
 from .constants import (
     APPLICATION_COUNSELING_METHOD_BOTH,
     APPLICATION_COUNSELING_METHOD_CHOICES,
-    TIME_SLOT_CHOICES,
-    WEEKDAY_CHOICES,
     REMOTE_CLIENT_NAMES,
-    normalize_choice_list,
+    normalize_weekly_availability,
 )
 from .models import (
     ApplicationStatus,
@@ -546,6 +544,15 @@ def client_can_delete_application(application: CounselingApplication) -> bool:
     return not case.appointments.filter(status__in=blocking_statuses).exists()
 
 
+def _weekly_tokens_for_form(raw) -> list[str]:
+    """저장된 조합만 폼 토큰으로 되돌린다. 예전 독립 선택값은 조합으로 바꾸지 않는다."""
+    try:
+        normalized = normalize_weekly_availability(raw)
+    except ValueError:
+        return []
+    return [f"{day}:{slot}" for day, slots in normalized.items() for slot in slots]
+
+
 def build_apply_initial_from_application(
     application: CounselingApplication,
     *,
@@ -564,14 +571,8 @@ def build_apply_initial_from_application(
         "current_medication": application.current_medication or "",
         "occupation": application.occupation or "",
         "counseling_method": _apply_form_counseling_method(application),
-        "available_weekdays": normalize_choice_list(
-            ps.get("available_weekdays"),
-            WEEKDAY_CHOICES,
-        ),
-        "available_time_slots": normalize_choice_list(
-            ps.get("available_time_slots"),
-            TIME_SLOT_CHOICES,
-        ),
+        "weekly_availability": _weekly_tokens_for_form(ps.get("weekly_availability")),
+        "other_requests": ps.get("other_requests") if isinstance(ps.get("other_requests"), str) else "",
     }
 
     student_id = ps.get("student_id") or ""
