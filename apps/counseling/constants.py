@@ -10,6 +10,30 @@ COUNSELING_TYPE_VALUES = [
 
 COUNSELING_TYPE_CHOICES = [(value, value) for value in COUNSELING_TYPE_VALUES]
 
+# 신청서에만 쓰는 선호. Case·예약·Zoom은 IN_PERSON / REMOTE 만 사용한다.
+APPLICATION_COUNSELING_METHOD_BOTH = "BOTH"
+APPLICATION_COUNSELING_METHOD_CHOICES = [
+    ("IN_PERSON", "대면"),
+    ("REMOTE", "비대면"),
+    (APPLICATION_COUNSELING_METHOD_BOTH, "대면·비대면 모두 가능"),
+]
+
+WEEKDAY_CHOICES = [
+    ("MON", "월요일"),
+    ("TUE", "화요일"),
+    ("WED", "수요일"),
+    ("THU", "목요일"),
+    ("FRI", "금요일"),
+    ("SAT", "토요일"),
+    ("SUN", "일요일"),
+]
+
+TIME_SLOT_CHOICES = [
+    ("MORNING", "오전"),
+    ("AFTERNOON", "오후"),
+    ("EVENING", "저녁"),
+]
+
 DEFAULT_COUNSELING_TYPES = ["진로상담"]
 
 # 비대면(Zoom) 상담 내담자 — Case.counseling_method 일괄 반영용
@@ -43,6 +67,25 @@ LEGACY_COUNSELING_TYPE_MAP = {
     "심리·정서": "개인성격",
     "기타": "개인성격",
 }
+
+
+def normalize_choice_list(raw, choices) -> list[str]:
+    """허용된 코드만 정의된 순서로 남긴다."""
+    allowed = [code for code, _label in choices]
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, (list, tuple)):
+        return []
+    selected = {str(item).strip() for item in raw if str(item).strip()}
+    return [code for code in allowed if code in selected]
+
+
+def choice_labels(raw, choices) -> str:
+    label_map = dict(choices)
+    codes = normalize_choice_list(raw, choices)
+    return ", ".join(label_map[code] for code in codes)
 
 
 def normalize_counseling_types(raw) -> list[str]:

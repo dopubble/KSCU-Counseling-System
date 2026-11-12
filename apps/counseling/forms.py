@@ -13,8 +13,12 @@ from apps.counseling.apply_registration import (
     normalize_account_email,
 )
 from apps.counseling.constants import (
+    APPLICATION_COUNSELING_METHOD_CHOICES,
     COUNSELING_TYPE_CHOICES,
     COUNSELING_TYPE_VALUES,
+    TIME_SLOT_CHOICES,
+    WEEKDAY_CHOICES,
+    normalize_choice_list,
     normalize_counseling_types,
 )
 from apps.counseling.models import Case, CounselingMethod, TrainingEnrollment
@@ -131,36 +135,28 @@ class CounselingApplyForm(forms.Form):
     )
     counseling_method = forms.ChoiceField(
         label="상담 방식",
-        choices=CounselingMethod.choices,
+        choices=APPLICATION_COUNSELING_METHOD_CHOICES,
         required=True,
         widget=forms.RadioSelect(attrs={"class": "counseling-method-radio"}),
-        help_text="대면은 상담실 방문, 비대면은 Zoom 화상 상담입니다. 원하시는 방식을 선택해 주세요.",
+        help_text="대면은 상담실 방문, 비대면은 Zoom 화상 상담입니다. 둘 다 가능하면 모두 가능을 선택해 주세요.",
         error_messages={
             "required": "상담 방식을 선택해 주세요.",
         },
     )
-    preferred_date = forms.DateField(
-        label="희망 상담일",
-        input_formats=["%Y-%m-%d"],
-        widget=forms.DateInput(
-            attrs={"class": "form-control", "type": "date"},
-            format="%Y-%m-%d",
-        ),
+    available_weekdays = forms.MultipleChoiceField(
+        label="상담 가능 요일",
+        choices=WEEKDAY_CHOICES,
+        widget=forms.CheckboxSelectMultiple(),
         error_messages={
-            "invalid": "날짜 형식이 올바르지 않습니다. 달력에서 날짜를 선택해 주세요.",
-            "required": "희망 상담일을 선택해 주세요.",
+            "required": "상담 가능 요일을 하나 이상 선택해 주세요.",
         },
     )
-    preferred_time = forms.TimeField(
-        label="희망 상담 시간",
-        input_formats=["%H:%M", "%H:%M:%S"],
-        widget=forms.TimeInput(
-            attrs={"class": "form-control", "type": "time"},
-            format="%H:%M",
-        ),
+    available_time_slots = forms.MultipleChoiceField(
+        label="상담 가능 시간대",
+        choices=TIME_SLOT_CHOICES,
+        widget=forms.CheckboxSelectMultiple(),
         error_messages={
-            "invalid": "시간 형식이 올바르지 않습니다. 예: 14:00",
-            "required": "희망 상담 시간을 선택해 주세요.",
+            "required": "상담 가능 시간대를 하나 이상 선택해 주세요.",
         },
     )
     email = forms.EmailField(
@@ -226,6 +222,8 @@ class CounselingApplyForm(forms.Form):
         super().__init__(*args, **kwargs)
         self.fields["counseling_types"].widget.attrs.update({"class": "form-check-input"})
         self.fields["counseling_method"].widget.attrs.update({"class": "form-check-input"})
+        self.fields["available_weekdays"].widget.attrs.update({"class": "form-check-input"})
+        self.fields["available_time_slots"].widget.attrs.update({"class": "form-check-input"})
         self.guest_signup = user is None or not getattr(user, "is_authenticated", False)
         if self.guest_signup:
             self.fields["email"].widget.attrs["required"] = "required"
@@ -360,6 +358,24 @@ class CounselingApplyForm(forms.Form):
             self.add_error("birth_date", "생년월일을 입력해주세요.")
         return cleaned
 
+    def clean_available_weekdays(self):
+        value = normalize_choice_list(
+            self.cleaned_data.get("available_weekdays"),
+            WEEKDAY_CHOICES,
+        )
+        if not value:
+            raise forms.ValidationError("상담 가능 요일을 하나 이상 선택해 주세요.")
+        return value
+
+    def clean_available_time_slots(self):
+        value = normalize_choice_list(
+            self.cleaned_data.get("available_time_slots"),
+            TIME_SLOT_CHOICES,
+        )
+        if not value:
+            raise forms.ValidationError("상담 가능 시간대를 하나 이상 선택해 주세요.")
+        return value
+
     def clean_counseling_types(self):
         value = normalize_counseling_types(self.cleaned_data.get("counseling_types"))
         if not value:
@@ -441,6 +457,18 @@ class CounselorMatchForm(forms.Form):
 
     )
 
+    assigned_method = forms.ChoiceField(
+        label="실제 상담방식",
+        choices=[
+            (CounselingMethod.IN_PERSON, "대면 상담"),
+            (CounselingMethod.REMOTE, "비대면 상담"),
+        ],
+        widget=forms.RadioSelect(attrs={"class": "form-check-input"}),
+        required=False,
+        help_text="내담자는 대면·비대면 모두 가능을 선택했습니다. 실제 진행 방식을 선택해 주세요.",
+        error_messages={"required": "실제 상담방식을 선택해 주세요."},
+    )
+
 
 
     def __init__(
@@ -455,6 +483,8 @@ class CounselorMatchForm(forms.Form):
 
         require_total_sessions=False,
 
+        require_assigned_method=False,
+
         **kwargs,
 
     ):
@@ -462,10 +492,16 @@ class CounselorMatchForm(forms.Form):
         super().__init__(*args, **kwargs)
 
         self.require_total_sessions = require_total_sessions
+        self.require_assigned_method = require_assigned_method
 
         if not require_total_sessions:
 
             self.fields["total_sessions"].required = False
+
+        if not require_assigned_method:
+            self.fields.pop("assigned_method", None)
+        else:
+            self.fields["assigned_method"].required = True
 
         counts = active_case_counts or {}
 
@@ -527,8 +563,13 @@ class CounselorMatchForm(forms.Form):
 
         return value
 
-
-
+    def clean_assigned_method(self):
+        if not self.require_assigned_method:
+            return ""
+        value = (self.cleaned_data.get("assigned_method") or "").strip()
+        if value not in (CounselingMethod.IN_PERSON, CounselingMethod.REMOTE):
+            raise forms.ValidationError("실제 상담방식을 선택해 주세요.")
+        return value
 
 
 class CancelRequestForm(forms.Form):

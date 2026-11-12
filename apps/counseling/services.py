@@ -26,7 +26,14 @@ from .cancellation_policy import (
     is_appointment_in_past,
     is_same_day_as_appointment,
 )
-from .constants import REMOTE_CLIENT_NAMES
+from .constants import (
+    APPLICATION_COUNSELING_METHOD_BOTH,
+    APPLICATION_COUNSELING_METHOD_CHOICES,
+    TIME_SLOT_CHOICES,
+    WEEKDAY_CHOICES,
+    REMOTE_CLIENT_NAMES,
+    normalize_choice_list,
+)
 from .models import (
     ApplicationStatus,
     Case,
@@ -556,7 +563,15 @@ def build_apply_initial_from_application(
         "clinical_diagnosis": application.clinical_diagnosis or "",
         "current_medication": application.current_medication or "",
         "occupation": application.occupation or "",
-        "counseling_method": counseling_method_for_application(application),
+        "counseling_method": _apply_form_counseling_method(application),
+        "available_weekdays": normalize_choice_list(
+            ps.get("available_weekdays"),
+            WEEKDAY_CHOICES,
+        ),
+        "available_time_slots": normalize_choice_list(
+            ps.get("available_time_slots"),
+            TIME_SLOT_CHOICES,
+        ),
     }
 
     student_id = ps.get("student_id") or ""
@@ -586,24 +601,6 @@ def build_apply_initial_from_application(
         except ClientProfile.DoesNotExist:
             department = ""
     initial["department"] = department
-
-    pref_date = ps.get("preferred_date")
-    if pref_date:
-        initial["preferred_date"] = (
-            date.fromisoformat(pref_date) if isinstance(pref_date, str) else pref_date
-        )
-
-    pref_time = ps.get("preferred_time")
-    if pref_time:
-        if isinstance(pref_time, str):
-            for fmt in ("%H:%M", "%H:%M:%S"):
-                try:
-                    initial["preferred_time"] = datetime.strptime(pref_time, fmt).time()
-                    break
-                except ValueError:
-                    continue
-        elif isinstance(pref_time, time):
-            initial["preferred_time"] = pref_time
 
     return initial
 
@@ -705,12 +702,54 @@ def _counseling_method_for_client(client) -> str:
     return CounselingMethod.IN_PERSON
 
 
-def counseling_method_for_application(application: CounselingApplication) -> str:
-    """신청서에 저장된 상담 방식 (없으면 내담자 기본값)."""
-    method = (getattr(application, "counseling_method", None) or "").strip()
-    if method in CounselingMethod.values:
+def _apply_form_counseling_method(application: CounselingApplication) -> str:
+    """수정 폼에는 신청서에 저장된 선호를 그대로 보여 준다."""
+    method = (application.counseling_method or "").strip()
+    allowed = {code for code, _label in APPLICATION_COUNSELING_METHOD_CHOICES}
+    if method in allowed:
         return method
+    return counseling_method_for_application(application)
+
+
+def counseling_method_for_application(application: CounselingApplication) -> str:
+    """사례·예약에 쓸 대면/비대면 값.
+
+    '모두 가능'은 신청 선호만 저장하고 사례 진행 방식으로 복사하지 않는다.
+    이미 사례가 있으면 그 대면/비대면 값을 유지한다.
+    """
+    method = (getattr(application, "counseling_method", None) or "").strip()
+    if method in (CounselingMethod.IN_PERSON, CounselingMethod.REMOTE):
+        return method
+    if method == APPLICATION_COUNSELING_METHOD_BOTH:
+        try:
+            case = application.case
+        except Case.DoesNotExist:
+            case = None
+        if case and case.counseling_method in (
+            CounselingMethod.IN_PERSON,
+            CounselingMethod.REMOTE,
+        ):
+            return case.counseling_method
     return _counseling_method_for_client(application.client)
+
+
+def resolve_assigned_case_method(
+    application: CounselingApplication,
+    assigned_method: str | None = None,
+) -> str:
+    """새 사례에 저장할 대면/비대면 값.
+
+    모두 가능은 관리자가 고른 값만 사용한다. 고르지 않으면 사례를 만들지 않는다.
+    """
+    method = (application.counseling_method or "").strip()
+    if method == APPLICATION_COUNSELING_METHOD_BOTH:
+        chosen = (assigned_method or "").strip()
+        if chosen not in (CounselingMethod.IN_PERSON, CounselingMethod.REMOTE):
+            raise ValueError("대면·비대면 모두 가능한 신청은 실제 상담방식을 선택해 주세요.")
+        return chosen
+    if method in (CounselingMethod.IN_PERSON, CounselingMethod.REMOTE):
+        return method
+    return counseling_method_for_application(application)
 
 
 def sync_case_counseling_method_from_application(application: CounselingApplication) -> None:
@@ -731,6 +770,7 @@ def assign_counselor(
     counselor: User,
     *,
     total_sessions: int = 10,
+    assigned_method: str | None = None,
 ) -> Case:
     """
     상담사 배정: 신청 상태를 진행 중으로 변경하고 활성 사례(Case) 생성·갱신.
@@ -772,14 +812,18 @@ def assign_counselor(
             "status": CaseStatus.ACTIVE,
             "total_sessions": total_sessions,
             "remaining_sessions": total_sessions,
-            "counseling_method": counseling_method_for_application(application),
+            "counseling_method": resolve_assigned_case_method(
+                application,
+                assigned_method,
+            ),
         },
     )
     if not created:
         needs_session_reset = not case.counselor_id or case.total_sessions < 1
         case.counselor = counselor
         case.client = application.client
-        case.counseling_method = counseling_method_for_application(application)
+        if (application.counseling_method or "").strip() != APPLICATION_COUNSELING_METHOD_BOTH:
+            case.counseling_method = counseling_method_for_application(application)
         if needs_link:
             case.training_enrollment = enrollment
         if case.status != CaseStatus.ACTIVE:

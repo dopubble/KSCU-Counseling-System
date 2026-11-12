@@ -94,6 +94,12 @@
                                     {% if form.name.help_text %}<div class="form-text">{{ form.name.help_text }}</div>{% endif %}
                                     {% if form.name.errors %}<div class="text-danger small mt-1">{{ form.name.errors.0 }}</div>{% endif %}
                                 </div>
+                                <div class="col-md-6">
+                                    <label for="id_birth_date" class="form-label fw-semibold">{{ form.birth_date.label }} <span class="text-danger">*</span></label>
+                                    {{ form.birth_date }}
+                                    {% if form.birth_date.help_text %}<div class="form-text">{{ form.birth_date.help_text }}</div>{% endif %}
+                                    {% if form.birth_date.errors %}<div class="text-danger small mt-1">{{ form.birth_date.errors.0 }}</div>{% endif %}
+                                </div>
                                 {% if not user.is_authenticated %}
                                 <div class="col-12">
                                     <label for="id_email" class="form-label fw-semibold">{{ form.email.label }} <span class="text-danger">*</span></label>
@@ -116,13 +122,19 @@
                                     {% endfor %}
                                     {% if form.email.errors %}<div class="text-danger small mt-1">{{ form.email.errors.0 }}</div>{% endif %}
                                 </div>
-                                <div class="col-12">
+                                {% endif %}
+                                <div class="col-md-6">
                                     <label for="id_phone" class="form-label fw-semibold">{{ form.phone.label }}</label>
                                     {{ form.phone }}
                                     <div class="form-text">연락 가능한 휴대폰 번호를 입력해 주세요.</div>
                                     {% if form.phone.errors %}<div class="text-danger small mt-1">{{ form.phone.errors.0 }}</div>{% endif %}
                                 </div>
-                                {% endif %}
+                                <div class="col-md-6">
+                                    <label for="id_residence_region" class="form-label fw-semibold">{{ form.residence_region.label }} <span class="text-danger">*</span></label>
+                                    {{ form.residence_region }}
+                                    {% if form.residence_region.help_text %}<div class="form-text">{{ form.residence_region.help_text }}</div>{% endif %}
+                                    {% if form.residence_region.errors %}<div class="text-danger small mt-1">{{ form.residence_region.errors.0 }}</div>{% endif %}
+                                </div>
                                 {% if not user.is_authenticated %}
                                 <div class="col-12">
                                     <span class="form-label fw-semibold d-block">{{ form.is_kcu_student.label }} <span class="text-danger">*</span></span>
@@ -144,34 +156,10 @@
                                     {% if form.student_id.errors %}<div class="text-danger small mt-1">{{ form.student_id.errors.0 }}</div>{% endif %}
                                 </div>
                                 <div class="col-md-6">
-                                    <label for="id_birth_date" class="form-label fw-semibold">{{ form.birth_date.label }} <span class="text-danger">*</span></label>
-                                    {{ form.birth_date }}
-                                    {% if form.birth_date.help_text %}<div class="form-text">{{ form.birth_date.help_text }}</div>{% endif %}
-                                    {% if form.birth_date.errors %}<div class="text-danger small mt-1">{{ form.birth_date.errors.0 }}</div>{% endif %}
-                                </div>
-                                <div class="col-md-6">
                                     <label for="id_department" class="form-label fw-semibold">{{ form.department.label }} {% if user.is_authenticated %}<span class="text-muted fw-normal">(선택)</span>{% else %}<span class="text-muted fw-normal" id="department-requirement">(학생인 경우 필수)</span>{% endif %}</label>
                                     {{ form.department }}
                                     {% if form.department.help_text %}<div class="form-text">{{ form.department.help_text }}</div>{% endif %}
                                     {% if form.department.errors %}<div class="text-danger small mt-1">{{ form.department.errors.0 }}</div>{% endif %}
-                                </div>
-                                {% if user.is_authenticated %}
-                                <div class="col-12">
-                                    <label for="id_phone" class="form-label fw-semibold">{{ form.phone.label }}</label>
-                                    {{ form.phone }}
-                                    <div class="form-text">연락 가능한 휴대폰 번호를 입력해 주세요.</div>
-                                    {% if form.phone.errors %}<div class="text-danger small mt-1">{{ form.phone.errors.0 }}</div>{% endif %}
-                                </div>
-                                {% endif %}
-                            </div>
-
-                            <h2 class="h6 text-kscu fw-bold mb-3 pb-2 border-bottom">추가 정보</h2>
-                            <div class="row g-3 mb-4">
-                                <div class="col-12">
-                                    <label for="id_residence_region" class="form-label fw-semibold">{{ form.residence_region.label }} <span class="text-danger">*</span></label>
-                                    {{ form.residence_region }}
-                                    {% if form.residence_region.help_text %}<div class="form-text">{{ form.residence_region.help_text }}</div>{% endif %}
-                                    {% if form.residence_region.errors %}<div class="text-danger small mt-1">{{ form.residence_region.errors.0 }}</div>{% endif %}
                                 </div>
                                 <div class="col-md-6">
                                     <label for="id_clinical_diagnosis" class="form-label fw-semibold">{{ form.clinical_diagnosis.label }} <span class="text-danger">*</span></label>
@@ -188,54 +176,6 @@
                                     <label for="id_occupation" class="form-label fw-semibold">{{ form.occupation.label }} <span class="text-muted fw-normal">(선택)</span></label>
                                     {{ form.occupation }}
                                     {% if form.occupation.errors %}<div class="text-danger small mt-1">{{ form.occupation.errors.0 }}</div>{% endif %}
-                                </div>
-                            </div>
-
-                            <h2 class="h6 text-kscu fw-bold mb-3 pb-2 border-bottom">상담 내용</h2>
-                            <div class="row g-3 mb-4">
-                                <div class="col-12">
-                                    <span class="form-label fw-semibold d-block">{{ form.counseling_method.label }} <span class="text-danger">*</span></span>
-                                    <div class="counseling-method-options d-flex flex-wrap gap-3">
-                                        {% for option in form.counseling_method %}
-                                            <div class="form-check">
-                                                {{ option.tag }}
-                                                <label class="form-check-label" for="{{ option.id_for_label }}">{{ option.choice_label }}</label>
-                                            </div>
-                                        {% endfor %}
-                                    </div>
-                                    {% if form.counseling_method.help_text %}<div class="form-text">{{ form.counseling_method.help_text }}</div>{% endif %}
-                                    {% if form.counseling_method.errors %}<div class="text-danger small mt-1">{{ form.counseling_method.errors.0 }}</div>{% endif %}
-                                </div>
-                                <div class="col-12">
-                                    <span class="form-label fw-semibold d-block">{{ form.counseling_types.label }} <span class="text-danger">*</span></span>
-                                    <div class="form-text mb-2">해당하는 항목을 모두 선택할 수 있습니다.</div>
-                                    <div class="counseling-type-options">
-                                        {% for option in form.counseling_types %}
-                                            <div class="form-check py-1">
-                                                {{ option.tag }}
-                                                <label class="form-check-label" for="{{ option.id_for_label }}">{{ option.choice_label }}</label>
-                                            </div>
-                                        {% endfor %}
-                                    </div>
-                                    {% if form.counseling_types.errors %}<div class="text-danger small mt-1">{{ form.counseling_types.errors.0 }}</div>{% endif %}
-                                </div>
-                                <div class="col-md-6">
-                                    <label for="id_preferred_date" class="form-label fw-semibold">{{ form.preferred_date.label }} <span class="text-danger">*</span></label>
-                                    {{ form.preferred_date }}
-                                    <div class="form-text">달력 아이콘을 눌러 날짜를 선택해 주세요.</div>
-                                    {% if form.preferred_date.errors %}<div class="text-danger small mt-1">{{ form.preferred_date.errors.0 }}</div>{% endif %}
-                                </div>
-                                <div class="col-md-6">
-                                    <label for="id_preferred_time" class="form-label fw-semibold">{{ form.preferred_time.label }} <span class="text-danger">*</span></label>
-                                    {{ form.preferred_time }}
-                                    <div class="form-text">예: 오후 2시 → 14:00</div>
-                                    {% if form.preferred_time.errors %}<div class="text-danger small mt-1">{{ form.preferred_time.errors.0 }}</div>{% endif %}
-                                </div>
-                                <div class="col-12">
-                                    <label for="id_reason" class="form-label fw-semibold">주요 호소 문제 작성(100자 이내) <span class="text-danger">*</span></label>
-                                    {{ form.reason }}
-                                    <div class="form-text">100자 이내로 작성해 주세요.</div>
-                                    {% if form.reason.errors %}<div class="text-danger small mt-1">{{ form.reason.errors.0 }}</div>{% endif %}
                                 </div>
                             </div>
 
@@ -256,6 +196,68 @@
                             <h2 class="h6 text-kscu fw-bold mb-3 pb-2 border-bottom">동의</h2>
                             {% include "accounts/partials/signup_consent.html" %}
                             {% endif %}
+
+                            <h2 class="h6 text-kscu fw-bold mb-3 pb-2 border-bottom">상담 내용</h2>
+                            <div class="row g-3 mb-4">
+                                <div class="col-12">
+                                    <span class="form-label fw-semibold d-block">{{ form.counseling_method.label }} <span class="text-danger">*</span></span>
+                                    <div class="counseling-method-options d-flex flex-wrap gap-3">
+                                        {% for option in form.counseling_method %}
+                                            <div class="form-check">
+                                                {{ option.tag }}
+                                                <label class="form-check-label" for="{{ option.id_for_label }}">{{ option.choice_label }}</label>
+                                            </div>
+                                        {% endfor %}
+                                    </div>
+                                    {% if form.counseling_method.help_text %}<div class="form-text">{{ form.counseling_method.help_text }}</div>{% endif %}
+                                    {% if form.counseling_method.errors %}<div class="text-danger small mt-1">{{ form.counseling_method.errors.0 }}</div>{% endif %}
+                                </div>
+                                <div class="col-12">
+                                    <span class="form-label fw-semibold d-block">{{ form.available_weekdays.label }} <span class="text-danger">*</span></span>
+                                    <div class="form-text mb-2">가능한 요일을 모두 선택할 수 있습니다.</div>
+                                    <div class="d-flex flex-wrap gap-3">
+                                        {% for option in form.available_weekdays %}
+                                        <div class="form-check">
+                                            {{ option.tag }}
+                                            <label class="form-check-label" for="{{ option.id_for_label }}">{{ option.choice_label }}</label>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                    {% if form.available_weekdays.errors %}<div class="text-danger small mt-1">{{ form.available_weekdays.errors.0 }}</div>{% endif %}
+                                </div>
+                                <div class="col-12">
+                                    <span class="form-label fw-semibold d-block">{{ form.available_time_slots.label }} <span class="text-danger">*</span></span>
+                                    <div class="form-text mb-2">가능한 시간대를 모두 선택할 수 있습니다.</div>
+                                    <div class="d-flex flex-wrap gap-3">
+                                        {% for option in form.available_time_slots %}
+                                        <div class="form-check">
+                                            {{ option.tag }}
+                                            <label class="form-check-label" for="{{ option.id_for_label }}">{{ option.choice_label }}</label>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                    {% if form.available_time_slots.errors %}<div class="text-danger small mt-1">{{ form.available_time_slots.errors.0 }}</div>{% endif %}
+                                </div>
+                                <div class="col-12">
+                                    <span class="form-label fw-semibold d-block">{{ form.counseling_types.label }} <span class="text-danger">*</span></span>
+                                    <div class="form-text mb-2">해당하는 항목을 모두 선택할 수 있습니다.</div>
+                                    <div class="counseling-type-options">
+                                        {% for option in form.counseling_types %}
+                                            <div class="form-check py-1">
+                                                {{ option.tag }}
+                                                <label class="form-check-label" for="{{ option.id_for_label }}">{{ option.choice_label }}</label>
+                                            </div>
+                                        {% endfor %}
+                                    </div>
+                                    {% if form.counseling_types.errors %}<div class="text-danger small mt-1">{{ form.counseling_types.errors.0 }}</div>{% endif %}
+                                </div>
+                                <div class="col-12">
+                                    <label for="id_reason" class="form-label fw-semibold">주요 호소 문제 작성(100자 이내) <span class="text-danger">*</span></label>
+                                    {{ form.reason }}
+                                    <div class="form-text">100자 이내로 작성해 주세요.</div>
+                                    {% if form.reason.errors %}<div class="text-danger small mt-1">{{ form.reason.errors.0 }}</div>{% endif %}
+                                </div>
+                            </div>
 
                             <div class="form-actions border-top pt-4 mt-2">
                                 <div class="row g-3 align-items-center">

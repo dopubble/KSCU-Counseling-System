@@ -309,8 +309,8 @@ def _save_counseling_application(user, data):
         "student_id": snapshot["student_id"],
         "birth_date": birth_date.isoformat() if hasattr(birth_date, "isoformat") else str(birth_date),
         "department": snapshot["department"],
-        "preferred_date": data["preferred_date"].isoformat(),
-        "preferred_time": data["preferred_time"].strftime("%H:%M"),
+        "available_weekdays": list(data.get("available_weekdays") or []),
+        "available_time_slots": list(data.get("available_time_slots") or []),
     }
     if user.role != UserRole.CLIENT:
         preferred_schedule["test_submission"] = True
@@ -352,8 +352,8 @@ def _update_counseling_application(user, application, data):
             "student_id": snapshot["student_id"],
             "birth_date": birth_date.isoformat() if hasattr(birth_date, "isoformat") else str(birth_date),
             "department": snapshot["department"],
-            "preferred_date": data["preferred_date"].isoformat(),
-            "preferred_time": data["preferred_time"].strftime("%H:%M"),
+            "available_weekdays": list(data.get("available_weekdays") or []),
+            "available_time_slots": list(data.get("available_time_slots") or []),
         }
     )
 
@@ -646,6 +646,11 @@ def application_detail(request, pk):
         existing_case is not None and not case_records_are_locked(existing_case)
     )
     show_match_form = can_assign_new or can_change_counselor
+    from apps.counseling.constants import APPLICATION_COUNSELING_METHOD_BOTH
+
+    needs_assigned_method = can_assign_new and (
+        (application.counseling_method or "").strip() == APPLICATION_COUNSELING_METHOD_BOTH
+    )
 
     if request.method == "POST":
         if existing_case is not None:
@@ -659,6 +664,7 @@ def application_detail(request, pk):
             counselor_profiles=counselors,
             active_case_counts=active_case_counts,
             require_total_sessions=can_assign_new,
+            require_assigned_method=needs_assigned_method,
         )
         if match_form.is_valid():
             counselor = get_object_or_404(
@@ -681,6 +687,7 @@ def application_detail(request, pk):
                         application,
                         counselor,
                         total_sessions=total_sessions,
+                        assigned_method=match_form.cleaned_data.get("assigned_method"),
                     )
                     messages.success(
                         request,
@@ -717,6 +724,7 @@ def application_detail(request, pk):
             counselor_profiles=counselors,
             active_case_counts=active_case_counts,
             require_total_sessions=can_assign_new,
+            require_assigned_method=needs_assigned_method,
             initial=initial,
         )
 

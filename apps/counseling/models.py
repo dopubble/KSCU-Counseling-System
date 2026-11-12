@@ -4,6 +4,12 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
+from apps.counseling.constants import (
+    APPLICATION_COUNSELING_METHOD_CHOICES,
+    TIME_SLOT_CHOICES,
+    WEEKDAY_CHOICES,
+    choice_labels,
+)
 from apps.scheduling.constants import DEFAULT_APPOINTMENT_DURATION_MINUTES
 
 
@@ -92,7 +98,7 @@ class CounselingApplication(models.Model):
     counseling_method = models.CharField(
         "상담 방식",
         max_length=20,
-        choices=CounselingMethod.choices,
+        choices=APPLICATION_COUNSELING_METHOD_CHOICES,
         default=CounselingMethod.IN_PERSON,
     )
     status = models.CharField(
@@ -111,6 +117,14 @@ class CounselingApplication(models.Model):
         indexes = [
             models.Index(fields=["status", "created_at"]),
         ]
+
+    def available_weekday_label(self) -> str:
+        schedule = self.preferred_schedule or {}
+        return choice_labels(schedule.get("available_weekdays"), WEEKDAY_CHOICES)
+
+    def available_time_slot_label(self) -> str:
+        schedule = self.preferred_schedule or {}
+        return choice_labels(schedule.get("available_time_slots"), TIME_SLOT_CHOICES)
 
     def get_counseling_types_display(self, separator: str = ", ") -> str:
         raw = self.counseling_types

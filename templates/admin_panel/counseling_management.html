@@ -101,9 +101,12 @@
                                 </td>
                                 <td class="small text-muted">
                                     {% if app.preferred_schedule.preferred_date %}
-                                        {{ app.preferred_schedule.preferred_date }}
-                                        {{ app.preferred_schedule.preferred_time }}
-                                    {% else %}
+                                        <div>희망일 {{ app.preferred_schedule.preferred_date }} {{ app.preferred_schedule.preferred_time }}</div>
+                                    {% endif %}
+                                    {% if app.available_weekday_label or app.available_time_slot_label %}
+                                        <div>가능 {{ app.available_weekday_label }}{% if app.available_time_slot_label %} / {{ app.available_time_slot_label }}{% endif %}</div>
+                                    {% endif %}
+                                    {% if not app.preferred_schedule.preferred_date and not app.available_weekday_label and not app.available_time_slot_label %}
                                         —
                                     {% endif %}
                                 </td>

@@ -54,12 +54,17 @@ def send_new_application_notification(application) -> bool:
     preferred = "—"
     if ps.get("preferred_date"):
         preferred = f"{ps.get('preferred_date')} {ps.get('preferred_time', '')}".strip()
+    weekdays = application.available_weekday_label() or "—"
+    time_slots = application.available_time_slot_label() or "—"
 
     subject = "[KSCU 상담] 새 상담 신청이 접수되었습니다"
     message = (
         f"내담자: {client.name} ({client.email})\n"
         f"거주지역: {getattr(application, 'residence_region', '') or '—'}\n"
         f"상담 유형: {application.counseling_type}\n"
+        f"상담 방식: {application.get_counseling_method_display()}\n"
+        f"가능 요일: {weekdays}\n"
+        f"가능 시간대: {time_slots}\n"
         f"희망 일시: {preferred}\n"
         f"신청일: {application.created_at:%Y-%m-%d %H:%M}\n\n"
         f"병원 진단명: {getattr(application, 'clinical_diagnosis', '') or '—'}\n"

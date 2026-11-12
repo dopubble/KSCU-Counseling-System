@@ -90,11 +90,19 @@
                             <td>{{ application.counseling_type }}</td>
                         </tr>
                         <tr>
-                            <th class="table-light">상담 방식</th>
+                            <th class="table-light">상담방식 선호</th>
                             <td>{{ application.get_counseling_method_display }}</td>
                         </tr>
                         <tr>
-                            <th class="table-light">희망 상담 일시</th>
+                            <th class="table-light">상담 가능 요일</th>
+                            <td>{{ application.available_weekday_label|default:"—" }}</td>
+                        </tr>
+                        <tr>
+                            <th class="table-light">상담 가능 시간대</th>
+                            <td>{{ application.available_time_slot_label|default:"—" }}</td>
+                        </tr>
+                        <tr>
+                            <th class="table-light">희망 상담일</th>
                             <td>
                                 {% if schedule.preferred_date %}
                                     {{ schedule.preferred_date }}
@@ -174,6 +182,23 @@
                             {% endif %}
                             {% if match_form.total_sessions.errors %}
                             <div class="text-danger small mt-1">{{ match_form.total_sessions.errors.0 }}</div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                        {% if match_form.assigned_method %}
+                        <div class="mb-3">
+                            <span class="form-label fw-semibold d-block">{{ match_form.assigned_method.label }} <span class="text-danger">*</span></span>
+                            {% if match_form.assigned_method.help_text %}
+                            <div class="form-text mb-2">{{ match_form.assigned_method.help_text }}</div>
+                            {% endif %}
+                            {% for option in match_form.assigned_method %}
+                            <div class="form-check">
+                                {{ option.tag }}
+                                <label class="form-check-label" for="{{ option.id_for_label }}">{{ option.choice_label }}</label>
+                            </div>
+                            {% endfor %}
+                            {% if match_form.assigned_method.errors %}
+                            <div class="text-danger small mt-1">{{ match_form.assigned_method.errors.0 }}</div>
                             {% endif %}
                         </div>
                         {% endif %}
