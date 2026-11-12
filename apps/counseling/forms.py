@@ -70,9 +70,7 @@ class CounselingApplyForm(forms.Form):
         label="소속 학과",
         max_length=100,
         required=False,
-        widget=forms.TextInput(
-            attrs={"class": "form-control", "placeholder": "미입력 시 비워 둡니다"}
-        ),
+        widget=forms.TextInput(attrs={"class": "form-control"}),
     )
     phone = forms.CharField(
         label="연락처",
@@ -136,7 +134,7 @@ class CounselingApplyForm(forms.Form):
         choices=APPLICATION_COUNSELING_METHOD_CHOICES,
         required=True,
         widget=forms.RadioSelect(attrs={"class": "counseling-method-radio"}),
-        help_text="대면은 상담실 방문, 비대면은 Zoom 화상 상담입니다. 둘 다 가능하면 모두 가능을 선택해 주세요.",
+        help_text="대면: 종로캠퍼스 / 비대면: 실시간 Zoom 상담 진행",
         error_messages={
             "required": "상담 방식을 선택해 주세요.",
         },

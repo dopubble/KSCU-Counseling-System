@@ -8,8 +8,11 @@
 <link href="{% static 'css/signup.css' %}" rel="stylesheet">
 {% endif %}
 <style>
-.apply-progress-step.is-current { color: var(--bs-primary); }
-.apply-progress-step { color: var(--bs-secondary-color, #6c757d); }
+.apply-email-group { flex-wrap: nowrap; }
+.apply-email-group > .form-control { min-width: 0; flex: 1 1 auto; }
+.apply-email-group > .btn { flex: 0 0 auto; white-space: nowrap; }
+.apply-question + .apply-question { margin-top: 1.75rem; }
+.apply-question > .form-label { margin-bottom: .35rem; }
 .availability-head { display: none; }
 .availability-grid { display: flex; flex-direction: column; gap: .75rem; }
 .availability-row {
@@ -117,11 +120,6 @@
 
                 <div class="card border-0 shadow-sm">
                     <div class="card-body p-4 p-md-5">
-                        <div class="apply-progress d-flex align-items-center gap-2 mb-4" aria-label="신청 단계">
-                            <span id="apply-step-label-1" class="apply-progress-step fw-semibold{% if apply_initial_step != 2 %} is-current{% endif %}">① 기본정보</span>
-                            <span class="text-muted">→</span>
-                            <span id="apply-step-label-2" class="apply-progress-step fw-semibold{% if apply_initial_step == 2 %} is-current{% endif %}">② 상담내용</span>
-                        </div>
                         <form method="post"
                               action="{% url 'counseling:apply' %}"
                               novalidate
@@ -151,7 +149,6 @@
 
                             <div id="apply-step-1"{% if apply_initial_step == 2 %} class="d-none"{% endif %}>
                             <h2 class="h6 text-kscu fw-bold mb-3 pb-2 border-bottom">기본 정보</h2>
-                            <p class="small text-muted mb-3">대면: 종로캠퍼스 / 비대면: 실시간 Zoom 상담 진행</p>
                             {% if user.is_authenticated %}
                             <p class="small text-muted mb-3">
                                 이름·학번·소속 학과는 회원가입 정보에서 자동으로 불러오며 수정할 수 없습니다.
@@ -172,9 +169,9 @@
                                     {% if form.birth_date.errors %}<div class="text-danger small mt-1">{{ form.birth_date.errors.0 }}</div>{% endif %}
                                 </div>
                                 {% if not user.is_authenticated %}
-                                <div class="col-12">
+                                <div class="col-md-6">
                                     <label for="id_email" class="form-label fw-semibold">{{ form.email.label }} <span class="text-danger">*</span></label>
-                                    <div class="input-group">
+                                    <div class="input-group apply-email-group">
                                         {{ form.email }}
                                         <button type="button"
                                                 class="btn btn-outline-secondary"
@@ -193,6 +190,13 @@
                                     {% endfor %}
                                     {% if form.email.errors %}<div class="text-danger small mt-1">{{ form.email.errors.0 }}</div>{% endif %}
                                 </div>
+                                {% endif %}
+                                <div class="col-md-6">
+                                    <label for="id_phone" class="form-label fw-semibold">{{ form.phone.label }}</label>
+                                    {{ form.phone }}
+                                    {% if form.phone.errors %}<div class="text-danger small mt-1">{{ form.phone.errors.0 }}</div>{% endif %}
+                                </div>
+                                {% if not user.is_authenticated %}
                                 <div class="col-md-6">
                                     <label for="id_password1" class="form-label fw-semibold">{{ form.password1.label }} <span class="text-danger">*</span></label>
                                     {{ form.password1 }}
@@ -207,10 +211,13 @@
                                     {% if form.password2.errors %}<div class="text-danger small mt-1">{{ form.password2.errors.0 }}</div>{% endif %}
                                 </div>
                                 {% endif %}
+                                {% if user.is_authenticated %}
+                                <div class="w-100 d-none d-md-block"></div>
+                                {% endif %}
                                 <div class="col-md-6">
-                                    <label for="id_phone" class="form-label fw-semibold">{{ form.phone.label }}</label>
-                                    {{ form.phone }}
-                                    {% if form.phone.errors %}<div class="text-danger small mt-1">{{ form.phone.errors.0 }}</div>{% endif %}
+                                    <label for="id_occupation" class="form-label fw-semibold">{{ form.occupation.label }} <span class="text-muted fw-normal">(선택)</span></label>
+                                    {{ form.occupation }}
+                                    {% if form.occupation.errors %}<div class="text-danger small mt-1">{{ form.occupation.errors.0 }}</div>{% endif %}
                                 </div>
                                 <div class="col-md-6">
                                     <label for="id_residence_region" class="form-label fw-semibold">{{ form.residence_region.label }} <span class="text-danger">*</span></label>
@@ -269,11 +276,6 @@
                                     {% if form.current_medication.help_text %}<div class="form-text">{{ form.current_medication.help_text }}</div>{% endif %}
                                     {% if form.current_medication.errors %}<div class="text-danger small mt-1">{{ form.current_medication.errors.0 }}</div>{% endif %}
                                 </div>
-                                <div class="col-12">
-                                    <label for="id_occupation" class="form-label fw-semibold">{{ form.occupation.label }} <span class="text-muted fw-normal">(선택)</span></label>
-                                    {{ form.occupation }}
-                                    {% if form.occupation.errors %}<div class="text-danger small mt-1">{{ form.occupation.errors.0 }}</div>{% endif %}
-                                </div>
                             </div>
 
                             {% if not user.is_authenticated %}
@@ -297,8 +299,8 @@
 
                             <div id="apply-step-2"{% if apply_initial_step != 2 %} class="d-none"{% endif %}>
                             <h2 class="h6 text-kscu fw-bold mb-3 pb-2 border-bottom">상담 내용</h2>
-                            <div class="row g-3 mb-4">
-                                <div class="col-12">
+                            <div class="mb-4">
+                                <div class="apply-question">
                                     <span class="form-label fw-semibold d-block">{{ form.counseling_types.label }} <span class="text-danger">*</span></span>
                                     <div class="form-text mb-2">해당하는 항목을 모두 선택할 수 있습니다.</div>
                                     <div class="counseling-type-options">
@@ -311,13 +313,12 @@
                                     </div>
                                     {% if form.counseling_types.errors %}<div class="text-danger small mt-1">{{ form.counseling_types.errors.0 }}</div>{% endif %}
                                 </div>
-                                <div class="col-12">
+                                <div class="apply-question">
                                     <label for="id_reason" class="form-label fw-semibold">주요 호소 문제 작성(100자 이내) <span class="text-danger">*</span></label>
                                     {{ form.reason }}
-                                    <div class="form-text">100자 이내로 작성해 주세요.</div>
                                     {% if form.reason.errors %}<div class="text-danger small mt-1">{{ form.reason.errors.0 }}</div>{% endif %}
                                 </div>
-                                <div class="col-12">
+                                <div class="apply-question">
                                     <span class="form-label fw-semibold d-block">{{ form.counseling_method.label }} <span class="text-danger">*</span></span>
                                     <div class="counseling-method-options d-flex flex-wrap gap-3">
                                         {% for option in form.counseling_method %}
@@ -330,7 +331,7 @@
                                     {% if form.counseling_method.help_text %}<div class="form-text">{{ form.counseling_method.help_text }}</div>{% endif %}
                                     {% if form.counseling_method.errors %}<div class="text-danger small mt-1">{{ form.counseling_method.errors.0 }}</div>{% endif %}
                                 </div>
-                                <div class="col-12" id="weekly-availability-field">
+                                <div class="apply-question" id="weekly-availability-field">
                                     <span class="form-label fw-semibold d-block">상담 가능한 요일과 시간대를 선택해 주세요. (복수 선택 가능) <span class="text-danger">*</span></span>
                                     <div class="availability-grid mt-2" role="group" aria-label="요일별 상담 가능 시간대">
                                         <div class="availability-head">
@@ -355,7 +356,7 @@
                                     </div>
                                     {% if form.weekly_availability.errors %}<div class="text-danger small mt-2">{{ form.weekly_availability.errors.0 }}</div>{% endif %}
                                 </div>
-                                <div class="col-12">
+                                <div class="apply-question">
                                     <label for="id_other_requests" class="form-label fw-semibold">{{ form.other_requests.label }} <span class="text-muted fw-normal">(선택)</span></label>
                                     {{ form.other_requests }}
                                     <div class="form-text">상담 가능 일정이나 진행 방식에 관해 추가로 전달할 사항이 있다면 입력해 주세요.</div>
@@ -555,22 +556,14 @@ function validateStep2(form) {
 function showApplyStep(step) {
     var first = document.getElementById("apply-step-1");
     var second = document.getElementById("apply-step-2");
-    var label1 = document.getElementById("apply-step-label-1");
-    var label2 = document.getElementById("apply-step-label-2");
     if (!first || !second) {
         return;
     }
     first.classList.toggle("d-none", step !== 1);
     second.classList.toggle("d-none", step !== 2);
-    if (label1) {
-        label1.classList.toggle("is-current", step === 1);
-    }
-    if (label2) {
-        label2.classList.toggle("is-current", step === 2);
-    }
-    var card = document.querySelector(".apply-progress");
-    if (card && typeof card.scrollIntoView === "function") {
-        card.scrollIntoView({block: "nearest"});
+    var target = step === 1 ? first : second;
+    if (target && typeof target.scrollIntoView === "function") {
+        target.scrollIntoView({block: "nearest"});
     }
 }
 function submitCounselingApply(form) {
