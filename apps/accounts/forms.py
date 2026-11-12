@@ -1,3 +1,5 @@
+from datetime import date
+
 from django import forms
 from django.contrib.auth import authenticate
 from django.contrib.auth.forms import (
@@ -8,8 +10,9 @@ from django.contrib.auth.forms import (
     UserCreationForm,
 )
 from django.contrib.auth.password_validation import validate_password
-from datetime import date
+from django.db import transaction
 
+from .email_guard import email_is_registered, normalize_account_email
 from .models import CounselorProfile, ClientProfile, User, UserRole, UserStatus
 
 BIRTH_DATE_INPUT_WIDGET = forms.TextInput(
@@ -109,8 +112,8 @@ class SignUpForm(UserCreationForm):
                 )
 
     def clean_email(self):
-        email = User.objects.normalize_email(self.cleaned_data["email"].strip())
-        if User.objects.filter(email__iexact=email).exists():
+        email = normalize_account_email(self.cleaned_data["email"])
+        if email_is_registered(email):
             raise forms.ValidationError("이미 가입된 이메일입니다.")
         return email
 
@@ -153,16 +156,17 @@ class SignUpForm(UserCreationForm):
             UserStatus.ACTIVE if user.role == UserRole.CLIENT else UserStatus.PENDING
         )
         if commit:
-            user.save()
-            if user.role == UserRole.CLIENT:
-                is_kcu = self.cleaned_data.get("is_kcu_student") == "yes"
-                ClientProfile.objects.create(
-                    user=user,
-                    birth_date=self.cleaned_data["birth_date"],
-                    is_kcu_student=is_kcu,
-                    student_id=self.cleaned_data.get("student_id", ""),
-                    department=self.cleaned_data.get("department", ""),
-                )
+            with transaction.atomic():
+                user.save()
+                if user.role == UserRole.CLIENT:
+                    is_kcu = self.cleaned_data.get("is_kcu_student") == "yes"
+                    ClientProfile.objects.create(
+                        user=user,
+                        birth_date=self.cleaned_data["birth_date"],
+                        is_kcu_student=is_kcu,
+                        student_id=self.cleaned_data.get("student_id", ""),
+                        department=self.cleaned_data.get("department", ""),
+                    )
         return user
 
 
@@ -187,12 +191,17 @@ class KoreanPasswordResetForm(PasswordResetForm):
         widget=forms.EmailInput(attrs={"class": "form-control", "autocomplete": "email"}),
     )
 
-
 class KoreanSetPasswordForm(SetPasswordForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for field in self.fields.values():
             field.widget.attrs.setdefault("class", "form-control")
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        if commit:
+            user.save(update_fields=["password", "is_active"])
+        return user
 
 
 class KoreanPasswordChangeForm(PasswordChangeForm):
@@ -201,12 +210,18 @@ class KoreanPasswordChangeForm(PasswordChangeForm):
         self.fields["old_password"].label = "현재 비밀번호"
         self.fields["new_password1"].label = "새 비밀번호"
         self.fields["new_password2"].label = "새 비밀번호 확인"
-        for field in self.fields.values():
+        for name, field in self.fields.items():
             field.widget.attrs.setdefault("class", "form-control")
-            if field.name == "old_password":
+            if name == "old_password":
                 field.widget.attrs.setdefault("autocomplete", "current-password")
-            elif field.name.startswith("new_password"):
+            elif name.startswith("new_password"):
                 field.widget.attrs.setdefault("autocomplete", "new-password")
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        if commit:
+            user.save(update_fields=["password", "is_active"])
+        return user
 
 
 class OptionalPasswordChangeFieldsForm(forms.Form):

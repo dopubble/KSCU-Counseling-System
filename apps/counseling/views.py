@@ -5,9 +5,11 @@ from urllib.parse import quote
 logger = logging.getLogger(__name__)
 
 from django.contrib import messages
+from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.db import IntegrityError
+from django.core.validators import validate_email
+from django.db import IntegrityError, transaction
 from django.db.models import Count, F, Q
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -18,6 +20,19 @@ from django.views.decorators.http import require_POST
 
 from apps.accounts.decorators import board_manager_required, counselor_required, role_required
 from apps.accounts.models import ClientProfile, User, UserRole, UserStatus
+from apps.counseling.apply_registration import (
+    APPLY_FAILED,
+    APPLY_SUBMIT_LIMITED,
+    EMAIL_AVAILABLE,
+    EMAIL_CHECK_LIMITED,
+    EMAIL_INVALID,
+    EMAIL_TAKEN,
+    EmailAlreadyRegistered,
+    create_client_account,
+    email_is_registered,
+    guest_request_is_limited,
+    normalize_account_email,
+)
 
 from .emailing import (
     send_cancel_approval_notification,
@@ -171,14 +186,22 @@ SESSION_APPLY_EDIT_ID = "counseling_apply_edit_id"
 
 def _apply_page_context(request, form, *, is_edit=None):
     """상담 신청 폼 템플릿 컨텍스트 (수정·재신청 여부 포함)."""
-    edit_id = request.session.get(SESSION_APPLY_EDIT_ID)
-    if is_edit is None:
+    edit_id = (
+        request.session.get(SESSION_APPLY_EDIT_ID)
+        if request.user.is_authenticated
+        else None
+    )
+    if not request.user.is_authenticated:
+        is_edit = False
+    elif is_edit is None:
         is_edit = bool(edit_id)
     return {
         "form": form,
         "is_edit": is_edit,
         "is_reapply": is_edit,
         "editing_application_id": edit_id,
+        "platform_name": "숭실사이버대학교 평생교육원 전문상담 플랫폼",
+        "apply_login_url": f"{reverse('accounts:login')}?next=/counseling/apply/",
     }
 
 
@@ -362,9 +385,133 @@ def _update_counseling_application(user, application, data):
     return application
 
 
-@login_required
+def _queue_new_application_notification(application_id):
+    """커밋된 신청만 알린다. 메일 실패는 접수를 취소하지 않는다."""
+
+    def send():
+        try:
+            application = CounselingApplication.objects.select_related("client").get(
+                pk=application_id
+            )
+            send_new_application_notification(application)
+        except Exception:
+            logger.exception(
+                "상담 신청 알림 메일 발송 중 오류 (application_id=%s)",
+                application_id,
+            )
+
+    transaction.on_commit(send)
+
+
+def _apply_for_guest(request):
+    """비로그인 내담자 — 상담 신청과 CLIENT 가입을 한 트랜잭션으로 처리."""
+    if request.method == "POST":
+        posted_email = request.POST.get("email", "")
+        if guest_request_is_limited("submit", request, posted_email):
+            form = CounselingApplyForm(request.POST, user=None)
+            messages.error(request, APPLY_SUBMIT_LIMITED)
+            return render(
+                request,
+                "counseling/apply.html",
+                _apply_page_context(request, form, is_edit=False),
+                status=429,
+            )
+        form = CounselingApplyForm(request.POST, user=None)
+        if form.is_valid():
+            data = form.cleaned_data
+            try:
+                with transaction.atomic():
+                    user = create_client_account(
+                        {
+                            "email": data["email"],
+                            "password": data["password1"],
+                            "name": data["name"],
+                            "phone": data.get("phone") or "",
+                            "birth_date": data["birth_date"],
+                            "student_id": data.get("student_id") or "",
+                            "department": data.get("department") or "",
+                            "is_kcu_student": data.get("is_kcu_student") == "yes",
+                        }
+                    )
+                    application = _save_counseling_application(
+                user,
+                {
+                    key: value
+                    for key, value in data.items()
+                    if key not in {"password1", "password2", "email_confirmed"}
+                },
+            )
+                    _queue_new_application_notification(application.pk)
+            except EmailAlreadyRegistered:
+                form.add_error("email", EMAIL_TAKEN)
+            except IntegrityError:
+                logger.error("신규 내담자 상담 신청 저장 중 데이터 제약 오류")
+                form.add_error(None, APPLY_FAILED)
+            except Exception:
+                logger.exception("신규 내담자 상담 신청 접수 실패")
+                form.add_error(None, APPLY_FAILED)
+            else:
+                login(
+                    request,
+                    user,
+                    backend="django.contrib.auth.backends.ModelBackend",
+                )
+                messages.success(
+                    request,
+                    "상담 신청이 접수되었습니다. 담당자가 확인 후 연락드립니다.",
+                )
+                return redirect("client:application_list")
+        messages.error(
+            request,
+            "입력 내용을 확인해 주세요. 빨간색으로 표시된 항목을 수정한 뒤 다시 신청해 주세요.",
+        )
+    else:
+        form = CounselingApplyForm(user=None)
+    return render(
+        request,
+        "counseling/apply.html",
+        _apply_page_context(request, form, is_edit=False),
+    )
+
+
+@require_POST
+def apply_email_check(request):
+    """비로그인 상담 신청의 이메일 중복확인. 역할은 알려주지 않는다."""
+    if request.user.is_authenticated:
+        return JsonResponse(
+            {"status": "unavailable", "message": "이미 로그인된 상태입니다."},
+            status=403,
+        )
+    raw_email = request.POST.get("email", "")
+    if guest_request_is_limited("email", request, raw_email):
+        return JsonResponse(
+            {"status": "limited", "message": EMAIL_CHECK_LIMITED},
+            status=429,
+        )
+    email = normalize_account_email(raw_email)
+    if not email:
+        return JsonResponse({"status": "invalid", "message": EMAIL_INVALID})
+    try:
+        validate_email(email)
+    except ValidationError:
+        return JsonResponse({"status": "invalid", "message": EMAIL_INVALID})
+    if email_is_registered(email):
+        return JsonResponse(
+            {
+                "status": "taken",
+                "message": EMAIL_TAKEN,
+                "login_url": f"{reverse('accounts:login')}?next=/counseling/apply/",
+            }
+        )
+    return JsonResponse(
+        {"status": "available", "message": EMAIL_AVAILABLE, "email": email}
+    )
+
+
 def apply(request):
     """상담 신청 페이지 (학생·내담자용, 관리자 테스트 허용)"""
+    if not request.user.is_authenticated:
+        return _apply_for_guest(request)
     edit_id = request.session.get(SESSION_APPLY_EDIT_ID)
     is_edit = bool(edit_id)
 

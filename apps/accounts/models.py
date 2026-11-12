@@ -2,7 +2,8 @@ import uuid
 
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.core.exceptions import ValidationError
-from django.db import models
+from django.db import IntegrityError, models, transaction
+from django.db.models.functions import Lower
 from django.utils import timezone
 
 
@@ -66,9 +67,27 @@ class User(AbstractBaseUser, PermissionsMixin):
         verbose_name = "사용자"
         verbose_name_plural = "사용자"
         ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                Lower("email"),
+                name="accounts_user_email_lower_uniq",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.name} ({self.get_role_display()})"
+
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        instance = super().from_db(db, field_names, values)
+        if "email" in field_names:
+            instance._loaded_email = instance.email
+        return instance
+
+    def refresh_from_db(self, using=None, fields=None):
+        super().refresh_from_db(using=using, fields=fields)
+        if fields is None or "email" in fields:
+            self._loaded_email = self.email
 
     @property
     def is_admin(self):
@@ -91,11 +110,41 @@ class User(AbstractBaseUser, PermissionsMixin):
         return self.status == UserStatus.ACTIVE
 
     def save(self, *args, **kwargs):
-        self.is_active = self.status == UserStatus.ACTIVE
-        super().save(*args, **kwargs)
+        from apps.accounts.email_guard import (
+            claim_changed_account_email,
+            claim_new_account_email,
+        )
         from apps.accounts.profile_sync import sync_user_role_profiles
 
+        self.is_active = self.status == UserStatus.ACTIVE
+        update_fields = kwargs.get("update_fields")
+        if self._state.adding:
+            self._save_with_email_claim(claim_new_account_email, *args, **kwargs)
+            return
+        email_is_written = update_fields is None or "email" in set(update_fields)
+        if email_is_written:
+            self._save_with_email_claim(claim_changed_account_email, *args, **kwargs)
+            return
+        super().save(*args, **kwargs)
         sync_user_role_profiles(self)
+
+    def _save_with_email_claim(self, claim, *args, **kwargs):
+        from apps.accounts.email_guard import EmailAlreadyRegistered
+        from apps.accounts.profile_sync import sync_user_role_profiles
+
+        try:
+            with transaction.atomic():
+                claim(self)
+                super().save(*args, **kwargs)
+                sync_user_role_profiles(self)
+        except EmailAlreadyRegistered:
+            raise
+        except IntegrityError as exc:
+            from apps.accounts.email_guard import is_email_unique_violation
+
+            if is_email_unique_violation(exc):
+                raise EmailAlreadyRegistered() from None
+            raise
 
 
 class CounselorProfile(models.Model):

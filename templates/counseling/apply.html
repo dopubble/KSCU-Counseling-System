@@ -1,7 +1,13 @@
 {% extends "base.html" %}
-{% load ui_tags %}
+{% load static ui_tags %}
 
 {% block title %}상담 신청 — 숭실사이버대학교 평생교육원{% endblock %}
+
+{% block extra_css %}
+{% if not user.is_authenticated %}
+<link href="{% static 'css/signup.css' %}" rel="stylesheet">
+{% endif %}
+{% endblock %}
 
 {% block layout %}
 {% block content %}
@@ -19,6 +25,7 @@
     <div class="container">
         <div class="row justify-content-center">
             <div class="col-lg-8">
+                {% if user.is_authenticated %}
                 {% if user.is_superuser or user.role == "ADMIN" %}
                 <div class="alert alert-secondary border-0 shadow-sm mb-4" role="alert">
                     <i class="bi bi-shield-check me-2"></i>
@@ -30,6 +37,7 @@
                     <i class="bi bi-exclamation-triangle me-2"></i>
                     상담 신청은 <strong>내담자(학생)</strong> 또는 <strong>관리자(테스트)</strong> 계정으로 이용할 수 있습니다.
                 </div>
+                {% endif %}
                 {% endif %}
 
                 {% if is_edit %}
@@ -45,7 +53,7 @@
                               action="{% url 'counseling:apply' %}"
                               novalidate
                               id="counseling-apply-form"
-                              onsubmit="return validateCounselingApplyBirthDate(this) && confirm('{% if is_edit %}저장을 완료하시겠습니까?{% else %}상담 신청을 완료하시겠습니까?{% endif %}');">
+                              onsubmit="return validateCounselingApplyBirthDate(this) && validateGuestApplyAccount(this) && confirm('{% if is_edit %}저장을 완료하시겠습니까?{% else %}상담 신청을 완료하시겠습니까?{% endif %}');">
                             {% csrf_token %}
 
                             {% if form.errors %}
@@ -68,17 +76,67 @@
                             {% endif %}
 
                             <h2 class="h6 text-kscu fw-bold mb-3 pb-2 border-bottom">기본 정보</h2>
+                            {% if user.is_authenticated %}
                             <p class="small text-muted mb-3">
                                 이름·학번·소속 학과는 회원가입 정보에서 자동으로 불러오며 수정할 수 없습니다.
                                 생년월일은 필수 항목입니다.
                             </p>
+                            {% else %}
+                            <p class="small text-muted mb-3">
+                                이름, 이메일, 연락처를 입력해 주세요.
+                                생년월일은 필수 항목입니다.
+                            </p>
+                            {% endif %}
                             <div class="row g-3 mb-4">
                                 <div class="col-md-6">
-                                    <label for="id_name" class="form-label fw-semibold">{{ form.name.label }}</label>
+                                    <label for="id_name" class="form-label fw-semibold">{{ form.name.label }}{% if not user.is_authenticated %} <span class="text-danger">*</span>{% endif %}</label>
                                     {{ form.name }}
                                     {% if form.name.help_text %}<div class="form-text">{{ form.name.help_text }}</div>{% endif %}
                                     {% if form.name.errors %}<div class="text-danger small mt-1">{{ form.name.errors.0 }}</div>{% endif %}
                                 </div>
+                                {% if not user.is_authenticated %}
+                                <div class="col-12">
+                                    <label for="id_email" class="form-label fw-semibold">{{ form.email.label }} <span class="text-danger">*</span></label>
+                                    <div class="input-group">
+                                        {{ form.email }}
+                                        <button type="button"
+                                                class="btn btn-outline-secondary"
+                                                id="email-check-button"
+                                                data-url="{% url 'counseling:apply_email_check' %}">중복확인</button>
+                                    </div>
+                                    {{ form.email_confirmed }}
+                                    <div id="email-check-result" class="form-text" role="status"></div>
+                                    <a id="email-login-link"
+                                       class="btn btn-outline-primary btn-sm mt-2 d-none"
+                                       href="{{ apply_login_url }}">로그인하기</a>
+                                    {% for error in form.email.errors %}
+                                    {% if "이미 가입된 메일주소입니다" in error %}
+                                    <a class="btn btn-outline-primary btn-sm mt-2" href="{{ apply_login_url }}">로그인하기</a>
+                                    {% endif %}
+                                    {% endfor %}
+                                    {% if form.email.errors %}<div class="text-danger small mt-1">{{ form.email.errors.0 }}</div>{% endif %}
+                                </div>
+                                <div class="col-12">
+                                    <label for="id_phone" class="form-label fw-semibold">{{ form.phone.label }}</label>
+                                    {{ form.phone }}
+                                    <div class="form-text">연락 가능한 휴대폰 번호를 입력해 주세요.</div>
+                                    {% if form.phone.errors %}<div class="text-danger small mt-1">{{ form.phone.errors.0 }}</div>{% endif %}
+                                </div>
+                                {% endif %}
+                                {% if not user.is_authenticated %}
+                                <div class="col-12">
+                                    <span class="form-label fw-semibold d-block">{{ form.is_kcu_student.label }} <span class="text-danger">*</span></span>
+                                    <div class="d-flex flex-wrap gap-3">
+                                        {% for option in form.is_kcu_student %}
+                                        <div class="form-check">
+                                            {{ option.tag }}
+                                            <label class="form-check-label" for="{{ option.id_for_label }}">{{ option.choice_label }}</label>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                    {% if form.is_kcu_student.errors %}<div class="text-danger small mt-1">{{ form.is_kcu_student.errors.0 }}</div>{% endif %}
+                                </div>
+                                {% endif %}
                                 <div class="col-md-6">
                                     <label for="id_student_id" class="form-label fw-semibold">{{ form.student_id.label }} <span class="text-muted fw-normal">(선택)</span></label>
                                     {{ form.student_id }}
@@ -92,17 +150,19 @@
                                     {% if form.birth_date.errors %}<div class="text-danger small mt-1">{{ form.birth_date.errors.0 }}</div>{% endif %}
                                 </div>
                                 <div class="col-md-6">
-                                    <label for="id_department" class="form-label fw-semibold">{{ form.department.label }} <span class="text-muted fw-normal">(선택)</span></label>
+                                    <label for="id_department" class="form-label fw-semibold">{{ form.department.label }} {% if user.is_authenticated %}<span class="text-muted fw-normal">(선택)</span>{% else %}<span class="text-muted fw-normal" id="department-requirement">(학생인 경우 필수)</span>{% endif %}</label>
                                     {{ form.department }}
                                     {% if form.department.help_text %}<div class="form-text">{{ form.department.help_text }}</div>{% endif %}
                                     {% if form.department.errors %}<div class="text-danger small mt-1">{{ form.department.errors.0 }}</div>{% endif %}
                                 </div>
+                                {% if user.is_authenticated %}
                                 <div class="col-12">
                                     <label for="id_phone" class="form-label fw-semibold">{{ form.phone.label }}</label>
                                     {{ form.phone }}
                                     <div class="form-text">연락 가능한 휴대폰 번호를 입력해 주세요.</div>
                                     {% if form.phone.errors %}<div class="text-danger small mt-1">{{ form.phone.errors.0 }}</div>{% endif %}
                                 </div>
+                                {% endif %}
                             </div>
 
                             <h2 class="h6 text-kscu fw-bold mb-3 pb-2 border-bottom">추가 정보</h2>
@@ -179,6 +239,24 @@
                                 </div>
                             </div>
 
+                            {% if not user.is_authenticated %}
+                            <h2 class="h6 text-kscu fw-bold mb-3 pb-2 border-bottom">계정 설정</h2>
+                            <div class="row g-3 mb-4">
+                                <div class="col-md-6">
+                                    <label for="id_password1" class="form-label fw-semibold">{{ form.password1.label }} <span class="text-danger">*</span></label>
+                                    {{ form.password1 }}
+                                    {% if form.password1.errors %}<div class="text-danger small mt-1">{{ form.password1.errors.0 }}</div>{% endif %}
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="id_password2" class="form-label fw-semibold">{{ form.password2.label }} <span class="text-danger">*</span></label>
+                                    {{ form.password2 }}
+                                    {% if form.password2.errors %}<div class="text-danger small mt-1">{{ form.password2.errors.0 }}</div>{% endif %}
+                                </div>
+                            </div>
+                            <h2 class="h6 text-kscu fw-bold mb-3 pb-2 border-bottom">동의</h2>
+                            {% include "accounts/partials/signup_consent.html" %}
+                            {% endif %}
+
                             <div class="form-actions border-top pt-4 mt-2">
                                 <div class="row g-3 align-items-center">
                                     <div class="col-12 col-sm-auto">
@@ -189,19 +267,18 @@
                                     <div class="col-12 col-sm-auto ms-sm-auto">
                                         <button type="submit" name="submit" value="1"
                                                 class="btn btn-primary btn-lg w-100 w-sm-auto px-5 shadow-sm">
-                                            <i class="bi bi-{% if is_edit %}save{% else %}send-fill{% endif %} me-2"></i>{% if is_edit %}저장하기{% else %}신청하기{% endif %}
+                                            <i class="bi bi-{% if is_edit %}save{% else %}send-fill{% endif %} me-2"></i>{% if is_edit %}저장하기{% elif not user.is_authenticated %}상담 신청하기{% else %}신청하기{% endif %}
                                         </button>
                                     </div>
                                 </div>
-                                {% if not user.is_authenticated %}
-                                <p class="text-muted small text-center text-sm-end mb-0 mt-2">
-                                    제출 시 로그인 페이지로 이동합니다.
-                                </p>
-                                {% endif %}
                             </div>
                         </form>
                     </div>
                 </div>
+
+                {% if not user.is_authenticated %}
+                {% include "accounts/partials/service_terms_modal.html" %}
+                {% endif %}
 
                 <p class="text-center text-muted small mt-4 mb-0">
                     <i class="bi bi-lock me-1"></i>
@@ -235,5 +312,113 @@ function validateCounselingApplyBirthDate(form) {
     field.setCustomValidity("");
     return true;
 }
+{% if user.is_authenticated %}
+function validateGuestApplyAccount() {
+    return true;
+}
+{% else %}
+function validateGuestApplyAccount(form) {
+    var email = form.querySelector("#id_email");
+    if (!email) {
+        return true;
+    }
+    var confirmed = form.querySelector("#id_email_confirmed");
+    var checkedRaw = email.getAttribute("data-checked-value") || "";
+    if (!confirmed || !confirmed.value || checkedRaw !== email.value.trim()) {
+        alert("이메일 중복확인을 완료해 주세요.");
+        email.focus();
+        return false;
+    }
+    var terms = form.querySelector("#id_agree_service_terms");
+    var privacy = form.querySelector("#id_agree_privacy");
+    if ((terms && !terms.checked) || (privacy && !privacy.checked)) {
+        alert("이용약관과 개인정보 수집·이용에 동의해 주세요.");
+        return false;
+    }
+    return true;
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+    var button = document.getElementById("email-check-button");
+    var email = document.getElementById("id_email");
+    var confirmed = document.getElementById("id_email_confirmed");
+    var result = document.getElementById("email-check-result");
+    var loginLink = document.getElementById("email-login-link");
+    if (!button || !email || !confirmed || !result) {
+        return;
+    }
+    function resetCheck() {
+        confirmed.value = "";
+        email.setAttribute("data-checked-value", "");
+        result.textContent = "";
+        result.classList.remove("text-success", "text-danger");
+        if (loginLink) {
+            loginLink.classList.add("d-none");
+        }
+    }
+    email.addEventListener("input", resetCheck);
+    document.querySelectorAll('input[name="is_kcu_student"]').forEach(function (el) {
+        el.addEventListener("change", function () {
+            var department = document.getElementById("id_department");
+            var yes = document.querySelector('input[name="is_kcu_student"][value="yes"]');
+            if (!department || !yes) {
+                return;
+            }
+            if (!yes.checked) {
+                department.value = "";
+            }
+        });
+    });
+    button.addEventListener("click", function () {
+        var tokenField = document.querySelector("#counseling-apply-form [name=csrfmiddlewaretoken]");
+        var body = new FormData();
+        body.append("email", email.value);
+        if (tokenField) {
+            body.append("csrfmiddlewaretoken", tokenField.value);
+        }
+        result.classList.remove("text-success", "text-danger");
+        result.textContent = "확인 중입니다.";
+        fetch(button.getAttribute("data-url"), {
+            method: "POST",
+            body: body,
+            headers: {"X-Requested-With": "XMLHttpRequest"},
+            credentials: "same-origin"
+        }).then(function (response) {
+            return response.json().then(function (data) {
+                return {ok: response.ok, data: data};
+            });
+        }).then(function (payload) {
+            var data = payload.data || {};
+            result.textContent = data.message || "이메일 확인에 실패했습니다. 잠시 후 다시 시도해 주세요.";
+            if (data.status === "available") {
+                confirmed.value = data.email || "";
+                email.setAttribute("data-checked-value", email.value.trim());
+                result.classList.add("text-success");
+                if (loginLink) {
+                    loginLink.classList.add("d-none");
+                }
+            } else {
+                confirmed.value = "";
+                email.setAttribute("data-checked-value", "");
+                result.classList.add("text-danger");
+                if (loginLink && data.status === "taken") {
+                    if (data.login_url) {
+                        loginLink.setAttribute("href", data.login_url);
+                    }
+                    loginLink.classList.remove("d-none");
+                }
+            }
+        }).catch(function () {
+            confirmed.value = "";
+            email.setAttribute("data-checked-value", "");
+            result.textContent = "이메일 확인에 실패했습니다. 잠시 후 다시 시도해 주세요.";
+            result.classList.add("text-danger");
+        });
+    });
+});
+{% endif %}
 </script>
+{% if not user.is_authenticated %}
+<script src="{% static 'js/signup_form.js' %}"></script>
+{% endif %}
 {% endblock %}

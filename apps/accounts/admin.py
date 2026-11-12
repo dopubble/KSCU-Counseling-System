@@ -1,6 +1,8 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.db.models import Exists, OuterRef
+from django.forms import ValidationError
+from django.http import HttpResponseRedirect
 from django.utils.html import format_html
 
 from .models import AuditLog, ClientProfile, CounselorProfile, SupervisorProfile, User, UserRole
@@ -72,6 +74,35 @@ class UserAdmin(BaseUserAdmin):
 
     model = User
     inlines = (CounselorProfileInline,)
+
+    def get_form(self, request, obj=None, **kwargs):
+        form_class = super().get_form(request, obj, **kwargs)
+
+        class EmailGuardedAdminForm(form_class):
+            def clean_email(self):
+                from apps.accounts.email_guard import (
+                    email_is_registered,
+                    normalize_account_email,
+                )
+
+                email = normalize_account_email(self.cleaned_data.get("email"))
+                exclude_pk = self.instance.pk if self.instance else None
+                if email and email_is_registered(email, exclude_pk=exclude_pk):
+                    raise ValidationError("이미 가입된 이메일입니다.")
+                return email
+
+        return EmailGuardedAdminForm
+
+    def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
+        from apps.accounts.email_guard import EmailAlreadyRegistered
+
+        try:
+            return super().changeform_view(
+                request, object_id, form_url, extra_context
+            )
+        except EmailAlreadyRegistered:
+            messages.error(request, "이미 가입된 이메일입니다.")
+            return HttpResponseRedirect(request.path)
 
     list_display = (
         "name",
@@ -195,9 +226,9 @@ class UserAdmin(BaseUserAdmin):
             return False
 
     def save_model(self, request, obj, form, change):
-        super().save_model(request, obj, form, change)
         from apps.accounts.profile_sync import sync_user_role_profiles
 
+        super().save_model(request, obj, form, change)
         sync_user_role_profiles(obj)
 
 

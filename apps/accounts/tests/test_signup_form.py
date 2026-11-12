@@ -42,6 +42,36 @@ class SignUpFormEmailTests(TestCase):
         form = SignUpForm(data=self._signup_data("new@example.com"))
         self.assertTrue(form.is_valid(), form.errors)
 
+    def test_non_student_signup_stores_false_and_clears_department(self):
+        data = self._signup_data("visitor@example.com")
+        data["department"] = "저장되면안됨"
+        data["student_id"] = "20110001"
+        form = SignUpForm(data=data)
+        self.assertTrue(form.is_valid(), form.errors)
+        user = form.save()
+        self.assertFalse(user.client_profile.is_kcu_student)
+        self.assertEqual(user.client_profile.department, "")
+        self.assertEqual(user.client_profile.student_id, "20110001")
+
+    def test_student_signup_requires_department_and_stores_true(self):
+        missing = self._signup_data("student-missing@example.com")
+        missing["is_kcu_student"] = "yes"
+        missing["department"] = ""
+        form = SignUpForm(data=missing)
+        self.assertFalse(form.is_valid())
+        self.assertIn("department", form.errors)
+
+        data = self._signup_data("student@example.com")
+        data["is_kcu_student"] = "yes"
+        data["department"] = "상담심리학과"
+        data["student_id"] = "20241234"
+        form = SignUpForm(data=data)
+        self.assertTrue(form.is_valid(), form.errors)
+        user = form.save()
+        self.assertTrue(user.client_profile.is_kcu_student)
+        self.assertEqual(user.client_profile.department, "상담심리학과")
+        self.assertEqual(user.client_profile.student_id, "20241234")
+
     def test_phone_required(self):
         data = self._signup_data("new@example.com")
         data["phone"] = ""

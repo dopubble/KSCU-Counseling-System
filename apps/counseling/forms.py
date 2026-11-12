@@ -1,9 +1,17 @@
 import os
 
 from django import forms
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 from django.db.models import Q
 
 from apps.accounts.models import ClientProfile
+from apps.counseling.apply_registration import (
+    EMAIL_TAKEN,
+    EMAIL_UNCONFIRMED,
+    email_is_registered,
+    normalize_account_email,
+)
 from apps.counseling.constants import (
     COUNSELING_TYPE_CHOICES,
     COUNSELING_TYPE_VALUES,
@@ -155,6 +163,51 @@ class CounselingApplyForm(forms.Form):
             "required": "희망 상담 시간을 선택해 주세요.",
         },
     )
+    email = forms.EmailField(
+        label="이메일",
+        required=False,
+        widget=forms.EmailInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "name@example.com",
+                "autocomplete": "email",
+            }
+        ),
+    )
+    email_confirmed = forms.CharField(
+        required=False,
+        widget=forms.HiddenInput(),
+    )
+    password1 = forms.CharField(
+        label="비밀번호",
+        required=False,
+        strip=False,
+        widget=forms.PasswordInput(
+            attrs={"class": "form-control", "autocomplete": "new-password"}
+        ),
+    )
+    password2 = forms.CharField(
+        label="비밀번호 확인",
+        required=False,
+        strip=False,
+        widget=forms.PasswordInput(
+            attrs={"class": "form-control", "autocomplete": "new-password"}
+        ),
+    )
+    is_kcu_student = forms.ChoiceField(
+        label="숭실사이버대학교 학생 여부",
+        choices=[("yes", "예"), ("no", "아니오")],
+        widget=forms.RadioSelect(attrs={"class": "form-check-input"}),
+        required=False,
+    )
+    agree_service_terms = forms.BooleanField(
+        label="이용약관 동의",
+        required=False,
+    )
+    agree_privacy = forms.BooleanField(
+        label="개인정보 수집 및 이용 동의",
+        required=False,
+    )
     reason = forms.CharField(
         label="주요 호소 문제 작성(100자 이내)",
         max_length=100,
@@ -173,7 +226,22 @@ class CounselingApplyForm(forms.Form):
         super().__init__(*args, **kwargs)
         self.fields["counseling_types"].widget.attrs.update({"class": "form-check-input"})
         self.fields["counseling_method"].widget.attrs.update({"class": "form-check-input"})
-        if user is not None and user.is_authenticated:
+        self.guest_signup = user is None or not getattr(user, "is_authenticated", False)
+        if self.guest_signup:
+            self.fields["email"].widget.attrs["required"] = "required"
+            self.fields["password1"].widget.attrs["required"] = "required"
+            self.fields["password2"].widget.attrs["required"] = "required"
+        else:
+            for name in (
+                "email",
+                "email_confirmed",
+                "password1",
+                "password2",
+                "agree_service_terms",
+                "agree_privacy",
+                "is_kcu_student",
+            ):
+                self.fields.pop(name, None)
             self._lock_identity_fields(user)
         if self.is_bound and self.errors:
             for name, field in self.fields.items():
@@ -227,11 +295,60 @@ class CounselingApplyForm(forms.Form):
             "department": (profile.department if profile else "") or "",
         }
 
+    def clean_email(self):
+        if "email" not in self.fields:
+            return ""
+        email = normalize_account_email(self.cleaned_data.get("email") or "")
+        return email
+
+    def _clean_guest_account(self, cleaned):
+        email = cleaned.get("email") or ""
+        if "email" in self.errors:
+            pass
+        elif not email:
+            self.add_error("email", "이메일을 입력해 주세요.")
+        else:
+            confirmed = normalize_account_email(cleaned.get("email_confirmed") or "")
+            if confirmed != email:
+                self.add_error("email", EMAIL_UNCONFIRMED)
+            elif email_is_registered(email):
+                self.add_error("email", EMAIL_TAKEN)
+        password = cleaned.get("password1") or ""
+        confirmation = cleaned.get("password2") or ""
+        if not password:
+            self.add_error("password1", "비밀번호를 입력해 주세요.")
+        elif password != confirmation:
+            self.add_error("password2", "비밀번호가 일치하지 않습니다.")
+        else:
+            try:
+                validate_password(password)
+            except ValidationError as exc:
+                self.add_error("password1", exc)
+        if not cleaned.get("agree_service_terms"):
+            self.add_error("agree_service_terms", "이용약관에 동의해 주세요.")
+        if not cleaned.get("agree_privacy"):
+            self.add_error("agree_privacy", "개인정보 수집 및 이용에 동의해 주세요.")
+        is_kcu = cleaned.get("is_kcu_student")
+        if not is_kcu:
+            self.add_error(
+                "is_kcu_student",
+                "숭실사이버대학교 학생 여부를 선택해 주세요.",
+            )
+        elif is_kcu == "yes":
+            department = (cleaned.get("department") or "").strip()
+            if not department:
+                self.add_error("department", "소속 학과를 입력해 주세요.")
+            cleaned["department"] = department
+        else:
+            cleaned["department"] = ""
+        cleaned["student_id"] = (cleaned.get("student_id") or "").strip()
+
     def clean(self):
         cleaned = super().clean()
         if self.user is None or not self.user.is_authenticated:
             if not cleaned.get("birth_date"):
                 self.add_error("birth_date", "생년월일을 입력해주세요.")
+            self._clean_guest_account(cleaned)
             return cleaned
         snapshot = self._profile_snapshot(self.user)
         cleaned["name"] = snapshot["name"]

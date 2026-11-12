@@ -1,4 +1,7 @@
+import logging
+
 from django.conf import settings
+from django.db import IntegrityError
 from django.contrib import messages
 from django.contrib.auth import login, logout as auth_logout, update_session_auth_hash
 from django.contrib.auth.views import (
@@ -28,6 +31,9 @@ from .auth_utils import (
 )
 from .emailing import send_find_id_email
 from apps.accounts.decorators import role_required
+
+logger = logging.getLogger(__name__)
+SIGNUP_FAILED = "회원가입을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요."
 
 from .forms import (
     CounselorProfileUpdateForm,
@@ -109,23 +115,43 @@ def signup(request):
             return redirect(safe_next)
         return redirect(default_dashboard_url_for_user(request.user))
 
+    limited = False
     if request.method == "POST":
-        form = SignUpForm(request.POST)
-        if form.is_valid():
-            user = form.save()
-            if user.role == UserRole.CLIENT:
-                login(request, user)
-                messages.success(request, "회원가입이 완료되었습니다.")
-                if next_url:
-                    return redirect(next_url)
-                return redirect("client:dashboard")
-            messages.info(request, "회원가입이 완료되었습니다. 관리자 승인 후 이용 가능합니다.")
-            login_next = f"?next={next_url}" if next_url else ""
-            return redirect(f"{reverse('accounts:login')}{login_next}")
+        from apps.counseling.apply_registration import (
+            APPLY_SUBMIT_LIMITED,
+            guest_request_is_limited,
+        )
+
+        if guest_request_is_limited("signup", request, request.POST.get("email", "")):
+            form = SignUpForm(request.POST)
+            form.add_error(None, APPLY_SUBMIT_LIMITED)
+            limited = True
+        else:
+            form = SignUpForm(request.POST)
+        if not limited and form.is_valid():
+            from apps.accounts.email_guard import EmailAlreadyRegistered
+
+            try:
+                user = form.save()
+            except EmailAlreadyRegistered:
+                form.add_error("email", "이미 가입된 이메일입니다.")
+            except IntegrityError:
+                logger.error("회원가입 저장 중 데이터 제약 오류")
+                form.add_error(None, SIGNUP_FAILED)
+            else:
+                if user.role == UserRole.CLIENT:
+                    login(request, user)
+                    messages.success(request, "회원가입이 완료되었습니다.")
+                    if next_url:
+                        return redirect(next_url)
+                    return redirect("client:dashboard")
+                messages.info(request, "회원가입이 완료되었습니다. 관리자 승인 후 이용 가능합니다.")
+                login_next = f"?next={next_url}" if next_url else ""
+                return redirect(f"{reverse('accounts:login')}{login_next}")
     else:
         form = SignUpForm()
 
-    return render(
+    response = render(
         request,
         "accounts/signup.html",
         {
@@ -134,6 +160,9 @@ def signup(request):
             "platform_name": "숭실사이버대학교 평생교육원 전문상담 플랫폼",
         },
     )
+    if limited:
+        response.status_code = 429
+    return response
 
 
 def pending(request):
