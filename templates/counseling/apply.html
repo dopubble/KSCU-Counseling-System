@@ -48,6 +48,15 @@
     outline: 2px solid #0d4f8b;
     outline-offset: 2px;
 }
+.availability-slot-hours {
+    display: block;
+    margin-top: .15rem;
+    font-size: .75rem;
+    font-weight: 400;
+    line-height: 1.2;
+    color: #6c757d;
+}
+.availability-choice input:checked + span .availability-slot-hours { color: inherit; }
 @media (min-width: 768px) {
     .availability-grid { display: table; width: 100%; border-collapse: collapse; }
     .availability-head { display: table-row; }
@@ -76,6 +85,13 @@
         opacity: 1;
     }
     .availability-choice span { display: none; }
+    .availability-head .availability-slot-hours {
+        display: block;
+        padding: 0;
+        border: 0;
+        color: #6c757d;
+        font-weight: 400;
+    }
 }
 </style>
 {% endblock %}
@@ -336,9 +352,9 @@
                                     <div class="availability-grid mt-2" role="group" aria-label="요일별 상담 가능 시간대">
                                         <div class="availability-head">
                                             <span>요일</span>
-                                            <span>오전</span>
-                                            <span>오후</span>
-                                            <span>저녁</span>
+                                            <span>오전<span class="availability-slot-hours">(9시~12시)</span></span>
+                                            <span>오후<span class="availability-slot-hours">(13시~18시)</span></span>
+                                            <span>저녁<span class="availability-slot-hours">(19시 ~)</span></span>
                                         </div>
                                         {% for day in availability_rows %}
                                         <div class="availability-row">
@@ -347,7 +363,7 @@
                                                 {% for slot in day.slots %}
                                                 <label class="availability-choice">
                                                     <input type="checkbox" name="weekly_availability" value="{{ slot.token }}"{% if slot.checked %} checked{% endif %}>
-                                                    <span>{{ slot.label }}</span>
+                                                    <span>{{ slot.label }}<span class="availability-slot-hours">{% if slot.label == "오전" %}(9시~12시){% elif slot.label == "오후" %}(13시~18시){% elif slot.label == "저녁" %}(19시 ~){% endif %}</span></span>
                                                 </label>
                                                 {% endfor %}
                                             </div>

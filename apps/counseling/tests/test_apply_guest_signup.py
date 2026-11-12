@@ -688,6 +688,9 @@ class GuestApplySignupTests(TestCase):
         self.assertIn("일요일", html)
         self.assertIn("오전", html)
         self.assertIn("저녁", html)
+        self.assertIn("(9시~12시)", html)
+        self.assertIn("(13시~18시)", html)
+        self.assertIn("(19시 ~)", html)
         self.assertIn("중복확인", html)
         self.assertIn("상담 신청하기", html)
 
