@@ -218,6 +218,59 @@ class CounselorDashboardEnrollmentTests(TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertNotContains(response, "DASH-SECRET", status_code=404)
 
+    def test_two_active_enrollments_both_remain_selectable(self):
+        counselor = _counselor("병행기수", 2)
+        first = TrainingEnrollment.objects.create(
+            counselor=counselor,
+            cohort=1,
+            status=TrainingEnrollmentStatus.ACTIVE,
+        )
+        second = TrainingEnrollment.objects.create(
+            counselor=counselor,
+            cohort=2,
+            status=TrainingEnrollmentStatus.ACTIVE,
+        )
+        http = Client()
+        http.force_login(counselor)
+        response = http.get(reverse("counselor:dashboard"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["selected_training_enrollment"], second)
+        self.assertCountEqual(
+            response.context["training_enrollment_choices"],
+            [first, second],
+        )
+        self.assertContains(response, "1기 / 진행 중")
+        self.assertContains(response, "2기 / 진행 중")
+        kept = http.get(reverse("counselor:dashboard"), {"enrollment": str(first.pk)})
+        self.assertEqual(kept.status_code, 200)
+        self.assertEqual(kept.context["selected_training_enrollment"], first)
+
+    def test_withdrawn_enrollment_is_not_a_dashboard_choice(self):
+        counselor = _counselor("중단기수", 2)
+        withdrawn = TrainingEnrollment.objects.create(
+            counselor=counselor,
+            cohort=1,
+            status=TrainingEnrollmentStatus.WITHDRAWN,
+        )
+        active = TrainingEnrollment.objects.create(
+            counselor=counselor,
+            cohort=2,
+            status=TrainingEnrollmentStatus.ACTIVE,
+        )
+        _attend(counselor.counselor_profile, _session(1, 2, minutes=90))
+        http = Client()
+        http.force_login(counselor)
+        response = http.get(reverse("counselor:dashboard"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["selected_training_enrollment"], active)
+        self.assertEqual(list(response.context["training_enrollment_choices"]), [active])
+        self.assertNotContains(response, "1기 / 중단")
+        progress = response.context["training_progress"]
+        self.assertEqual(progress["supervision_attended_count"], 0)
+        self.assertEqual(progress["training_completed_minutes"], 0)
+        hidden = http.get(reverse("counselor:dashboard"), {"enrollment": str(withdrawn.pk)})
+        self.assertEqual(hidden.status_code, 404)
+
     def test_single_enrollment_hides_the_cohort_dropdown(self):
         counselor = _counselor("단일기수", 3)
         enrollment = TrainingEnrollment.objects.create(

@@ -67,12 +67,25 @@ def counselor_training_enrollments(counselor):
     )
 
 
+def dashboard_training_enrollments(counselor):
+    """상담사 대시보드에서 고를 수 있는 수련.
+
+    중단 등록은 이력으로 남기되 선택 목록에는 넣지 않는다.
+    진행과 완료는 그대로 둔다.
+    """
+    return [
+        item
+        for item in counselor_training_enrollments(counselor)
+        if item.status != TrainingEnrollmentStatus.WITHDRAWN
+    ]
+
+
 def resolve_dashboard_training_enrollment(counselor, raw):
     """대시보드에 표시할 수련 단위.
 
     반환값의 두 번째 값이 True이면 요청한 enrollment를 이 상담사가 볼 수 없다.
     """
-    enrollments = counselor_training_enrollments(counselor)
+    enrollments = dashboard_training_enrollments(counselor)
     raw = (raw or "").strip()
     if raw:
         try:
