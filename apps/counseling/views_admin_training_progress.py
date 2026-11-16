@@ -9,11 +9,14 @@ from apps.accounts.decorators import role_required
 from apps.accounts.models import CounselorProfile, User, UserRole
 from apps.counseling.cohort_reenrollment import (
     CohortReenrollmentError,
+    cancel_training_enrollment,
     complete_training_enrollment,
     describe_cohort_reenrollment,
+    enrollment_cancel_blockers,
+    enrollment_cancel_policy_blockers,
     register_next_cohort,
 )
-from apps.counseling.models import TrainingEnrollment
+from apps.counseling.models import TrainingEnrollment, TrainingEnrollmentStatus
 from apps.counseling.training_certificate import get_training_certificate_approval_status
 from apps.counseling.training_enrollment import (
     counselor_training_enrollments,
@@ -110,6 +113,12 @@ def render_enrollment_training_progress(request, enrollment, template):
     except CounselorProfile.DoesNotExist:
         profile = None
     # 수련실적과 수련확인증 승인은 이 Enrollment만 본다.
+    cancel_blockers = []
+    show_cancel_button = False
+    if template == "admin_panel/counselor_training_progress_detail.html":
+        policy_blockers = enrollment_cancel_policy_blockers(enrollment)
+        cancel_blockers = enrollment_cancel_blockers(enrollment)
+        show_cancel_button = not policy_blockers
     return render(
         request,
         template,
@@ -128,6 +137,8 @@ def render_enrollment_training_progress(request, enrollment, template):
                 training_enrollment=enrollment,
             ),
             "counselor_enrollments": counselor_training_enrollments(counselor),
+            "cancel_blockers": cancel_blockers,
+            "show_cancel_button": show_cancel_button,
         },
     )
 
@@ -210,6 +221,43 @@ def admin_complete_training_enrollment(request, enrollment_id):
         "admin_panel:enrollment_training_progress_detail",
         enrollment_id=enrollment.pk,
     )
+
+
+@role_required(UserRole.ADMIN)
+def admin_cancel_training_enrollment(request, enrollment_id):
+    """활동 이력이 없는 기수 등록만 취소한다. 다른 기수와 기록은 바꾸지 않는다."""
+    enrollment = get_object_or_404(
+        TrainingEnrollment.objects.select_related("counselor"),
+        pk=enrollment_id,
+        counselor__role=UserRole.COUNSELOR,
+    )
+    if request.method != "POST":
+        return redirect(
+            "admin_panel:enrollment_training_progress_detail",
+            enrollment_id=enrollment.pk,
+        )
+    counselor_id = enrollment.counselor_id
+    cohort = enrollment.cohort
+    try:
+        cancel_training_enrollment(enrollment, actor=request.user)
+    except CohortReenrollmentError as exc:
+        messages.error(request, " ".join(exc.messages))
+        return redirect(
+            "admin_panel:enrollment_training_progress_detail",
+            enrollment_id=enrollment.pk,
+        )
+    messages.success(request, f"{cohort}기 등록을 취소했습니다.")
+    remaining = TrainingEnrollment.objects.filter(counselor_id=counselor_id).order_by(
+        "cohort"
+    )
+    active = remaining.filter(status=TrainingEnrollmentStatus.ACTIVE).first()
+    target = active or remaining.first()
+    if target is not None:
+        return redirect(
+            "admin_panel:enrollment_training_progress_detail",
+            enrollment_id=target.pk,
+        )
+    return redirect("admin_panel:training_progress")
 
 
 @role_required(UserRole.ADMIN)

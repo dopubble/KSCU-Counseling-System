@@ -55,6 +55,11 @@ urlpatterns = [
         name="enrollment_complete",
     ),
     path(
+        "training-progress/enrollments/<uuid:enrollment_id>/cancel/",
+        views_admin_training_progress.admin_cancel_training_enrollment,
+        name="enrollment_cancel",
+    ),
+    path(
         "training-progress/enrollments/<uuid:enrollment_id>/certificate/",
         views_training_certificate.admin_enrollment_training_certificate,
         name="enrollment_training_certificate",

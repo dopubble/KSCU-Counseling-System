@@ -1,10 +1,12 @@
 from datetime import datetime, timedelta
 import inspect
 import tempfile
+import threading
 
+from django.contrib.admin.models import LogEntry
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError, connection, transaction
-from django.test import Client, TestCase, override_settings
+from django.test import Client, TestCase, TransactionTestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
@@ -14,8 +16,12 @@ from apps.accounts.models import CounselorProfile, SupervisorProfile, User, User
 from apps.counseling import cohort_reenrollment as cohort_reenrollment_module
 from apps.counseling.cohort_reenrollment import (
     MSG_ACTIVE_LIMIT,
+    MSG_CANCEL_GONE,
+    MSG_CANCEL_NOT_ACTIVE,
+    MSG_CANCEL_ORIGINAL,
     MSG_CONCURRENT,
     CohortReenrollmentError,
+    cancel_training_enrollment,
     complete_training_enrollment,
     register_next_cohort,
 )
@@ -1259,3 +1265,532 @@ class DualActiveCohortPolicyTests(TestCase):
             ).status_code,
             403,
         )
+
+
+class EnrollmentCancellationTests(TestCase):
+    def setUp(self):
+        self.admin = _user("cancel-admin@example.com", "관리자", UserRole.ADMIN)
+        self.counselor = _counselor("cancel-counselor@example.com", "김수련", 1)
+        self.first = TrainingEnrollment.objects.create(
+            counselor=self.counselor,
+            cohort=1,
+            status=TrainingEnrollmentStatus.ACTIVE,
+            started_at=timezone.now() - timedelta(days=20),
+        )
+        self.http = Client()
+
+    def _register(self, cohort):
+        self.http.login(email=self.admin.email, password="pass12345")
+        return self.http.post(
+            reverse(
+                "admin_panel:counselor_cohort_reenrollment",
+                kwargs={"counselor_id": self.counselor.pk},
+            ),
+            {"cohort": str(cohort)},
+            follow=True,
+        )
+
+    def _second(self):
+        self._register(2)
+        return TrainingEnrollment.objects.get(counselor=self.counselor, cohort=2)
+
+    def _cancel(self, enrollment, *, follow=True):
+        self.http.login(email=self.admin.email, password="pass12345")
+        return self.http.post(
+            reverse(
+                "admin_panel:enrollment_cancel",
+                kwargs={"enrollment_id": enrollment.pk},
+            ),
+            follow=follow,
+        )
+
+    def test_detail_shows_cancel_distinct_from_complete(self):
+        second = self._second()
+        self.http.login(email=self.admin.email, password="pass12345")
+        page = self.http.get(
+            reverse(
+                "admin_panel:enrollment_training_progress_detail",
+                kwargs={"enrollment_id": second.pk},
+            )
+        )
+        self.assertContains(page, "등록 취소")
+        self.assertContains(page, "이 기수 종료")
+        self.assertContains(page, "김수련 상담사의 2기 등록을 취소합니다")
+        self.assertContains(
+            page,
+            "등록 취소는 활동 이력이 없는 진행 중 추가 기수만 삭제합니다.",
+        )
+        first_page = self.http.get(
+            reverse(
+                "admin_panel:enrollment_training_progress_detail",
+                kwargs={"enrollment_id": self.first.pk},
+            )
+        )
+        self.assertContains(first_page, "이 기수 종료")
+        self.assertNotContains(first_page, ">등록 취소</button>")
+        self.assertContains(first_page, MSG_CANCEL_ORIGINAL)
+
+    def test_cancel_empty_second_keeps_first_and_allows_reregistration(self):
+        client = _client("cancel-client@example.com", "이내담")
+        case = _case(
+            self.counselor,
+            client,
+            "CANCEL-KEEP",
+            self.first,
+            status=CaseStatus.ACTIVE,
+            submitted=False,
+        )
+        journal = CounselingJournal.objects.create(
+            case=case,
+            counselor=self.counselor,
+            session_number=1,
+            is_draft=False,
+            subjective="1기기록",
+        )
+        appointment = _appointment(
+            self.counselor,
+            client,
+            case,
+            AppointmentStatus.CONFIRMED,
+            timezone.now() + timedelta(days=2),
+        )
+        session = SupervisionSession.objects.create(
+            cohort=1,
+            session_number=1,
+            scheduled_at=timezone.now() - timedelta(days=1),
+            duration_minutes=50,
+            counseling_method=CounselingMethod.IN_PERSON,
+            status=SupervisionSessionStatus.COMPLETED,
+        )
+        attendance = SupervisionAttendance.objects.create(
+            session=session,
+            counselor=self.counselor.counselor_profile,
+            status=SupervisionAttendanceStatus.PRESENT,
+        )
+        submitted_at = case.records_submitted_at
+        second = self._second()
+        second_id = second.pk
+        response = self._cancel(second)
+        self.assertContains(response, "2기 등록을 취소했습니다.")
+        self.assertFalse(TrainingEnrollment.objects.filter(pk=second_id).exists())
+        self.first.refresh_from_db()
+        case.refresh_from_db()
+        journal.refresh_from_db()
+        appointment.refresh_from_db()
+        attendance.refresh_from_db()
+        self.assertEqual(self.first.status, TrainingEnrollmentStatus.ACTIVE)
+        self.assertEqual(self.first.active_slot, 1)
+        self.assertEqual(case.training_enrollment_id, self.first.pk)
+        self.assertEqual(case.status, CaseStatus.ACTIVE)
+        self.assertEqual(case.records_submitted_at, submitted_at)
+        self.assertEqual(journal.subjective, "1기기록")
+        self.assertEqual(appointment.status, AppointmentStatus.CONFIRMED)
+        self.assertEqual(attendance.status, SupervisionAttendanceStatus.PRESENT)
+        self.assertEqual(
+            CounselorProfile.objects.get(user_id=self.counselor.pk).cohort,
+            1,
+        )
+        entry = LogEntry.objects.get(object_id=str(second_id))
+        self.assertNotIn("김수련", entry.object_repr)
+        self.assertNotIn("김수련", entry.change_message)
+        self.assertNotIn(self.counselor.email, entry.change_message)
+        self.assertIn(str(self.counselor.pk), entry.change_message)
+        self.assertIn('"cohort": 2', entry.change_message)
+        again = self._register(2)
+        self.assertContains(again, "2기 수련 등록이 완료되었습니다.")
+        registered = TrainingEnrollment.objects.get(counselor=self.counselor, cohort=2)
+        self.assertNotEqual(registered.pk, second_id)
+        self.assertEqual(registered.status, TrainingEnrollmentStatus.ACTIVE)
+        self.first.refresh_from_db()
+        case.refresh_from_db()
+        self.assertEqual(self.first.status, TrainingEnrollmentStatus.ACTIVE)
+        self.assertEqual(case.training_enrollment_id, self.first.pk)
+        self.assertEqual(journal.subjective, "1기기록")
+
+    def test_second_cancel_of_same_enrollment_is_safe(self):
+        second = self._second()
+        cancel_training_enrollment(second, actor=self.admin)
+        with self.assertRaises(CohortReenrollmentError) as caught:
+            cancel_training_enrollment(second, actor=self.admin)
+        self.assertIn(MSG_CANCEL_GONE, caught.exception.messages)
+        self.assertEqual(
+            TrainingEnrollment.objects.get(pk=self.first.pk).status,
+            TrainingEnrollmentStatus.ACTIVE,
+        )
+        missing = self._cancel(second, follow=False)
+        self.assertEqual(missing.status_code, 404)
+
+    def test_case_on_second_cohort_blocks_cancel(self):
+        second = self._second()
+        client = _client("cancel-case@example.com", "사례내담")
+        case = _case(
+            self.counselor,
+            client,
+            "CANCEL-CASE",
+            second,
+            status=CaseStatus.ACTIVE,
+            submitted=False,
+        )
+        CounselingJournal.objects.create(
+            case=case,
+            counselor=self.counselor,
+            session_number=1,
+            is_draft=True,
+            subjective="2기일지",
+        )
+        _appointment(
+            self.counselor,
+            client,
+            case,
+            AppointmentStatus.SCHEDULED,
+            timezone.now() + timedelta(days=3),
+        )
+        TerminationCounselingRecord.objects.create(
+            case=case,
+            counselor=self.counselor,
+            is_draft=True,
+        )
+        response = self._cancel(second)
+        self.assertContains(response, "상담사례 1건")
+        self.assertContains(response, "예약 1건")
+        self.assertContains(response, "상담일지 1건")
+        self.assertContains(response, "종결기록지 1건")
+        self.assertTrue(TrainingEnrollment.objects.filter(pk=second.pk).exists())
+        case.refresh_from_db()
+        self.assertEqual(case.training_enrollment_id, second.pk)
+        self.assertEqual(case.journals.get().subjective, "2기일지")
+        self.assertEqual(
+            TrainingEnrollment.objects.get(pk=self.first.pk).status,
+            TrainingEnrollmentStatus.ACTIVE,
+        )
+
+    def test_supervision_attendance_on_second_cohort_blocks_cancel(self):
+        second = self._second()
+        session = SupervisionSession.objects.create(
+            cohort=2,
+            session_number=1,
+            scheduled_at=timezone.now() - timedelta(days=1),
+            duration_minutes=50,
+            counseling_method=CounselingMethod.REMOTE,
+            status=SupervisionSessionStatus.COMPLETED,
+        )
+        attendance = SupervisionAttendance.objects.create(
+            session=session,
+            counselor=self.counselor.counselor_profile,
+            status=SupervisionAttendanceStatus.PRESENT,
+        )
+        response = self._cancel(second)
+        self.assertContains(response, "수퍼비전 출석 1건")
+        self.assertTrue(TrainingEnrollment.objects.filter(pk=second.pk).exists())
+        attendance.refresh_from_db()
+        self.assertEqual(attendance.status, SupervisionAttendanceStatus.PRESENT)
+        self.assertEqual(
+            TrainingEnrollment.objects.get(pk=self.first.pk).status,
+            TrainingEnrollmentStatus.ACTIVE,
+        )
+
+    def test_unchecked_attendance_does_not_block_cancel(self):
+        second = self._second()
+        session = SupervisionSession.objects.create(
+            cohort=2,
+            session_number=1,
+            scheduled_at=timezone.now() + timedelta(days=1),
+            duration_minutes=50,
+            counseling_method=CounselingMethod.REMOTE,
+            status=SupervisionSessionStatus.SCHEDULED,
+        )
+        SupervisionAttendance.objects.create(
+            session=session,
+            counselor=self.counselor.counselor_profile,
+            status=SupervisionAttendanceStatus.UNCHECKED,
+        )
+        self._cancel(second)
+        self.assertFalse(TrainingEnrollment.objects.filter(pk=second.pk).exists())
+        self.assertTrue(SupervisionSession.objects.filter(pk=session.pk).exists())
+        self.assertEqual(
+            TrainingEnrollment.objects.get(pk=self.first.pk).status,
+            TrainingEnrollmentStatus.ACTIVE,
+        )
+
+    def test_presentation_and_certificate_block_cancel(self):
+        second = self._second()
+        CasePresentationPost.objects.create(
+            cohort=2,
+            author=self.counselor,
+            title="2기발표",
+            file=SimpleUploadedFile("two.pdf", b"%PDF-1.4"),
+        )
+        response = self._cancel(second)
+        self.assertContains(response, "사례발표 1건")
+        self.assertTrue(TrainingEnrollment.objects.filter(pk=second.pk).exists())
+        TrainingCertificateApproval.objects.create(
+            counselor=self.counselor,
+            training_enrollment=self.first,
+            content_hash="a" * 64,
+        )
+        first_page = self.http.get(
+            reverse(
+                "admin_panel:enrollment_training_progress_detail",
+                kwargs={"enrollment_id": self.first.pk},
+            )
+        )
+        self.assertContains(first_page, "수련확인증 승인 1건")
+        self.assertTrue(TrainingEnrollment.objects.filter(pk=self.first.pk).exists())
+
+    def test_counselor_cannot_cancel(self):
+        second = self._second()
+        self.http.login(email=self.counselor.email, password="pass12345")
+        response = self.http.post(
+            reverse(
+                "admin_panel:enrollment_cancel",
+                kwargs={"enrollment_id": second.pk},
+            )
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(TrainingEnrollment.objects.filter(pk=second.pk).exists())
+
+    def test_original_enrollment_cannot_be_cancelled(self):
+        second = self._second()
+        response = self._cancel(self.first)
+        self.assertContains(response, MSG_CANCEL_ORIGINAL)
+        self.first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual(self.first.status, TrainingEnrollmentStatus.ACTIVE)
+        self.assertEqual(second.status, TrainingEnrollmentStatus.ACTIVE)
+        self.assertEqual(second.active_slot, 2)
+
+    def test_completed_additional_enrollment_cannot_be_cancelled(self):
+        second = self._second()
+        complete_training_enrollment(second)
+        self.http.login(email=self.admin.email, password="pass12345")
+        page = self.http.get(
+            reverse(
+                "admin_panel:enrollment_training_progress_detail",
+                kwargs={"enrollment_id": second.pk},
+            )
+        )
+        self.assertNotContains(page, ">등록 취소</button>")
+        self.assertContains(page, MSG_CANCEL_NOT_ACTIVE)
+        response = self._cancel(second)
+        self.assertContains(response, MSG_CANCEL_NOT_ACTIVE)
+        second.refresh_from_db()
+        self.first.refresh_from_db()
+        self.assertEqual(second.status, TrainingEnrollmentStatus.COMPLETED)
+        self.assertIsNone(second.active_slot)
+        self.assertEqual(self.first.status, TrainingEnrollmentStatus.ACTIVE)
+
+    def test_activity_created_during_validation_blocks_delete(self):
+        second = self._second()
+        client = _client("cancel-race-case@example.com", "검증내담")
+        created = {}
+
+        def add_activity(enrollment):
+            created["case"] = _case(
+                self.counselor,
+                client,
+                "CANCEL-RACE",
+                enrollment,
+                status=CaseStatus.ACTIVE,
+                submitted=False,
+            )
+            session = SupervisionSession.objects.create(
+                cohort=enrollment.cohort,
+                session_number=1,
+                scheduled_at=timezone.now() - timedelta(hours=1),
+                duration_minutes=50,
+                counseling_method=CounselingMethod.IN_PERSON,
+                status=SupervisionSessionStatus.COMPLETED,
+            )
+            created["attendance"] = SupervisionAttendance.objects.create(
+                session=session,
+                counselor=self.counselor.counselor_profile,
+                status=SupervisionAttendanceStatus.PRESENT,
+            )
+            created["post"] = CasePresentationPost.objects.create(
+                cohort=enrollment.cohort,
+                author=self.counselor,
+                title="검증발표",
+                file=SimpleUploadedFile("race.pdf", b"%PDF-1.4"),
+            )
+            return enrollment
+
+        with patch(
+            "apps.counseling.cohort_reenrollment._wait_for_cancel_race",
+            add_activity,
+        ):
+            with self.assertRaises(CohortReenrollmentError) as caught:
+                cancel_training_enrollment(second, actor=self.admin)
+        self.assertIn("상담사례", str(caught.exception))
+        self.assertIn("수퍼비전 출석", str(caught.exception))
+        self.assertIn("사례발표", str(caught.exception))
+        self.assertTrue(TrainingEnrollment.objects.filter(pk=second.pk).exists())
+        self.assertFalse(
+            LogEntry.objects.filter(object_id=str(second.pk)).exists()
+        )
+        self.assertEqual(
+            TrainingEnrollment.objects.get(pk=self.first.pk).status,
+            TrainingEnrollmentStatus.ACTIVE,
+        )
+
+
+class EnrollmentCancelConcurrencyTests(TransactionTestCase):
+    def test_concurrent_cancel_deletes_the_enrollment_once(self):
+        admin = _user("cancel-race-admin@example.com", "관리자", UserRole.ADMIN)
+        counselor = _counselor("cancel-race@example.com", "동시수련", 1)
+        first = TrainingEnrollment.objects.create(
+            counselor=counselor,
+            cohort=1,
+            status=TrainingEnrollmentStatus.ACTIVE,
+            started_at=timezone.now(),
+        )
+        second = TrainingEnrollment.objects.create(
+            counselor=counselor,
+            cohort=2,
+            status=TrainingEnrollmentStatus.ACTIVE,
+            started_at=timezone.now(),
+        )
+        barrier = threading.Barrier(2)
+        results = []
+
+        def worker():
+            try:
+                barrier.wait(timeout=10)
+                cancel_training_enrollment(second, actor=admin)
+                results.append("ok")
+            except CohortReenrollmentError as exc:
+                results.append(" ".join(exc.messages))
+            finally:
+                connection.close()
+
+        threads = [threading.Thread(target=worker) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=30)
+        self.assertFalse(TrainingEnrollment.objects.filter(pk=second.pk).exists())
+        self.assertEqual(results.count("ok"), 1)
+        self.assertEqual(len(results), 2)
+        self.assertTrue(
+            all(
+                item == "ok" or MSG_CANCEL_GONE in item or "겹쳤" in item
+                for item in results
+            )
+        )
+        self.assertEqual(
+            TrainingEnrollment.objects.get(pk=first.pk).status,
+            TrainingEnrollmentStatus.ACTIVE,
+        )
+        self.assertEqual(
+            TrainingEnrollment.objects.filter(counselor=counselor).count(),
+            1,
+        )
+
+    def test_activity_committed_during_validation_is_preserved(self):
+        admin = _user("cancel-live-admin@example.com", "관리자", UserRole.ADMIN)
+        counselor = _counselor("cancel-live@example.com", "검증수련", 1)
+        first = TrainingEnrollment.objects.create(
+            counselor=counselor,
+            cohort=1,
+            status=TrainingEnrollmentStatus.ACTIVE,
+            started_at=timezone.now(),
+        )
+        second = TrainingEnrollment.objects.create(
+            counselor=counselor,
+            cohort=2,
+            status=TrainingEnrollmentStatus.ACTIVE,
+            started_at=timezone.now(),
+        )
+        client = _client("cancel-live-client@example.com", "검증내담")
+        arrived = threading.Event()
+        release = threading.Event()
+        results = []
+
+        def hook(enrollment):
+            arrived.set()
+            if not release.wait(timeout=20):
+                raise TimeoutError("취소 검증 대기 시간이 지났습니다.")
+            return enrollment
+
+        def worker():
+            try:
+                with patch(
+                    "apps.counseling.cohort_reenrollment._wait_for_cancel_race",
+                    hook,
+                ):
+                    cancel_training_enrollment(second, actor=admin)
+                results.append("ok")
+            except CohortReenrollmentError as exc:
+                results.append(str(exc))
+            finally:
+                connection.close()
+
+        thread = threading.Thread(target=worker)
+        thread.start()
+        self.assertTrue(arrived.wait(timeout=20))
+        case = _case(
+            counselor,
+            client,
+            "CANCEL-LIVE",
+            second,
+            status=CaseStatus.ACTIVE,
+            submitted=False,
+        )
+        journal = CounselingJournal.objects.create(
+            case=case,
+            counselor=counselor,
+            session_number=1,
+            is_draft=False,
+            subjective="검증일지",
+        )
+        session = SupervisionSession.objects.create(
+            cohort=2,
+            session_number=1,
+            scheduled_at=timezone.now() - timedelta(hours=2),
+            duration_minutes=50,
+            counseling_method=CounselingMethod.IN_PERSON,
+            status=SupervisionSessionStatus.COMPLETED,
+        )
+        attendance = SupervisionAttendance.objects.create(
+            session=session,
+            counselor=counselor.counselor_profile,
+            status=SupervisionAttendanceStatus.PRESENT,
+        )
+        post = CasePresentationPost.objects.create(
+            cohort=2,
+            author=counselor,
+            title="검증발표",
+            file=SimpleUploadedFile("live.pdf", b"%PDF-1.4"),
+        )
+        first_journal = CounselingJournal.objects.create(
+            case=_case(
+                counselor,
+                _client("cancel-live-first@example.com", "기존내담"),
+                "CANCEL-LIVE-1",
+                first,
+                status=CaseStatus.ACTIVE,
+                submitted=False,
+            ),
+            counselor=counselor,
+            session_number=1,
+            is_draft=False,
+            subjective="1기유지",
+        )
+        release.set()
+        thread.join(timeout=30)
+        self.assertFalse(thread.is_alive())
+        self.assertTrue(results)
+        self.assertNotIn("ok", results)
+        self.assertIn("상담사례", results[0])
+        self.assertTrue(TrainingEnrollment.objects.filter(pk=second.pk).exists())
+        case.refresh_from_db()
+        journal.refresh_from_db()
+        attendance.refresh_from_db()
+        self.assertEqual(case.training_enrollment_id, second.pk)
+        self.assertEqual(journal.subjective, "검증일지")
+        self.assertEqual(attendance.status, SupervisionAttendanceStatus.PRESENT)
+        self.assertTrue(CasePresentationPost.objects.filter(pk=post.pk).exists())
+        self.assertEqual(
+            TrainingEnrollment.objects.get(pk=first.pk).status,
+            TrainingEnrollmentStatus.ACTIVE,
+        )
+        self.assertEqual(first_journal.subjective, "1기유지")

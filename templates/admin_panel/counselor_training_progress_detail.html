@@ -22,19 +22,35 @@
             </p>
             {% endif %}
         </div>
-        <div class="d-flex flex-wrap gap-2">
-            {% if training_enrollment.status == "ACTIVE" %}
-            <form method="post"
-                  action="{% url 'admin_panel:enrollment_complete' training_enrollment.pk %}"
-                  onsubmit="return confirm('이 기수만 종료합니다. 다른 기수와 상담기록은 그대로 둡니다.');">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-sm btn-outline-danger">이 기수 종료</button>
-            </form>
+        <div class="d-flex flex-column align-items-end gap-2">
+            {% if cancel_blockers %}
+            <div class="alert alert-warning py-2 px-3 mb-0 small" role="status">
+                {% for blocker in cancel_blockers %}<div>{{ blocker }}</div>{% endfor %}
+            </div>
             {% endif %}
-            <a href="{% url 'admin_panel:counselor_cohort_reenrollment' counselor.pk %}"
-               class="btn btn-sm btn-primary">새 기수 등록</a>
-            <a href="{% url 'admin_panel:training_progress' %}{% if list_cohort %}?cohort={{ list_cohort }}{% endif %}"
-               class="btn btn-sm btn-outline-secondary">← 수련현황 목록</a>
+            <div class="d-flex flex-wrap justify-content-end gap-2">
+                {% if training_enrollment.status == "ACTIVE" %}
+                <form method="post"
+                      action="{% url 'admin_panel:enrollment_complete' training_enrollment.pk %}"
+                      onsubmit="return confirm('이 기수만 종료합니다. 다른 기수와 상담기록은 그대로 둡니다.');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-danger">이 기수 종료</button>
+                </form>
+                {% endif %}
+                {% if show_cancel_button %}
+                <form method="post"
+                      action="{% url 'admin_panel:enrollment_cancel' training_enrollment.pk %}"
+                      onsubmit="return confirm('{{ counselor.name|escapejs }} 상담사의 {{ cohort }}기 등록을 취소합니다. 이 기수 등록만 삭제되며 다른 기수와 상담기록은 그대로 둡니다.');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-dark">등록 취소</button>
+                </form>
+                {% endif %}
+                <a href="{% url 'admin_panel:counselor_cohort_reenrollment' counselor.pk %}"
+                   class="btn btn-sm btn-primary">새 기수 등록</a>
+                <a href="{% url 'admin_panel:training_progress' %}{% if list_cohort %}?cohort={{ list_cohort }}{% endif %}"
+                   class="btn btn-sm btn-outline-secondary">← 수련현황 목록</a>
+            </div>
+            <p class="text-muted small mb-0">등록 취소는 활동 이력이 없는 진행 중 추가 기수만 삭제합니다. 최초 기수와 종료된 기수는 취소할 수 없습니다. 이 기수 종료는 등록을 완료 상태로 남깁니다.</p>
         </div>
     </div>
 </div>
