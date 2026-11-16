@@ -259,4 +259,4 @@ class CounselorDashboardEnrollmentTests(TestCase):
         self.assertEqual(progress["intake_required_count"], 0)
         self.assertEqual(progress["journal_completed_count"], 0)
         self.assertEqual(progress["training_completed_minutes"], 0)
-        self.assertNotContains(response, "접수면접")
+        self.assertNotContains(response, "접수면접</h3>")

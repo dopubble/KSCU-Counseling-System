@@ -78,6 +78,15 @@
     border-radius: 0.75rem;
 }
 
+.counselor-essential-form-row {
+    background: #fff;
+}
+
+.counselor-essential-form-name {
+    min-width: 0;
+    line-height: 1.4;
+}
+
 .counselor-table-card {
     border-radius: 0.75rem;
     overflow: hidden;

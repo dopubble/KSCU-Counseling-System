@@ -34,6 +34,7 @@ from apps.counseling.apply_registration import (
     normalize_account_email,
 )
 
+from .essential_forms import ESSENTIAL_FORMS
 from .emailing import (
     send_cancel_approval_notification,
     send_counselor_direct_cancel_notification,
@@ -2096,6 +2097,7 @@ def counselor_dashboard(request):
             "certificate_approval": certificate_approval,
             "certificate_can_issue": certificate_approval["can_issue"],
             "certificate_issue_message": certificate_approval["issue_message"],
+            "essential_forms": ESSENTIAL_FORMS,
         },
     )
 

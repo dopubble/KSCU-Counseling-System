@@ -3,6 +3,7 @@ from django.urls import path
 from apps.scheduling.views import appointment_manage
 
 from . import chat_views, views
+from . import views_essential_forms
 from . import views_presentation_board
 from . import views_training_certificate
 
@@ -10,6 +11,11 @@ app_name = "counselor"
 
 urlpatterns = [
     path("", views.counselor_dashboard, name="dashboard"),
+    path(
+        "essential-forms/<slug:form_key>/",
+        views_essential_forms.counselor_essential_form_download,
+        name="essential_form_download",
+    ),
     path(
         "training-certificate/",
         views_training_certificate.counselor_training_certificate,
