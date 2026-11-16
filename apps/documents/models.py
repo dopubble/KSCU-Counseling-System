@@ -141,13 +141,11 @@ class ConsentDocument(models.Model):
         return f"{self.client.name} - {self.get_doc_type_display()}"
 
     def build_storage_basename(self, ext: str) -> str:
-        """저장 경로용 이름. 업로드 시점의 프로필 기수를 유지한다."""
-        from apps.counseling.cohort_journal_service import get_counselor_cohort
+        """저장 경로용 이름. 사례가 속한 수련 기수를 쓴다."""
+        from apps.counseling.cohort_journal_service import supervision_cohort_for_case
 
         case = getattr(self.application, "case", None)
-        counselor = case.counselor if case else None
-        cohort = get_counselor_cohort(counselor) if counselor else None
-        return self._format_consent_basename(cohort, ext)
+        return self._format_consent_basename(supervision_cohort_for_case(case), ext)
 
     def record_cohort_for_download(self) -> int | None:
         """다운로드 파일명에 쓸 기수. 사례 Enrollment가 있으면 그 기수다."""

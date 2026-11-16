@@ -13,9 +13,14 @@ from unittest.mock import patch
 from apps.accounts.models import CounselorProfile, SupervisorProfile, User, UserRole, UserStatus
 from apps.counseling import cohort_reenrollment as cohort_reenrollment_module
 from apps.counseling.cohort_reenrollment import (
+    MSG_ACTIVE_LIMIT,
+    MSG_CONCURRENT,
     CohortReenrollmentError,
+    complete_training_enrollment,
     register_next_cohort,
 )
+from apps.counseling.presentation_board import user_can_create_presentation_post
+from apps.counseling.training_progress import get_counselor_training_progress
 from apps.counseling.journal_permissions import user_can_view_journal
 from apps.counseling.models import (
     ApplicationStatus,
@@ -302,9 +307,9 @@ class CohortReenrollmentTests(TestCase):
         second = TrainingEnrollment.objects.get(counselor=self.counselor, cohort=2)
 
         self.assertEqual(self.counselor.email, "reenroll-hong@example.com")
-        self.assertEqual(profile.cohort, 2)
-        self.assertEqual(self.first.status, TrainingEnrollmentStatus.COMPLETED)
-        self.assertIsNotNone(self.first.completed_at)
+        self.assertEqual(profile.cohort, 1)
+        self.assertEqual(self.first.status, TrainingEnrollmentStatus.ACTIVE)
+        self.assertIsNone(self.first.completed_at)
         self.assertEqual(second.status, TrainingEnrollmentStatus.ACTIVE)
         self.assertIsNotNone(second.started_at)
         self.assertIsNone(second.completed_at)
@@ -312,7 +317,7 @@ class CohortReenrollmentTests(TestCase):
             TrainingEnrollment.objects.filter(
                 counselor=self.counselor, status=TrainingEnrollmentStatus.ACTIVE
             ).count(),
-            1,
+            2,
         )
         self.assertEqual(self.case.training_enrollment_id, self.first.pk)
         self.assertEqual(self.case.counselor_id, self.counselor.pk)
@@ -381,9 +386,13 @@ class CohortReenrollmentTests(TestCase):
 
         self.http.login(email=self.counselor.email, password="pass12345")
         dashboard = self.http.get(reverse("counselor:dashboard"))
-        self.assertContains(dashboard, "2기")
-        self.assertContains(dashboard, "(현재)")
-        self.assertNotContains(dashboard, "REENROLL-1")
+        self.assertContains(dashboard, "1기 / 진행 중")
+        self.assertContains(dashboard, "2기 / 진행 중")
+        self.assertContains(dashboard, "REENROLL-1")
+        cohort_two_dash = self.http.get(
+            reverse("counselor:dashboard"), {"enrollment": str(second.pk)}
+        )
+        self.assertNotContains(cohort_two_dash, "REENROLL-1")
         cohort_one_dash = self.http.get(
             reverse("counselor:dashboard"), {"enrollment": str(self.first.pk)}
         )
@@ -401,7 +410,9 @@ class CohortReenrollmentTests(TestCase):
             counseling_method=CounselingMethod.REMOTE,
             status=ApplicationStatus.WAITING_MATCH,
         )
-        later_case = assign_counselor(application, self.counselor, total_sessions=4)
+        later_case = assign_counselor(
+            application, self.counselor, total_sessions=4, training_enrollment=second
+        )
         self.assertEqual(later_case.training_enrollment_id, second.pk)
         self.case.refresh_from_db()
         self.assertEqual(self.case.training_enrollment_id, self.first.pk)
@@ -418,12 +429,23 @@ class CohortReenrollmentTests(TestCase):
         later_case.status = CaseStatus.CLOSED
         later_case.records_submitted_at = timezone.now()
         later_case.save(update_fields=["status", "records_submitted_at"])
+        blocked = self._post("4")
+        self.assertContains(blocked, MSG_ACTIVE_LIMIT)
+        self.assertEqual(
+            TrainingEnrollment.objects.filter(counselor=self.counselor).count(),
+            2,
+        )
+        complete_training_enrollment(self.first)
         third = self._post("4")
         self.assertContains(third, "4기 수련 등록이 완료되었습니다.")
         self.assertEqual(
             TrainingEnrollment.objects.filter(counselor=self.counselor).count(),
             3,
         )
+        self.first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual(self.first.status, TrainingEnrollmentStatus.COMPLETED)
+        self.assertEqual(second.status, TrainingEnrollmentStatus.ACTIVE)
         self.assertEqual(
             TrainingEnrollment.objects.get(counselor=self.counselor, cohort=4).status,
             TrainingEnrollmentStatus.ACTIVE,
@@ -462,39 +484,48 @@ class CohortReenrollmentTests(TestCase):
         guarded.login(email=self.admin.email, password="pass12345")
         self.assertEqual(guarded.post(self.url, {"cohort": "2"}).status_code, 403)
 
-    def test_blocks_open_unsubmitted_and_upcoming_work(self):
+    def test_open_unsubmitted_and_upcoming_work_does_not_block(self):
         self.case.status = CaseStatus.ACTIVE
         self.case.records_submitted_at = None
         self.case.records_submitted_by = None
         self.case.save(update_fields=["status", "records_submitted_at", "records_submitted_by"])
-        _appointment(
+        upcoming = _appointment(
             self.counselor,
             self.client_user,
             self.case,
             AppointmentStatus.CONFIRMED,
             timezone.now() + timedelta(days=3),
         )
-        _appointment(
-            self.counselor,
-            self.client_user,
-            self.case,
-            AppointmentStatus.CANCELLED,
-            timezone.now() + timedelta(days=4),
-        )
         response = self._post("2")
-        self.assertContains(response, "진행 중인 상담사례가 있어")
-        self.assertContains(response, "최종 제출되지 않은 상담기록이 있어")
-        self.assertContains(response, "예정된 상담 예약이 있어")
-        self.assertContains(response, "(1건)")
-        self._assert_registration_unchanged()
+        self.assertContains(response, "2기 수련 등록이 완료되었습니다.")
+        self.first.refresh_from_db()
+        self.case.refresh_from_db()
+        upcoming.refresh_from_db()
+        self.counselor.counselor_profile.refresh_from_db()
+        second = TrainingEnrollment.objects.get(counselor=self.counselor, cohort=2)
+        self.assertEqual(self.first.status, TrainingEnrollmentStatus.ACTIVE)
+        self.assertEqual(second.status, TrainingEnrollmentStatus.ACTIVE)
+        self.assertEqual(self.counselor.counselor_profile.cohort, 1)
+        self.assertEqual(self.case.status, CaseStatus.ACTIVE)
+        self.assertIsNone(self.case.records_submitted_at)
+        self.assertEqual(self.case.training_enrollment_id, self.first.pk)
+        self.assertEqual(upcoming.status, AppointmentStatus.CONFIRMED)
 
-    def test_closed_unsubmitted_case_blocks_without_changing_data(self):
+    def test_closed_unsubmitted_case_can_register_without_submitting(self):
         self.case.records_submitted_at = None
-        self.case.save(update_fields=["records_submitted_at"])
+        self.case.records_submitted_by = None
+        self.case.save(update_fields=["records_submitted_at", "records_submitted_by"])
         response = self._post("3")
-        self.assertContains(response, "최종 제출되지 않은 상담기록이 있어")
-        self.assertNotContains(response, "3기 수련 등록이 완료되었습니다.")
-        self._assert_registration_unchanged()
+        self.assertContains(response, "3기 수련 등록이 완료되었습니다.")
+        self.first.refresh_from_db()
+        self.case.refresh_from_db()
+        self.journal.refresh_from_db()
+        self.termination.refresh_from_db()
+        self.assertEqual(self.first.status, TrainingEnrollmentStatus.ACTIVE)
+        self.assertIsNone(self.case.records_submitted_at)
+        self.assertEqual(self.case.training_enrollment_id, self.first.pk)
+        self.assertEqual(self.journal.subjective, "일기기밀")
+        self.assertEqual(self.termination.termination_reason, "종결비밀")
 
     def test_duplicate_and_lower_cohort_are_rejected(self):
         duplicate = self._post("1")
@@ -607,11 +638,16 @@ class CohortReenrollmentTests(TestCase):
         self.first.refresh_from_db()
         self.assertEqual(self.first.status, TrainingEnrollmentStatus.ACTIVE)
 
+        TrainingEnrollment.objects.create(
+            counselor=self.counselor,
+            cohort=9,
+            status=TrainingEnrollmentStatus.ACTIVE,
+        )
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 TrainingEnrollment.objects.create(
                     counselor=self.counselor,
-                    cohort=9,
+                    cohort=10,
                     status=TrainingEnrollmentStatus.ACTIVE,
                 )
 
@@ -648,9 +684,9 @@ class CohortReenrollmentTests(TestCase):
         self.case.refresh_from_db()
         self.assertEqual(self.counselor.pk, self.user_id)
         self.assertEqual(self.counselor.email, self.email)
-        self.assertEqual(self.first.status, TrainingEnrollmentStatus.COMPLETED)
+        self.assertEqual(self.first.status, TrainingEnrollmentStatus.ACTIVE)
         self.assertEqual(second.status, TrainingEnrollmentStatus.ACTIVE)
-        self.assertEqual(self.counselor.counselor_profile.cohort, 2)
+        self.assertEqual(self.counselor.counselor_profile.cohort, 1)
         self.assertEqual(self.case.training_enrollment_id, self.first.pk)
 
         self.http.login(email=self.counselor.email, password="pass12345")
@@ -659,16 +695,17 @@ class CohortReenrollmentTests(TestCase):
     def test_second_request_for_the_same_cohort_does_not_duplicate(self):
         first_response = self._post("2")
         self.assertContains(first_response, "2기 수련 등록이 완료되었습니다.")
-        completed_at = TrainingEnrollment.objects.get(pk=self.first.pk).completed_at
+        self.first.refresh_from_db()
+        self.assertIsNone(self.first.completed_at)
         again = self._post("2")
         self.assertContains(again, "이미 등록된 기수입니다.")
         self.first.refresh_from_db()
         self.case.refresh_from_db()
         self.v3_approval.refresh_from_db()
         self.counselor.counselor_profile.refresh_from_db()
-        self.assertEqual(self.first.status, TrainingEnrollmentStatus.COMPLETED)
-        self.assertEqual(self.first.completed_at, completed_at)
-        self.assertEqual(self.counselor.counselor_profile.cohort, 2)
+        self.assertEqual(self.first.status, TrainingEnrollmentStatus.ACTIVE)
+        self.assertIsNone(self.first.completed_at)
+        self.assertEqual(self.counselor.counselor_profile.cohort, 1)
         self.assertEqual(
             TrainingEnrollment.objects.filter(counselor=self.counselor, cohort=2).count(),
             1,
@@ -696,7 +733,9 @@ class CohortReenrollmentTests(TestCase):
         self.case.refresh_from_db()
         self.assertEqual(self.case.training_enrollment_id, self.first.pk)
         second = TrainingEnrollment.objects.get(counselor=self.counselor, cohort=2)
-        created = assign_counselor(waiting, self.counselor, total_sessions=6)
+        created = assign_counselor(
+            waiting, self.counselor, total_sessions=6, training_enrollment=second
+        )
         self.assertEqual(created.training_enrollment_id, second.pk)
         self.case.refresh_from_db()
         self.assertEqual(self.case.training_enrollment_id, self.first.pk)
@@ -795,7 +834,7 @@ class IsolatedCertificateReenrollmentTests(TestCase):
                 training_enrollment=second
             ).exists()
         )
-        self.assertEqual(enrollment.status, TrainingEnrollmentStatus.COMPLETED)
+        self.assertEqual(enrollment.status, TrainingEnrollmentStatus.ACTIVE)
         first_status = get_training_certificate_approval_status(
             counselor, training_enrollment=enrollment
         )
@@ -901,3 +940,322 @@ class CohortReenrollmentConsentTests(TestCase):
         self.assertNotContains(consent_two, "동의내담")
         case.refresh_from_db()
         self.assertEqual(case.training_enrollment_id, enrollment.pk)
+
+
+class DualActiveCohortPolicyTests(TestCase):
+    """1기 상담을 유지한 채 2기에 등록하고, 기록과 실적은 기수별로 남긴다."""
+
+    def setUp(self):
+        self.admin = _user("dual-admin@example.com", "관리자", UserRole.ADMIN)
+        self.counselor = _counselor("dual-counselor@example.com", "김수련", 1)
+        self.first = TrainingEnrollment.objects.create(
+            counselor=self.counselor,
+            cohort=1,
+            status=TrainingEnrollmentStatus.ACTIVE,
+            started_at=timezone.now() - timedelta(days=20),
+        )
+        self.http = Client()
+
+    def _register(self, cohort):
+        self.http.login(email=self.admin.email, password="pass12345")
+        return self.http.post(
+            reverse(
+                "admin_panel:counselor_cohort_reenrollment",
+                kwargs={"counselor_id": self.counselor.pk},
+            ),
+            {"cohort": str(cohort)},
+            follow=True,
+        )
+
+    def test_open_cases_stay_on_cohort_one_and_journals_remain_editable(self):
+        cases = []
+        appointments = []
+        for index in range(3):
+            client = _client(f"dual-open-{index}@example.com", f"내담{index}")
+            case = _case(
+                self.counselor,
+                client,
+                f"DUAL-OPEN-{index}",
+                self.first,
+                status=CaseStatus.ACTIVE,
+                submitted=False,
+            )
+            cases.append(case)
+            appointments.append(
+                _appointment(
+                    self.counselor,
+                    client,
+                    case,
+                    AppointmentStatus.CONFIRMED,
+                    timezone.now() + timedelta(days=index + 1),
+                )
+            )
+        response = self._register(2)
+        self.assertContains(response, "2기 수련 등록이 완료되었습니다.")
+        self.first.refresh_from_db()
+        second = TrainingEnrollment.objects.get(counselor=self.counselor, cohort=2)
+        self.assertEqual(self.first.status, TrainingEnrollmentStatus.ACTIVE)
+        self.assertIsNone(self.first.completed_at)
+        self.assertEqual(second.status, TrainingEnrollmentStatus.ACTIVE)
+        self.counselor.counselor_profile.refresh_from_db()
+        self.assertEqual(self.counselor.counselor_profile.cohort, 1)
+        self.assertEqual(
+            list(Case.objects.filter(training_enrollment=self.first).order_by("case_number")),
+            cases,
+        )
+        self.assertFalse(Case.objects.filter(training_enrollment=second).exists())
+        for case, appointment in zip(cases, appointments):
+            case.refresh_from_db()
+            appointment.refresh_from_db()
+            self.assertEqual(case.status, CaseStatus.ACTIVE)
+            self.assertIsNone(case.records_submitted_at)
+            self.assertEqual(appointment.status, AppointmentStatus.CONFIRMED)
+            self.assertEqual(appointment.case_id, case.pk)
+        self.http.login(email=self.counselor.email, password="pass12345")
+        journal_page = self.http.get(
+            reverse("counselor:journal_create", kwargs={"pk": cases[0].pk})
+        )
+        self.assertEqual(journal_page.status_code, 200)
+
+    def test_closed_unsubmitted_records_stay_editable_without_auto_submit(self):
+        client = _client("dual-closed@example.com", "종결내담")
+        case = _case(
+            self.counselor,
+            client,
+            "DUAL-CLOSED",
+            self.first,
+            status=CaseStatus.CLOSED,
+            submitted=False,
+        )
+        CounselingJournal.objects.create(
+            case=case,
+            counselor=self.counselor,
+            session_number=1,
+            is_draft=False,
+            subjective="1기기밀",
+        )
+        response = self._register(2)
+        self.assertContains(response, "2기 수련 등록이 완료되었습니다.")
+        case.refresh_from_db()
+        self.assertIsNone(case.records_submitted_at)
+        self.assertIsNone(case.records_submitted_by_id)
+        self.assertEqual(case.training_enrollment_id, self.first.pk)
+        self.http.login(email=self.counselor.email, password="pass12345")
+        self.assertEqual(
+            self.http.get(reverse("counselor:journal_create", kwargs={"pk": case.pk})).status_code,
+            200,
+        )
+
+    def test_records_and_training_stats_stay_on_the_selected_cohort(self):
+        second = TrainingEnrollment.objects.create(
+            counselor=self.counselor,
+            cohort=2,
+            status=TrainingEnrollmentStatus.ACTIVE,
+        )
+        first_client = _client("dual-split-1@example.com", "일기내담")
+        second_client = _client("dual-split-2@example.com", "이기내담")
+        first_case = assign_counselor(
+            CounselingApplication.objects.create(
+                client=first_client,
+                counseling_types=["개인상담"],
+                reason="1기",
+                counseling_method=CounselingMethod.IN_PERSON,
+                status=ApplicationStatus.WAITING_MATCH,
+            ),
+            self.counselor,
+            total_sessions=4,
+            training_enrollment=self.first,
+        )
+        second_case = assign_counselor(
+            CounselingApplication.objects.create(
+                client=second_client,
+                counseling_types=["개인상담"],
+                reason="2기",
+                counseling_method=CounselingMethod.IN_PERSON,
+                status=ApplicationStatus.WAITING_MATCH,
+            ),
+            self.counselor,
+            total_sessions=4,
+            training_enrollment=second,
+        )
+        CounselingJournal.objects.create(
+            case=first_case,
+            counselor=self.counselor,
+            session_number=1,
+            is_draft=False,
+            subjective="1기기록",
+        )
+        CounselingJournal.objects.create(
+            case=second_case,
+            counselor=self.counselor,
+            session_number=1,
+            is_draft=False,
+            subjective="2기기록",
+        )
+        session = SupervisionSession.objects.create(
+            cohort=1,
+            session_number=1,
+            scheduled_at=timezone.now() - timedelta(days=1),
+            duration_minutes=50,
+            counseling_method=CounselingMethod.IN_PERSON,
+            status=SupervisionSessionStatus.COMPLETED,
+        )
+        SupervisionAttendance.objects.create(
+            session=session,
+            counselor=self.counselor.counselor_profile,
+            status=SupervisionAttendanceStatus.PRESENT,
+        )
+        CasePresentationPost.objects.create(
+            cohort=1,
+            author=self.counselor,
+            case=first_case,
+            title="1기발표",
+            file=SimpleUploadedFile("one.pdf", b"%PDF-1.4"),
+        )
+        first_progress = get_counselor_training_progress(
+            self.counselor, training_enrollment=self.first
+        )
+        second_progress = get_counselor_training_progress(
+            self.counselor, training_enrollment=second
+        )
+        self.assertEqual(first_case.training_enrollment_id, self.first.pk)
+        self.assertEqual(second_case.training_enrollment_id, second.pk)
+        self.assertEqual(first_progress["journal_completed_count"], 1)
+        self.assertEqual(second_progress["journal_completed_count"], 1)
+        self.assertEqual(first_progress["supervision_attended_minutes"], 50)
+        self.assertEqual(second_progress["supervision_attended_minutes"], 0)
+        self.assertEqual(first_progress["case_report_submitted_count"], 1)
+        self.assertEqual(second_progress["case_report_submitted_count"], 0)
+        self.assertTrue(user_can_create_presentation_post(self.counselor, 1))
+        self.assertTrue(user_can_create_presentation_post(self.counselor, 2))
+        self.http.login(email=self.counselor.email, password="pass12345")
+        cohort_one = self.http.get(
+            reverse("counselor:dashboard"), {"enrollment": str(self.first.pk)}
+        )
+        cohort_two = self.http.get(
+            reverse("counselor:dashboard"), {"enrollment": str(second.pk)}
+        )
+        self.assertContains(cohort_one, first_case.case_number)
+        self.assertNotContains(cohort_one, second_case.case_number)
+        self.assertContains(cohort_two, second_case.case_number)
+        self.assertNotContains(cohort_two, first_case.case_number)
+
+    def test_completing_cohort_one_leaves_cohort_two_active(self):
+        client = _client("dual-complete@example.com", "종료내담")
+        case = _case(
+            self.counselor,
+            client,
+            "DUAL-DONE",
+            self.first,
+            status=CaseStatus.ACTIVE,
+            submitted=False,
+        )
+        submitted_at = case.records_submitted_at
+        self._register(2)
+        second = TrainingEnrollment.objects.get(counselor=self.counselor, cohort=2)
+        self.http.login(email=self.admin.email, password="pass12345")
+        response = self.http.post(
+            reverse(
+                "admin_panel:enrollment_complete",
+                kwargs={"enrollment_id": self.first.pk},
+            )
+        )
+        self.assertRedirects(
+            response,
+            reverse(
+                "admin_panel:enrollment_training_progress_detail",
+                kwargs={"enrollment_id": self.first.pk},
+            ),
+        )
+        self.first.refresh_from_db()
+        second.refresh_from_db()
+        case.refresh_from_db()
+        self.counselor.counselor_profile.refresh_from_db()
+        self.assertEqual(self.first.status, TrainingEnrollmentStatus.COMPLETED)
+        self.assertIsNotNone(self.first.completed_at)
+        self.assertIsNone(self.first.active_slot)
+        self.assertEqual(second.status, TrainingEnrollmentStatus.ACTIVE)
+        self.assertEqual(case.training_enrollment_id, self.first.pk)
+        self.assertEqual(case.records_submitted_at, submitted_at)
+        self.assertEqual(self.counselor.counselor_profile.cohort, 1)
+        self.http.login(email=self.counselor.email, password="pass12345")
+        dashboard = self.http.get(
+            reverse("counselor:dashboard"), {"enrollment": str(second.pk)}
+        )
+        self.assertEqual(dashboard.status_code, 200)
+        self.assertEqual(dashboard.context["selected_training_enrollment"], second)
+        self.assertFalse(user_can_create_presentation_post(self.counselor, 1))
+        self.assertTrue(user_can_create_presentation_post(self.counselor, 2))
+
+    def test_duplicate_cohort_and_third_active_are_rejected(self):
+        duplicate = self._register(1)
+        self.assertContains(duplicate, "이미 등록된 기수입니다.")
+        self.assertEqual(TrainingEnrollment.objects.filter(counselor=self.counselor).count(), 1)
+        with patch(
+            "apps.counseling.cohort_reenrollment.TrainingEnrollment.objects.create",
+            side_effect=IntegrityError("slot"),
+        ):
+            with self.assertRaises(CohortReenrollmentError) as caught:
+                register_next_cohort(self.counselor, "2")
+        self.assertEqual(caught.exception.messages, [MSG_CONCURRENT])
+        self.assertFalse(
+            TrainingEnrollment.objects.filter(counselor=self.counselor, cohort=2).exists()
+        )
+        self._register(2)
+        third = self._register(3)
+        self.assertContains(third, MSG_ACTIVE_LIMIT)
+        self.assertFalse(
+            TrainingEnrollment.objects.filter(counselor=self.counselor, cohort=3).exists()
+        )
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                TrainingEnrollment.objects.create(
+                    counselor=self.counselor,
+                    cohort=3,
+                    status=TrainingEnrollmentStatus.ACTIVE,
+                )
+        self.assertEqual(
+            TrainingEnrollment.objects.filter(
+                counselor=self.counselor, status=TrainingEnrollmentStatus.ACTIVE
+            ).count(),
+            2,
+        )
+
+    def test_record_edit_lock_follows_records_submitted_at_only(self):
+        open_client = _client("dual-lock-open@example.com", "미제출내담")
+        locked_client = _client("dual-lock-closed@example.com", "제출내담")
+        open_case = _case(
+            self.counselor,
+            open_client,
+            "DUAL-UNLOCKED",
+            self.first,
+            status=CaseStatus.ACTIVE,
+            submitted=False,
+        )
+        locked_case = _case(
+            self.counselor,
+            locked_client,
+            "DUAL-LOCKED",
+            self.first,
+            status=CaseStatus.CLOSED,
+            submitted=True,
+        )
+        locked_at = locked_case.records_submitted_at
+        self._register(2)
+        open_case.refresh_from_db()
+        locked_case.refresh_from_db()
+        self.assertIsNone(open_case.records_submitted_at)
+        self.assertEqual(locked_case.records_submitted_at, locked_at)
+        self.http.login(email=self.counselor.email, password="pass12345")
+        self.assertEqual(
+            self.http.get(
+                reverse("counselor:journal_create", kwargs={"pk": open_case.pk})
+            ).status_code,
+            200,
+        )
+        self.assertEqual(
+            self.http.get(
+                reverse("counselor:journal_create", kwargs={"pk": locked_case.pk})
+            ).status_code,
+            403,
+        )

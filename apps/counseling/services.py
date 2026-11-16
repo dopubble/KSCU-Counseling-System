@@ -772,6 +772,7 @@ def assign_counselor(
     *,
     total_sessions: int = 10,
     assigned_method: str | None = None,
+    training_enrollment=None,
 ) -> Case:
     """
     상담사 배정: 신청 상태를 진행 중으로 변경하고 활성 사례(Case) 생성·갱신.
@@ -787,7 +788,7 @@ def assign_counselor(
     if total_sessions < 1:
         raise ValueError("총 회기 수는 1 이상이어야 합니다.")
 
-    from .training_enrollment import require_active_training_enrollment
+    from .training_enrollment import enrollment_for_new_case
 
     existing = (
         Case.objects.filter(application=application)
@@ -799,7 +800,9 @@ def assign_counselor(
         or existing.counselor_id != counselor.pk
         or existing.training_enrollment_id is None
     )
-    enrollment = require_active_training_enrollment(counselor) if needs_link else None
+    enrollment = (
+        enrollment_for_new_case(counselor, training_enrollment) if needs_link else None
+    )
 
     application.status = ApplicationStatus.IN_PROGRESS
     application.save(update_fields=["status", "updated_at"])
@@ -1007,16 +1010,16 @@ def unsubmit_case_records(case: Case) -> bool:
     return True
 
 
-def reassign_counselor(case: Case, counselor: User) -> Case:
-    """기존 사례의 담당 상담사 변경"""
+def reassign_counselor(case: Case, counselor: User, training_enrollment=None) -> Case:
+    """기존 사례의 담당 상담사 변경. 이미 연결된 기수는 상담사가 그대로면 유지한다."""
     assert_case_records_unlocked(case)
     if counselor.role != UserRole.COUNSELOR:
         raise ValueError("선택한 사용자는 상담사가 아닙니다.")
-    from .training_enrollment import require_active_training_enrollment
+    from .training_enrollment import enrollment_for_new_case
 
     needs_link = case.counselor_id != counselor.pk or case.training_enrollment_id is None
     if needs_link:
-        case.training_enrollment = require_active_training_enrollment(counselor)
+        case.training_enrollment = enrollment_for_new_case(counselor, training_enrollment)
     case.counselor = counselor
     case.save(update_fields=["counselor", "training_enrollment"])
     application = case.application

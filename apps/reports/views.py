@@ -58,13 +58,23 @@ def _parse_cohort_param(raw) -> int | None:
 
 
 def get_available_cohorts():
-    """등록된 기수 목록 (내림차순)."""
-    return list(
-        CounselorProfile.objects.exclude(cohort__isnull=True)
-        .values_list("cohort", flat=True)
-        .distinct()
-        .order_by("-cohort")
+    """등록된 기수 목록 (내림차순). 프로필 기수와 수련 등록 기수를 함께 본다."""
+    profile_cohorts = CounselorProfile.objects.exclude(cohort__isnull=True).values_list(
+        "cohort", flat=True
     )
+    enrolled = TrainingEnrollment.objects.values_list("cohort", flat=True)
+    return sorted({int(value) for value in (*profile_cohorts, *enrolled)}, reverse=True)
+
+
+def counselor_enrollment_label(profile) -> str:
+    enrollments = list(profile.user.training_enrollments.all())
+    if enrollments:
+        return ", ".join(
+            f"{item.cohort}기 {item.get_status_display()}" for item in enrollments
+        )
+    if profile.cohort:
+        return f"{profile.cohort}기"
+    return ""
 
 
 def _csv_response(filename: str, header: list[str], rows: list[list]) -> HttpResponse:
@@ -383,11 +393,15 @@ def counselor_list(request):
     profiles = (
         CounselorProfile.objects.select_related("user")
         .filter(user__role=UserRole.COUNSELOR)
+        .prefetch_related("user__training_enrollments")
         .annotate(enrollment_count=Count("user__training_enrollments"))
         .order_by("cohort", "user__name")
     )
     if selected_cohort is not None:
-        profiles = profiles.filter(cohort=selected_cohort)
+        profiles = profiles.filter(
+            Q(user__training_enrollments__cohort=selected_cohort)
+            | Q(user__training_enrollments__isnull=True, cohort=selected_cohort)
+        ).distinct()
     if search:
         profiles = profiles.filter(user__name__icontains=search)
 
@@ -399,7 +413,7 @@ def counselor_list(request):
                 p.user.name,
                 p.user.email,
                 p.user.phone or "",
-                p.cohort or "",
+                counselor_enrollment_label(p),
                 "Y" if p.is_approved else "N",
                 p.user.get_status_display(),
                 p.user.created_at.strftime("%Y-%m-%d"),

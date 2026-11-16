@@ -15,7 +15,7 @@ from django.utils.http import content_disposition_header
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from apps.accounts.decorators import counselor_required, presentation_board_viewer_required
-from apps.accounts.models import CounselorProfile
+from apps.accounts.models import CounselorProfile, UserRole
 from apps.counseling.cohort_journal_service import get_counselor_cohort
 from apps.counseling.forms import (
     PresentationBoardCommentEditForm,
@@ -33,6 +33,7 @@ from apps.counseling.presentation_board import (
     PRESENTATION_FILE_PASSWORD_MIN_LENGTH,
     PRESENTATION_FILE_PASSWORD_NOTICE,
     PRESENTATION_FORM_TEMPLATES,
+    counselor_presentation_cohorts,
     counselor_profile_cohort_matches,
     count_presentation_comment_peers,
     count_presentation_peer_submissions,
@@ -273,7 +274,13 @@ def presentation_board(request):
     cohort_filter = _resolve_list_cohort_filter(request)
     posts = list(_presentation_posts_query(cohort_filter))
     viewer_cohort = get_counselor_cohort(request.user)
-    can_filter = user_can_browse_all_presentation_cohorts(request.user)
+    can_browse_all = user_can_browse_all_presentation_cohorts(request.user)
+    own_cohorts = (
+        sorted(counselor_presentation_cohorts(request.user))
+        if request.user.role == UserRole.COUNSELOR
+        else []
+    )
+    can_filter = can_browse_all or len(own_cohorts) > 1
     if cohort_filter is not None:
         page_subtitle = f"{cohort_filter}기 동기 수퍼비전 · 사례발표 자료 공유"
         list_heading = f"{cohort_filter}기 게시글"
@@ -304,7 +311,10 @@ def presentation_board(request):
             "is_staff_viewer": user_is_platform_staff(request.user),
             "is_supervisor_viewer": user_is_supervisor_viewer(request.user),
             "can_filter_cohorts": can_filter,
-            "cohort_options": presentation_board_cohort_options() if can_filter else [],
+            "cohort_filter_allows_all": can_browse_all,
+            "cohort_options": (
+                presentation_board_cohort_options() if can_browse_all else own_cohorts
+            ),
             "page_subtitle": page_subtitle,
             "list_heading": list_heading,
             "show_cohort_column": can_filter and cohort_filter is None,

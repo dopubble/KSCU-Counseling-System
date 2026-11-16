@@ -9,12 +9,14 @@ from apps.accounts.decorators import role_required
 from apps.accounts.models import CounselorProfile, User, UserRole
 from apps.counseling.cohort_reenrollment import (
     CohortReenrollmentError,
+    complete_training_enrollment,
     describe_cohort_reenrollment,
     register_next_cohort,
 )
 from apps.counseling.models import TrainingEnrollment
 from apps.counseling.training_certificate import get_training_certificate_approval_status
 from apps.counseling.training_enrollment import (
+    counselor_training_enrollments,
     resolve_legacy_counselor_training_enrollment,
     training_enrollment_cohorts,
 )
@@ -125,6 +127,7 @@ def render_enrollment_training_progress(request, enrollment, template):
                 counselor,
                 training_enrollment=enrollment,
             ),
+            "counselor_enrollments": counselor_training_enrollments(counselor),
         },
     )
 
@@ -185,6 +188,27 @@ def admin_enrollment_training_progress_detail(request, enrollment_id):
         request,
         enrollment,
         "admin_panel/counselor_training_progress_detail.html",
+    )
+
+
+@role_required(UserRole.ADMIN)
+def admin_complete_training_enrollment(request, enrollment_id):
+    """한 기수만 종료한다. 다른 기수와 상담기록은 바꾸지 않는다."""
+    enrollment = get_object_or_404(
+        TrainingEnrollment.objects.select_related("counselor"),
+        pk=enrollment_id,
+        counselor__role=UserRole.COUNSELOR,
+    )
+    if request.method == "POST":
+        try:
+            complete_training_enrollment(enrollment)
+        except CohortReenrollmentError as exc:
+            messages.error(request, " ".join(exc.messages))
+        else:
+            messages.success(request, f"{enrollment.cohort}기 수련을 종료했습니다.")
+    return redirect(
+        "admin_panel:enrollment_training_progress_detail",
+        enrollment_id=enrollment.pk,
     )
 
 

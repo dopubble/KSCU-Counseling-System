@@ -55,6 +55,8 @@ def counselor_visible_supervision_cohorts(counselor) -> set[int]:
             "cohort", flat=True
         )
     }
+    # 등록이 없거나 프로필과 같은 기수 하나뿐일 때만 프로필 기수를 보탠다.
+    # 프로필이 1기이고 2기 등록만 있는 사람을 1기 목록에 넣지 않는다.
     legacy = legacy_supervision_cohort(counselor)
     if legacy:
         cohorts.add(int(legacy))
@@ -118,16 +120,13 @@ def get_cohort_journals_for_supervision(
     if max_session < 1:
         return {}
 
+    if allowed_cohorts is not None and not allowed_cohorts:
+        return {}
     qs = CounselingJournal.objects.filter(
         is_draft=False,
         session_number__gte=1,
         session_number__lte=max_session,
-        counselor__counselor_profile__cohort__isnull=False,
-    )
-    if allowed_cohorts is not None:
-        if not allowed_cohorts:
-            return {}
-        qs = qs.filter(counselor__counselor_profile__cohort__in=allowed_cohorts)
+    ).filter(supervision_record_cohort_q(allowed_cohorts))
 
     by_session: dict[int, list[CounselingJournal]] = defaultdict(list)
     journals = qs.select_related(

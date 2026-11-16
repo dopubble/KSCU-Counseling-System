@@ -12,10 +12,25 @@
             <h2 class="site-page-title mb-1">{{ counselor.name }} 상담사 수련현황</h2>
             <p class="text-muted small mb-0">
                 수련 기수:
-                {% if cohort %}{{ cohort }}기{% if training_enrollment.status == "ACTIVE" %} (현재){% endif %}{% else %}—{% endif %}
+                {% if cohort %}{{ cohort }}기 / {% if training_enrollment.status == "ACTIVE" %}진행 중{% else %}{{ training_enrollment.get_status_display }}{% endif %}{% else %}—{% endif %}
             </p>
+            {% if counselor_enrollments %}
+            <p class="small mb-0">
+                {% for item in counselor_enrollments %}
+                <a href="{% url 'admin_panel:enrollment_training_progress_detail' item.pk %}">{{ item.cohort }}기 {{ item.get_status_display }}</a>{% if not forloop.last %} · {% endif %}
+                {% endfor %}
+            </p>
+            {% endif %}
         </div>
         <div class="d-flex flex-wrap gap-2">
+            {% if training_enrollment.status == "ACTIVE" %}
+            <form method="post"
+                  action="{% url 'admin_panel:enrollment_complete' training_enrollment.pk %}"
+                  onsubmit="return confirm('이 기수만 종료합니다. 다른 기수와 상담기록은 그대로 둡니다.');">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-danger">이 기수 종료</button>
+            </form>
+            {% endif %}
             <a href="{% url 'admin_panel:counselor_cohort_reenrollment' counselor.pk %}"
                class="btn btn-sm btn-primary">새 기수 등록</a>
             <a href="{% url 'admin_panel:training_progress' %}{% if list_cohort %}?cohort={{ list_cohort }}{% endif %}"

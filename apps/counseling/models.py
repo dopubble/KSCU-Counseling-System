@@ -1,7 +1,7 @@
 import uuid
 
 from django.conf import settings
-from django.db import models
+from django.db import IntegrityError, models
 from django.utils import timezone
 
 from apps.counseling.constants import (
@@ -636,6 +636,12 @@ class TrainingEnrollment(models.Model):
     )
     started_at = models.DateTimeField("시작일", null=True, blank=True)
     completed_at = models.DateTimeField("완료일", null=True, blank=True)
+    active_slot = models.PositiveSmallIntegerField(
+        "진행 슬롯",
+        null=True,
+        blank=True,
+        help_text="진행 중일 때만 1 또는 2. 상담사당 진행 중 등록은 두 개까지다.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -644,17 +650,57 @@ class TrainingEnrollment(models.Model):
         verbose_name_plural = "수련 등록"
         ordering = ["counselor_id", "cohort"]
         constraints = [
-            # 같은 상담사·같은 기수는 하나다. 진행 중 등록도 상담사당 하나다.
             models.UniqueConstraint(
                 fields=["counselor", "cohort"],
                 name="uniq_training_enrollment_counselor_cohort",
             ),
             models.UniqueConstraint(
-                fields=["counselor"],
-                condition=models.Q(status=TrainingEnrollmentStatus.ACTIVE),
-                name="uniq_active_training_enrollment_per_counselor",
+                fields=["counselor", "active_slot"],
+                name="uniq_training_enrollment_counselor_active_slot",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        status=TrainingEnrollmentStatus.ACTIVE,
+                        active_slot__in=[1, 2],
+                    )
+                    | models.Q(
+                        status=TrainingEnrollmentStatus.COMPLETED,
+                        active_slot__isnull=True,
+                    )
+                    | models.Q(
+                        status=TrainingEnrollmentStatus.WITHDRAWN,
+                        active_slot__isnull=True,
+                    )
+                ),
+                name="training_enrollment_active_slot_matches_status",
             ),
         ]
+
+    def save(self, *args, **kwargs):
+        if self.status == TrainingEnrollmentStatus.ACTIVE:
+            if self.active_slot not in (1, 2):
+                self.active_slot = self._next_active_slot()
+        else:
+            self.active_slot = None
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None and "active_slot" not in update_fields:
+            kwargs["update_fields"] = [*update_fields, "active_slot"]
+        super().save(*args, **kwargs)
+
+    def _next_active_slot(self) -> int:
+        taken = set(
+            TrainingEnrollment.objects.filter(
+                counselor_id=self.counselor_id,
+                status=TrainingEnrollmentStatus.ACTIVE,
+            )
+            .exclude(pk=self.pk)
+            .values_list("active_slot", flat=True)
+        )
+        for slot in (1, 2):
+            if slot not in taken:
+                return slot
+        raise IntegrityError("한 상담사의 진행 중 수련은 2개를 넘길 수 없습니다.")
 
     def __str__(self):
         return f"{self.counselor_id} {self.cohort}기"

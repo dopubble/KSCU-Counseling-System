@@ -194,6 +194,18 @@
                             <div class="text-danger small mt-1">{{ match_form.counselor.errors.0 }}</div>
                             {% endif %}
                         </div>
+                        {% if match_form.training_enrollment %}
+                        <div class="mb-3">
+                            <label for="{{ match_form.training_enrollment.id_for_label }}" class="form-label fw-semibold">{{ match_form.training_enrollment.label }}</label>
+                            {{ match_form.training_enrollment }}
+                            {% if match_form.training_enrollment.help_text %}
+                            <div class="form-text">{{ match_form.training_enrollment.help_text }}</div>
+                            {% endif %}
+                            {% if match_form.training_enrollment.errors %}
+                            <div class="text-danger small mt-1">{{ match_form.training_enrollment.errors.0 }}</div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
                         {% if can_assign_new %}
                         <div class="mb-3">
                             <label for="id_total_sessions" class="form-label fw-semibold">{{ match_form.total_sessions.label }}</label>

@@ -178,7 +178,7 @@ class CounselorDashboardEnrollmentTests(TestCase):
         self.assertEqual(progress["case_report_submitted_count"], 1)
         self.assertEqual(progress["public_presentation_participation_count"], 1)
         self.assertEqual(progress["training_completed_minutes"], 290)
-        self.assertContains(response, "2기 (현재)")
+        self.assertContains(response, "2기 / 진행 중")
         self.assertContains(response, "1기")
         self.assertNotContains(response, "수료")
 

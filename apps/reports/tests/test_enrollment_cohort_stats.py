@@ -232,13 +232,15 @@ class EnrollmentCohortStatsTests(TestCase):
         self.assertEqual(totals["total_count"], 5)
         self.assertEqual(sum(row["total_count"] for row in rows), 5)
 
-    def test_counselor_roster_stays_on_current_profile_cohort(self):
+    def test_counselor_roster_lists_every_enrollment_cohort(self):
         self.http.login(email="admin-enroll-stats@example.com", password="pass12345")
         url = reverse("admin_panel:counselor_list")
         current = self.http.get(url, {"cohort": "2"})
         self.assertContains(current, "홍길동")
         past = self.http.get(url, {"cohort": "1"})
-        self.assertNotContains(past, "홍길동")
+        self.assertContains(past, "홍길동")
+        self.assertContains(past, "1기 완료")
+        self.assertContains(current, "2기 진행")
 
     def test_non_admin_cannot_open_statistics(self):
         self.http.login(email="multi@example.com", password="pass12345")

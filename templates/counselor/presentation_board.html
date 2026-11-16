@@ -32,7 +32,9 @@
                             class="form-select form-select-sm"
                             style="width: auto; min-width: 8rem;"
                             onchange="this.form.submit()">
+                        {% if cohort_filter_allows_all %}
                         <option value="" {% if cohort is None %}selected{% endif %}>전체</option>
+                        {% endif %}
                         {% for option in cohort_options %}
                         <option value="{{ option }}" {% if cohort == option %}selected{% endif %}>{{ option }}기</option>
                         {% endfor %}

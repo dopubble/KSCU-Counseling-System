@@ -10,6 +10,7 @@ from apps.counseling.cohort_journal_service import (
     get_counselor_cohort,
     supervision_cohort_for_case,
 )
+from apps.counseling.models import TrainingEnrollment
 
 if TYPE_CHECKING:
     from apps.accounts.models import User
@@ -67,7 +68,19 @@ def user_can_browse_counselor_journals(user: "User", counselor: "User") -> bool:
     """
     if not user_can_browse_cohort_journals(user):
         return False
-    return supervisor_can_access_cohort(user, get_counselor_cohort(counselor))
+    if counselor is None or not getattr(counselor, "pk", None):
+        return False
+    cohorts = {
+        int(cohort)
+        for cohort in TrainingEnrollment.objects.filter(counselor_id=counselor.pk).values_list(
+            "cohort", flat=True
+        )
+    }
+    if not cohorts:
+        legacy = get_counselor_cohort(counselor)
+        if legacy:
+            cohorts.add(int(legacy))
+    return any(supervisor_can_access_cohort(user, cohort) for cohort in cohorts)
 
 
 def user_can_view_journal(user: "User", journal: "CounselingJournal") -> bool:

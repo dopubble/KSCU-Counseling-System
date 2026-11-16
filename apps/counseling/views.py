@@ -728,9 +728,14 @@ def application_detail(request, pk):
                 role=UserRole.COUNSELOR,
             )
             try:
+                enrollment = match_form.cleaned_data.get("training_enrollment_obj")
                 if existing_case:
                     _ensure_records_unlocked(existing_case)
-                    case = reassign_counselor(existing_case, counselor)
+                    case = reassign_counselor(
+                        existing_case,
+                        counselor,
+                        training_enrollment=enrollment,
+                    )
                     messages.success(
                         request,
                         f"{application.client.name} 님의 담당 상담사를 "
@@ -743,6 +748,7 @@ def application_detail(request, pk):
                         counselor,
                         total_sessions=total_sessions,
                         assigned_method=match_form.cleaned_data.get("assigned_method"),
+                        training_enrollment=enrollment,
                     )
                     messages.success(
                         request,

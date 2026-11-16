@@ -70,7 +70,11 @@
                         <td>{{ profile.user.email }}</td>
                         <td>{{ profile.user.phone|default:"—" }}</td>
                         <td>
-                            {% if profile.cohort %}
+                            {% if profile.user.training_enrollments.all %}
+                            {% for enrollment in profile.user.training_enrollments.all %}
+                            <span class="badge text-bg-secondary">{{ enrollment.cohort }}기 {{ enrollment.get_status_display }}</span>
+                            {% endfor %}
+                            {% elif profile.cohort %}
                             <span class="badge text-bg-secondary">{{ profile.cohort }}기</span>
                             {% else %}
                             <span class="text-muted">—</span>

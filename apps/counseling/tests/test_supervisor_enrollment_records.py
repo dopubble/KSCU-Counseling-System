@@ -123,8 +123,8 @@ class SupervisorEnrollmentRecordTests(TestCase):
         http.force_login(user)
         return http
 
-    def test_profile_browse_permission_stays_on_profile_cohort(self):
-        self.assertFalse(user_can_browse_counselor_journals(self.supervisor_x, self.counselor))
+    def test_browse_permission_follows_each_enrollment_cohort(self):
+        self.assertTrue(user_can_browse_counselor_journals(self.supervisor_x, self.counselor))
         self.assertTrue(user_can_browse_counselor_journals(self.supervisor_y, self.counselor))
 
     def test_assigned_supervisor_sees_only_that_enrollment_cohort(self):

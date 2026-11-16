@@ -24,11 +24,12 @@ UPCOMING_APPOINTMENT_STATUSES = (
     AppointmentStatus.CANCEL_PENDING,
 )
 
-MSG_OPEN_CASES = (
-    "진행 중인 상담사례가 있어 새 기수에 등록할 수 없습니다. 기존 사례를 먼저 정리해 주세요."
+MAX_ACTIVE_ENROLLMENTS = 2
+MSG_ACTIVE_LIMIT = (
+    "이미 두 기수에 참여 중이라 새 기수를 등록할 수 없습니다. "
+    "한 기수를 종료한 뒤 등록해 주세요."
 )
-MSG_UNSUBMITTED = "최종 제출되지 않은 상담기록이 있어 새 기수에 등록할 수 없습니다."
-MSG_UPCOMING = "기존 기수의 예정된 상담 예약이 있어 새 기수에 등록할 수 없습니다."
+MSG_NOT_ACTIVE = "진행 중인 기수만 종료할 수 있습니다."
 MSG_NO_HISTORY = "수련 등록 이력이 없는 상담사는 이 화면에서 등록할 수 없습니다."
 MSG_NO_PROFILE = "상담사 프로필이 없어 새 기수에 등록할 수 없습니다."
 MSG_COHORT_NUMBER = "신규 기수는 1 이상의 정수여야 합니다."
@@ -53,15 +54,6 @@ def parse_new_cohort(raw):
     return value
 
 
-def _active_enrollment(enrollments):
-    active = [
-        item for item in enrollments if item.status == TrainingEnrollmentStatus.ACTIVE
-    ]
-    if len(active) > 1:
-        raise CohortReenrollmentError([MSG_CONCURRENT])
-    return active[0] if active else None
-
-
 def _case_readiness(enrollment):
     if enrollment is None:
         return {
@@ -84,34 +76,29 @@ def _case_readiness(enrollment):
     }
 
 
-def readiness_blockers(readiness):
-    messages = []
-    if readiness["open_count"]:
-        messages.append(f"{MSG_OPEN_CASES} ({readiness['open_count']}건)")
-    if readiness["unsubmitted_count"]:
-        messages.append(f"{MSG_UNSUBMITTED} ({readiness['unsubmitted_count']}건)")
-    if readiness["upcoming_count"]:
-        messages.append(f"{MSG_UPCOMING} ({readiness['upcoming_count']}건)")
-    return messages
+def _active_enrollments(enrollments):
+    return [item for item in enrollments if item.status == TrainingEnrollmentStatus.ACTIVE]
 
 
 def describe_cohort_reenrollment(counselor):
-    """확인 화면에 보여줄 현재 등록과 차단 사유. 데이터를 바꾸지 않는다."""
+    """확인 화면에 보여줄 현재 등록. 데이터를 바꾸지 않는다."""
     enrollments = list(
-        TrainingEnrollment.objects.filter(counselor=counselor).order_by("-cohort", "-pk")
+        TrainingEnrollment.objects.filter(counselor=counselor).order_by("cohort", "pk")
     )
-    active = _active_enrollment(enrollments) if enrollments else None
-    highest = enrollments[0] if enrollments else None
-    readiness = _case_readiness(active)
+    active = _active_enrollments(enrollments)
+    highest = max(enrollments, key=lambda item: (item.cohort, item.pk)) if enrollments else None
+    blockers = [MSG_ACTIVE_LIMIT] if len(active) >= MAX_ACTIVE_ENROLLMENTS else []
     return {
         "enrollments": enrollments,
-        "active": active,
+        "active_enrollments": active,
         "highest": highest,
         "max_cohort": highest.cohort if highest else None,
         "suggested_cohort": (highest.cohort + 1) if highest else None,
-        "readiness": readiness,
-        "blockers": readiness_blockers(readiness) if active is not None else [],
-        "eligible": bool(enrollments),
+        "readiness_rows": [
+            {"enrollment": item, "readiness": _case_readiness(item)} for item in active
+        ],
+        "blockers": blockers,
+        "eligible": bool(enrollments) and not blockers,
     }
 
 
@@ -138,41 +125,46 @@ def _validate_new_cohort(enrollments, cohort):
 
 
 def register_next_cohort(counselor, raw_cohort):
-    """ACTIVE가 있으면 완료로 닫고, 더 높은 기수의 ACTIVE 등록을 만든다."""
+    """더 높은 기수의 ACTIVE 등록을 추가한다. 기존 기수와 기록은 바꾸지 않는다."""
     cohort = parse_new_cohort(raw_cohort)
     try:
         with transaction.atomic():
             locked, profile = _lock_counselor(counselor.pk)
             enrollments = list(
-                TrainingEnrollment.objects.filter(counselor=locked).order_by(
-                    "-cohort", "-pk"
-                )
+                TrainingEnrollment.objects.filter(counselor=locked).order_by("cohort", "pk")
             )
             if not enrollments:
                 raise CohortReenrollmentError([MSG_NO_HISTORY])
             if profile is None:
                 raise CohortReenrollmentError([MSG_NO_PROFILE])
             _validate_new_cohort(enrollments, cohort)
-            active = _active_enrollment(enrollments)
-            if active is not None:
-                blockers = readiness_blockers(_case_readiness(active))
-                if blockers:
-                    raise CohortReenrollmentError(blockers)
-                now = timezone.now()
-                active.status = TrainingEnrollmentStatus.COMPLETED
-                active.completed_at = now
-                active.save(update_fields=["status", "completed_at", "updated_at"])
-            else:
-                now = timezone.now()
-            created = TrainingEnrollment.objects.create(
+            if len(_active_enrollments(enrollments)) >= MAX_ACTIVE_ENROLLMENTS:
+                raise CohortReenrollmentError([MSG_ACTIVE_LIMIT])
+            return TrainingEnrollment.objects.create(
                 counselor=locked,
                 cohort=cohort,
                 status=TrainingEnrollmentStatus.ACTIVE,
-                started_at=now,
+                started_at=timezone.now(),
                 completed_at=None,
             )
-            profile.cohort = cohort
-            profile.save(update_fields=["cohort", "updated_at"])
-            return created
     except IntegrityError as exc:
         raise CohortReenrollmentError([MSG_CONCURRENT]) from exc
+
+
+def complete_training_enrollment(enrollment):
+    """한 기수만 종료한다. 다른 기수, 사례, 상담기록은 바꾸지 않는다."""
+    with transaction.atomic():
+        locked = (
+            TrainingEnrollment.objects.select_for_update()
+            .select_related("counselor")
+            .get(pk=enrollment.pk)
+        )
+        if locked.status != TrainingEnrollmentStatus.ACTIVE:
+            raise CohortReenrollmentError([MSG_NOT_ACTIVE])
+        locked.status = TrainingEnrollmentStatus.COMPLETED
+        locked.completed_at = timezone.now()
+        locked.save(update_fields=["status", "completed_at", "updated_at"])
+        enrollment.status = locked.status
+        enrollment.completed_at = locked.completed_at
+        enrollment.active_slot = locked.active_slot
+        return locked

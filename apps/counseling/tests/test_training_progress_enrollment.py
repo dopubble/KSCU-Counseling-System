@@ -230,7 +230,7 @@ class AdminSupervisorEnrollmentProgressTests(TestCase):
         self.assertContains(first, "수련 기수:")
         self.assertContains(first, "1기")
         self.assertNotContains(first, "1기 (현재)")
-        self.assertContains(second, "2기 (현재)")
+        self.assertContains(second, "2기 / 진행 중")
         self.assertNotContains(first, "수료")
         self.assertContains(first, "수련확인증")
 

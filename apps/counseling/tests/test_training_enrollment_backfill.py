@@ -116,7 +116,7 @@ def _run_backfill():
 
 
 class TrainingEnrollmentConstraintTests(TestCase):
-    def test_one_active_enrollment_per_counselor_and_one_row_per_cohort(self):
+    def test_two_active_enrollments_and_one_row_per_cohort(self):
         counselor = _counselor("제약", 1)
         TrainingEnrollment.objects.create(
             counselor=counselor,
@@ -126,6 +126,11 @@ class TrainingEnrollmentConstraintTests(TestCase):
         TrainingEnrollment.objects.create(
             counselor=counselor,
             cohort=2,
+            status=TrainingEnrollmentStatus.ACTIVE,
+        )
+        TrainingEnrollment.objects.create(
+            counselor=counselor,
+            cohort=3,
             status=TrainingEnrollmentStatus.ACTIVE,
         )
         with self.assertRaises(IntegrityError):
@@ -139,7 +144,7 @@ class TrainingEnrollmentConstraintTests(TestCase):
             with transaction.atomic():
                 TrainingEnrollment.objects.create(
                     counselor=counselor,
-                    cohort=3,
+                    cohort=4,
                     status=TrainingEnrollmentStatus.ACTIVE,
                 )
 

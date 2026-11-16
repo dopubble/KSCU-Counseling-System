@@ -67,7 +67,7 @@
                     <label class="visually-hidden" for="training-enrollment">기수 선택</label>
                     <select id="training-enrollment" name="enrollment" class="form-select form-select-sm" onchange="this.form.submit()">
                         {% for item in training_enrollment_choices %}
-                        <option value="{{ item.pk }}"{% if selected_training_enrollment and item.pk == selected_training_enrollment.pk %} selected{% endif %}>{{ item.cohort }}기{% if item.status == "ACTIVE" %} (현재){% endif %}</option>
+                        <option value="{{ item.pk }}"{% if selected_training_enrollment and item.pk == selected_training_enrollment.pk %} selected{% endif %}>{{ item.cohort }}기 / {% if item.status == "ACTIVE" %}진행 중{% else %}{{ item.get_status_display }}{% endif %}</option>
                         {% endfor %}
                     </select>
                 </form>

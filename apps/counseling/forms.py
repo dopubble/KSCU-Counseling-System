@@ -20,7 +20,12 @@ from apps.counseling.constants import (
     normalize_weekly_availability,
     weekly_availability_tokens,
 )
-from apps.counseling.models import Case, CounselingMethod, TrainingEnrollment
+from apps.counseling.models import (
+    Case,
+    CounselingMethod,
+    TrainingEnrollment,
+    TrainingEnrollmentStatus,
+)
 from apps.counseling.privacy import mask_client_name
 from apps.counseling.presentation_board import (
     PRESENTATION_COMMENT_ACCEPT_ATTR,
@@ -548,6 +553,27 @@ class CounselorMatchForm(forms.Form):
             choices.append((str(user.pk), label))
 
         self.fields["counselor"].choices = choices
+        enrollment_choices = [("", "한 기수만 진행 중이면 선택하지 않아도 됩니다")]
+        counselor_ids = [profile.user_id for profile in counselor_profiles or []]
+        if counselor_ids:
+            active_enrollments = TrainingEnrollment.objects.filter(
+                counselor_id__in=counselor_ids,
+                status=TrainingEnrollmentStatus.ACTIVE,
+            ).select_related("counselor").order_by("counselor__name", "cohort")
+            for enrollment in active_enrollments:
+                enrollment_choices.append(
+                    (
+                        str(enrollment.pk),
+                        f"{enrollment.counselor.name} — {enrollment.cohort}기",
+                    )
+                )
+        self.fields["training_enrollment"] = forms.ChoiceField(
+            label="배정 기수",
+            required=False,
+            choices=enrollment_choices,
+            widget=forms.Select(attrs={"class": "form-select"}),
+            help_text="두 기수에 함께 참여 중인 상담사만 배정할 기수를 선택합니다.",
+        )
 
 
 
@@ -580,6 +606,33 @@ class CounselorMatchForm(forms.Form):
             raise forms.ValidationError("총 상담 회기는 1회 이상이어야 합니다.")
 
         return value
+
+    def clean(self):
+        cleaned = super().clean()
+        counselor_id = cleaned.get("counselor")
+        if not counselor_id:
+            return cleaned
+        actives = list(
+            TrainingEnrollment.objects.filter(
+                counselor_id=counselor_id,
+                status=TrainingEnrollmentStatus.ACTIVE,
+            ).order_by("cohort")
+        )
+        chosen = (cleaned.get("training_enrollment") or "").strip()
+        if len(actives) > 1:
+            match = next((item for item in actives if str(item.pk) == chosen), None)
+            if match is None:
+                self.add_error(
+                    "training_enrollment",
+                    "이 상담사는 두 기수에 참여 중입니다. 배정할 기수를 선택해 주세요.",
+                )
+            else:
+                cleaned["training_enrollment_obj"] = match
+        elif len(actives) == 1:
+            cleaned["training_enrollment_obj"] = actives[0]
+        else:
+            cleaned["training_enrollment_obj"] = None
+        return cleaned
 
     def clean_assigned_method(self):
         if not self.require_assigned_method:

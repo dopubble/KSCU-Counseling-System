@@ -39,6 +39,24 @@ def require_active_training_enrollment(counselor):
     return enrollment
 
 
+def enrollment_for_new_case(counselor, training_enrollment=None):
+    """새 사례에 연결할 진행 중 수련.
+
+    진행 중 기수가 하나면 그 기수다.
+    둘이면 호출자가 고른 진행 중 기수만 받는다. 임의로 고르지 않는다.
+    """
+    if training_enrollment is not None:
+        if (
+            training_enrollment.counselor_id != getattr(counselor, "pk", None)
+            or training_enrollment.status != TrainingEnrollmentStatus.ACTIVE
+        ):
+            raise ActiveTrainingEnrollmentError(
+                "선택한 수련 기수가 이 상담사의 진행 중 기수가 아닙니다."
+            )
+        return training_enrollment
+    return require_active_training_enrollment(counselor)
+
+
 def counselor_training_enrollments(counselor):
     if counselor is None or not getattr(counselor, "pk", None):
         return []
@@ -71,7 +89,12 @@ def resolve_dashboard_training_enrollment(counselor, raw):
     if len(active) == 1:
         return active[0], enrollments, False
     if len(active) > 1:
-        return None, enrollments, True
+        from apps.counseling.cohort_journal_service import get_counselor_cohort
+
+        profile_cohort = get_counselor_cohort(counselor)
+        matched = next((item for item in active if item.cohort == profile_cohort), None)
+        chosen = matched or min(active, key=lambda item: (item.cohort, str(item.pk)))
+        return chosen, enrollments, False
     if enrollments:
         return enrollments[0], enrollments, False
     return None, enrollments, False

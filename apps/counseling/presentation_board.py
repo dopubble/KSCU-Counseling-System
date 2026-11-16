@@ -16,6 +16,7 @@ from apps.counseling.models import (
     CasePresentationComment,
     CasePresentationPost,
     TrainingEnrollment,
+    TrainingEnrollmentStatus,
 )
 
 PRESENTATION_BOARD_FORM_DIR = Path(settings.BASE_DIR) / "data" / "forms"
@@ -101,17 +102,31 @@ def count_presentation_comment_peers(cohort: int, *, exclude_author_id) -> int:
 
 
 def get_presentation_comment_peer_user_ids(cohort: int, *, exclude_author_id) -> frozenset:
-    """동기 제출 현황 집계 대상 상담사 ID(발표자 제외)."""
-    return frozenset(
+    """동기 제출 현황 집계 대상 상담사 ID(발표자 제외).
+
+    기수는 TrainingEnrollment다. 등록이 없는 계정만 프로필 기수를 쓴다.
+    """
+    enrolled = TrainingEnrollment.objects.filter(
+        cohort=cohort,
+        status__in=(
+            TrainingEnrollmentStatus.ACTIVE,
+            TrainingEnrollmentStatus.COMPLETED,
+        ),
+        counselor__role=UserRole.COUNSELOR,
+        counselor__status=UserStatus.ACTIVE,
+        counselor__counselor_profile__is_approved=True,
+    ).values_list("counselor_id", flat=True)
+    legacy = (
         CounselorProfile.objects.filter(
             cohort=cohort,
             is_approved=True,
             user__role=UserRole.COUNSELOR,
             user__status=UserStatus.ACTIVE,
         )
-        .exclude(user_id=exclude_author_id)
+        .exclude(user_id__in=TrainingEnrollment.objects.values("counselor_id"))
         .values_list("user_id", flat=True)
     )
+    return frozenset(set(enrolled) | set(legacy)) - {exclude_author_id}
 
 
 def count_presentation_peer_submissions(comments, *, peer_user_ids: frozenset) -> int:
@@ -205,21 +220,29 @@ def user_can_view_presentation_board(user: User, cohort: int) -> bool:
 
 
 def counselor_profile_cohort_matches(user: User, cohort: int) -> bool:
-    """작성·수정·삭제는 기존처럼 현재 CounselorProfile.cohort에서만 허용한다."""
-    return bool(
-        user.is_authenticated
-        and user.role == UserRole.COUNSELOR
-        and get_counselor_cohort(user) == cohort
-    )
+    """작성·수정·삭제는 그 기수의 진행 중 Enrollment에서만 허용한다.
+
+    Enrollment가 하나도 없는 계정만 프로필 기수를 쓴다.
+    """
+    if not user.is_authenticated or user.role != UserRole.COUNSELOR:
+        return False
+    if TrainingEnrollment.objects.filter(
+        counselor_id=user.pk,
+        cohort=cohort,
+        status=TrainingEnrollmentStatus.ACTIVE,
+    ).exists():
+        return True
+    if TrainingEnrollment.objects.filter(counselor_id=user.pk).exists():
+        return False
+    return get_counselor_cohort(user) == cohort
 
 
 def presentation_board_cohort_options() -> list[int]:
-    return list(
-        CounselorProfile.objects.exclude(cohort__isnull=True)
-        .order_by("-cohort")
-        .values_list("cohort", flat=True)
-        .distinct()
+    profile_cohorts = CounselorProfile.objects.exclude(cohort__isnull=True).values_list(
+        "cohort", flat=True
     )
+    enrolled = TrainingEnrollment.objects.values_list("cohort", flat=True)
+    return sorted({int(value) for value in (*profile_cohorts, *enrolled)}, reverse=True)
 
 
 def require_presentation_board_access(user: User, cohort: int) -> None:
@@ -228,7 +251,7 @@ def require_presentation_board_access(user: User, cohort: int) -> None:
 
 
 def user_can_create_presentation_post(user: User, cohort: int) -> bool:
-    """새 글은 현재 프로필 기수에서만 작성한다. COMPLETED 기수로 넓히지 않는다."""
+    """새 글은 그 기수의 진행 중 Enrollment에서만 작성한다."""
     return counselor_profile_cohort_matches(user, cohort)
 
 
