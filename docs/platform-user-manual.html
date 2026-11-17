@@ -61,7 +61,8 @@
       border-radius: .375rem; padding: .25rem .75rem;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
-    .shot-img { width: 100%; display: block; cursor: zoom-in; transition: transform .3s ease; }
+    .shot-img { width: 100%; height: auto; display: block; cursor: zoom-in; transition: transform .3s ease; }
+    .shot-wrap:hover .shot-stage .shot-img { transform: none; }
     .shot-wrap:hover .shot-img { transform: scale(1.01); }
     .step-badge {
       width: 2.25rem; height: 2.25rem; flex-shrink: 0;
@@ -96,6 +97,22 @@
       background: #e8f0f8;
       border-left: 4px solid #2563eb;
       border-radius: 0 0.5rem 0.5rem 0;
+    }
+    .shot-stage { position: relative; }
+    .shot-pin, .shot-num {
+      width: 1.7rem; height: 1.7rem; border-radius: 9999px;
+      background: #dc2626; color: #fff; font-weight: 900;
+      display: inline-flex; align-items: center; justify-content: center;
+      border: 2px solid #fff; box-shadow: 0 0 0 2px #dc2626;
+      font-size: 0.95rem; line-height: 1; flex-shrink: 0;
+    }
+    .shot-pin { position: absolute; z-index: 2; transform: translate(-50%, -50%); }
+    .guide-split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; align-items: start; }
+    @media (min-width: 1024px) {
+      .guide-split { grid-template-columns: minmax(0, 1.45fr) minmax(16.5rem, 0.8fr); }
+    }
+    @media (max-width: 1023px) {
+      .shot-pin, .shot-num { width: 1.65rem; height: 1.65rem; font-size: 0.9rem; }
     }
     .counseling-mode-box {
       border-radius: 1rem;
@@ -367,7 +384,7 @@
           </a>
         </div>
         <p class="text-indigo-100 text-sm sm:text-base leading-relaxed max-w-3xl mt-4">
-          로그인 후 상단 메뉴의 <strong class="text-white">[대시보드]</strong>에서 배정된 상담과 수련 현황을 확인합니다.
+          로그인 후 상단 메뉴 <strong class="text-white">[대시보드]</strong>에서 시작합니다. 화면의 빨간 번호와 오른쪽 설명을 함께 보세요.
         </p>
       </div>
 
@@ -376,249 +393,478 @@
           <span class="step-badge bg-indigo-600 text-white">1</span>
           <div>
             <h3 class="text-xl sm:text-2xl font-bold text-slate-900">상담사 대시보드</h3>
-            <p class="text-slate-500 text-sm mt-0.5">상단 메뉴 [대시보드] · 기수별 수련과 담당 사례</p>
+            <p class="text-slate-500 text-sm mt-0.5">기수 · 통계 · 수련 현황</p>
           </div>
         </div>
-        <p class="text-sm text-slate-600 mb-6">화면은 위에서 아래로 수련 기수, 통계, 수련 현황, 상담 필수서식, 담당 사례 순서로 나뉩니다. 기수를 바꾸면 그 기수의 숫자와 사례만 바뀝니다.</p>
-
-        <div class="space-y-4">
-          <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-            <h4 class="font-bold text-slate-900 mb-3">수련 기수 선택</h4>
-            <ol class="space-y-3 text-sm sm:text-base">
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 1</span><span>[수련 현황] 제목 옆의 기수 목록을 확인합니다. 목록은 진행 중이거나 완료된 기수가 둘 이상일 때만 나타납니다. 예: <strong>1기 / 진행 중</strong>, <strong>2기 / 진행 중</strong>, <strong>1기 / 완료</strong>.</span></li>
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 2</span><span>원하는 기수를 고르면 화면이 그 기수로 다시 열립니다.</span></li>
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 3</span><span>통계, 수련 현황, 대기 중인 예약, 담당 사례는 선택한 기수 기록만 보여 줍니다. 다른 기수 사례는 그 기수를 다시 선택해야 보입니다.</span></li>
-            </ol>
-            <p class="guide-note">기수가 하나뿐이면 목록이 없고, 그 기수 화면이 바로 열립니다. 중단된 기수는 목록에 없으며, 예전 주소로 들어가도 열리지 않습니다. 이전 기수 상담을 이어서 할 때는 그 기수가 진행 중 또는 완료로 목록에 있을 때 그 기수를 선택합니다.</p>
-          </div>
-
-          <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-            <h4 class="font-bold text-slate-900 mb-3">상단 통계</h4>
-            <ul class="space-y-2 text-sm sm:text-base text-slate-700">
-              <li><strong>활성 사례</strong> — 선택한 기수에서 지금 진행 중인 상담 건수입니다.</li>
-              <li><strong>대기 중인 예약</strong> — 내담자가 신청하고 아직 확정하지 않은 예약 건수입니다. 1건 이상이면 노란 안내와 목록이 함께 나옵니다. 노란 안내에 “반려”가 있어도 새 신청을 거절하는 버튼은 없고, <strong>[처리하기]</strong>로 확정합니다.</li>
-              <li><strong>수퍼비전 · 사례발표 게시판</strong> — 카드를 누르면 선택한 기수의 사례발표 게시판으로 이동합니다. 안내 문구는 “7/6 발표 보고서 · 개념화 댓글”입니다.</li>
-            </ul>
-          </div>
-
-          <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-            <h4 class="font-bold text-slate-900 mb-3">수련 현황</h4>
-            <p class="text-sm text-slate-600 mb-3">선택한 기수의 실적만 집계합니다. 오른쪽의 <strong>수련확인증 상태</strong>는 미승인, 승인완료, 재승인 필요 중 하나입니다. [수련확인증 출력]은 승인이 끝난 기수만 출력되고, 그 전에는 출력 조건을 안내하는 창이 열립니다.</p>
-            <ul class="space-y-2 text-sm sm:text-base text-slate-700">
-              <li><strong>접수면접</strong> — 이 기수 사례 수와, 그 중 접수면접지 파일이 올라간 사례 수입니다. 사례 1건은 1시간으로 표시됩니다.</li>
-              <li><strong>상담자 경험</strong> — 배정된 상담 회기 대비 저장한 상담일지 비율입니다. 회기 1회와 저장된 일지 1건은 각각 1시간입니다.</li>
-              <li><strong>종결기록지</strong> — 이 기수 사례 수와, 작성을 마친 종결기록지 수입니다.</li>
-              <li><strong>수퍼비전</strong> — 이 기수 수퍼비전 회차 중 출석으로 기록된 횟수와 비율입니다. 출석 시간은 그 회차에 입력된 시간을 합한 값입니다.</li>
-              <li><strong>사례보고서</strong> — 이 기수 사례에 연결해 등록한 사례발표 보고서 수입니다.</li>
-              <li><strong>수련시간</strong> — 접수면접 시간, 상담일지 시간, 수퍼비전 출석 시간을 더한 값입니다. 대면·비대면·방식 미확인이 구분되면 그 문구로 나뉩니다.</li>
-            </ul>
-          </div>
-
-          <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-            <h4 class="font-bold text-slate-900 mb-3">상담 필수서식 다운로드</h4>
-            <p class="text-sm text-slate-600 mb-3">빈 서식만 내려받습니다. 이 카드에서는 작성, 서명, 업로드를 하지 않습니다.</p>
-            <ol class="space-y-3 text-sm sm:text-base">
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 1</span><span>상담사 대시보드에서 <strong>[상담 필수서식]</strong>을 찾습니다.</span></li>
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 2</span><span>필요한 서류의 <strong>[다운로드]</strong>를 누릅니다. 서류는 상담동의서, 개인정보 수집·이용 동의서, 접수면접지입니다.</span></li>
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 3</span><span>내려받은 HWP 파일을 상담 진행에 사용합니다.</span></li>
-            </ol>
-          </div>
-
-          <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-            <h4 class="font-bold text-slate-900 mb-3">담당 활성 사례</h4>
-            <ol class="space-y-3 text-sm sm:text-base">
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 1</span><span>관리자가 내담자를 배정하면 <strong>[담당 활성 사례]</strong>에 나타납니다. 아직 없으면 “현재 배정된 활성 사례가 없습니다”가 표시됩니다.</span></li>
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 2</span><span>목록에서 사례번호, 학생 이름, 신청 분야, 진행 현황, 개시일을 확인합니다. 진행 중인 사례는 “총 N회기 / N회 완료”로 보입니다.</span></li>
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 3</span><span>해당 줄을 누르면 사례 상세페이지로 이동합니다.</span></li>
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 4</span><span>예약 신청이 있으면 위쪽 <strong>[대기 중인 예약]</strong>에서 <strong>[처리하기]</strong>를 누릅니다. 회기가 지정된 신청은 그 사례의 해당 회기로 이동하고, 그렇지 않으면 예약 처리 화면으로 이동합니다.</span></li>
-            </ol>
-            <p class="guide-note">종결된 상담은 아래 <strong>[종결 사례]</strong>에 따로 모입니다. 줄을 누르면 같은 사례 상세페이지로 들어갑니다. 기록 최종 제출 전인 사례에는 [최종 제출하기]가 함께 있습니다.</p>
+        <div class="guide-split">
+          <figure class="browser-frame shot-wrap">
+            <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/counseling/counselor/</span></div>
+            <div class="shot-stage">
+              <img class="shot-img" src="/static/manual/screenshots/counselor-guide-dashboard-top.png" alt="상담사 대시보드 상단" loading="lazy">
+              <span class="shot-pin" style="left:24%;top:39%">1</span>
+              <span class="shot-pin" style="left:26%;top:15%">2</span>
+              <span class="shot-pin" style="left:58%;top:15%">3</span>
+              <span class="shot-pin" style="left:90%;top:16%">4</span>
+              <span class="shot-pin" style="left:28%;top:66%">5</span>
+            </div>
+            <figcaption class="text-xs text-slate-500 px-4 py-2 bg-slate-100 border-t border-slate-200">예시 화면입니다.</figcaption>
+          </figure>
+          <div class="space-y-3">
+            <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+              <span class="shot-num">1</span>
+              <div><p class="font-bold text-slate-900">기수 선택</p><p class="text-sm text-slate-700 mt-1">[수련 현황] 옆 목록에서 1기·2기를 바꿉니다. 통계와 사례는 선택한 기수만 나옵니다. 기수가 하나면 목록이 없고, 중단된 기수는 나오지 않습니다.</p></div>
+            </div>
+            <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+              <span class="shot-num">2</span>
+              <div><p class="font-bold text-slate-900">활성 사례</p><p class="text-sm text-slate-700 mt-1">선택한 기수에서 지금 진행 중인 상담 건수입니다.</p></div>
+            </div>
+            <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+              <span class="shot-num">3</span>
+              <div><p class="font-bold text-slate-900">대기 중인 예약</p><p class="text-sm text-slate-700 mt-1">내담자가 신청하고 아직 확정하지 않은 건수입니다.</p></div>
+            </div>
+            <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+              <span class="shot-num">4</span>
+              <div><p class="font-bold text-slate-900">사례발표 게시판</p><p class="text-sm text-slate-700 mt-1">카드를 누르면 그 기수의 사례발표 게시판으로 이동합니다.</p></div>
+            </div>
+            <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+              <span class="shot-num">5</span>
+              <div><p class="font-bold text-slate-900">수련 현황</p><p class="text-sm text-slate-700 mt-1">접수면접, 상담일지, 종결기록지, 수퍼비전 출석, 사례보고서, 수련시간을 이 기수 기준으로 확인합니다.</p></div>
+            </div>
+            <p class="guide-note">[수련확인증 출력]은 승인이 끝난 기수만 출력됩니다. 그 전에는 출력 조건을 안내하는 창이 열립니다.</p>
           </div>
         </div>
-        <figure class="browser-frame shot-wrap mt-8" data-shot="/static/manual/screenshots/counselor-dashboard.png" data-caption="상담사 대시보드">
-          <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/counseling/counselor/</span></div>
-          <img class="shot-img" src="/static/manual/screenshots/counselor-dashboard.png" alt="상담사 대시보드의 기수 선택, 상단 통계, 수련 현황, 상담 필수서식, 담당 활성 사례" loading="lazy">
-          <figcaption class="text-xs text-slate-500 px-4 py-2 bg-slate-100 border-t border-slate-200">기수 선택, 상단 통계, 수련 현황, 상담 필수서식, 담당 활성 사례. 예시용 이름입니다.</figcaption>
-        </figure>
+      </article>
+
+      <article class="mb-12">
+        <div class="flex items-center gap-3 mb-6">
+          <span class="step-badge bg-indigo-600 text-white">2</span>
+          <div>
+            <h3 class="text-xl sm:text-2xl font-bold text-slate-900">서식 · 예약 · 담당 사례</h3>
+          </div>
+        </div>
+        <div class="guide-split">
+          <figure class="browser-frame shot-wrap">
+            <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/counseling/counselor/</span></div>
+            <div class="shot-stage">
+              <img class="shot-img" src="/static/manual/screenshots/counselor-guide-dashboard-bottom.png" alt="상담 필수서식과 담당 사례" loading="lazy">
+              <span class="shot-pin" style="left:86%;top:18%">1</span>
+              <span class="shot-pin" style="left:86%;top:65%">2</span>
+              <span class="shot-pin" style="left:96%;top:93%">3</span>
+            </div>
+            <figcaption class="text-xs text-slate-500 px-4 py-2 bg-slate-100 border-t border-slate-200">예시용 이름입니다.</figcaption>
+          </figure>
+          <div class="space-y-3">
+            <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+              <span class="shot-num">1</span>
+              <div><p class="font-bold text-slate-900">상담 필수서식</p><p class="text-sm text-slate-700 mt-1">상담동의서, 개인정보 수집·이용 동의서, 접수면접지의 [다운로드]로 빈 HWP를 받습니다. 이 카드에서는 작성·서명·업로드를 하지 않습니다.</p></div>
+            </div>
+            <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+              <span class="shot-num">2</span>
+              <div><p class="font-bold text-slate-900">처리하기</p><p class="text-sm text-slate-700 mt-1">회기가 지정된 신청은 그 회기로, 없으면 예약 처리 화면으로 이동합니다.</p></div>
+            </div>
+            <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+              <span class="shot-num">3</span>
+              <div><p class="font-bold text-slate-900">담당 활성 사례</p><p class="text-sm text-slate-700 mt-1">배정된 내담자 줄을 누르면 사례 상세로 이동합니다. 없으면 “현재 배정된 활성 사례가 없습니다”가 나옵니다.</p></div>
+            </div>
+            <p class="guide-note">노란 안내에 “반려”가 있어도 새 신청을 거절하는 버튼은 없습니다. [처리하기]로 확정합니다.</p>
+          </div>
+        </div>
       </article>
 
       <article id="counselor-case" class="mb-12 scroll-mt-24">
         <div class="flex items-center gap-3 mb-6">
-          <span class="step-badge bg-indigo-600 text-white">2</span>
+          <span class="step-badge bg-indigo-600 text-white">3</span>
           <div>
-            <h3 class="text-xl sm:text-2xl font-bold text-slate-900">사례 상세페이지 기능 설명</h3>
-            <p class="text-slate-500 text-sm mt-0.5">내담자 정보 · 회기 · 기록 · 게시판 · 채팅</p>
+            <h3 class="text-xl sm:text-2xl font-bold text-slate-900">사례 정보와 회기</h3>
           </div>
         </div>
-        <figure class="browser-frame shot-wrap mb-8" data-shot="/static/manual/screenshots/counselor-case-detail.png" data-caption="사례 상세페이지">
-          <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/counseling/counselor/case/…/</span></div>
-          <img class="shot-img" src="/static/manual/screenshots/counselor-case-detail.png" alt="사례 상세페이지의 내담자 정보, 회기별 상담, 상담기록 버튼" loading="lazy">
-          <figcaption class="text-xs text-slate-500 px-4 py-2 bg-slate-100 border-t border-slate-200">내담자 정보, 회기별 상담, 초기상담 기록지·상담일지·종결기록지, 게시글 작성. 예시용 이름입니다.</figcaption>
-        </figure>
-        <div class="space-y-4">
-          <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-            <h4 class="font-bold text-slate-900 mb-3">사례 기본정보</h4>
-            <p class="text-sm sm:text-base text-slate-700">왼쪽 <strong>[내담자 · 신청 정보]</strong>에서 이름, 상담진행방식(대면 또는 비대면), 학번, 연락처, 이메일, 주요 호소 문제, 희망 일시를 확인합니다. 오른쪽 위에는 진행 상태와 “남은 회기 / 전체 회기”가 있습니다.</p>
+        <div class="space-y-8">
+          <div class="guide-split">
+            <figure class="browser-frame shot-wrap">
+              <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/counselor/case/…/</span></div>
+              <div class="shot-stage">
+                <img class="shot-img" src="/static/manual/screenshots/counselor-guide-case-head.png" alt="사례 이름과 진행 상태" loading="lazy">
+                <span class="shot-pin" style="left:4%;top:42%">1</span>
+                <span class="shot-pin" style="left:72%;top:58%">2</span>
+              </div>
+            </figure>
+            <div class="space-y-3">
+              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+                <span class="shot-num">1</span>
+                <div><p class="font-bold text-slate-900">내담자</p><p class="text-sm text-slate-700 mt-1">사례 이름, 사례번호, 상담 분야를 확인합니다.</p></div>
+              </div>
+              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+                <span class="shot-num">2</span>
+                <div><p class="font-bold text-slate-900">진행 상태</p><p class="text-sm text-slate-700 mt-1">진행중 여부와 남은 회기 / 전체 회기를 확인합니다.</p></div>
+              </div>
+            </div>
           </div>
-
-          <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-            <h4 class="font-bold text-slate-900 mb-3">회기 및 예약 현황</h4>
-            <p class="text-sm sm:text-base text-slate-700 mb-3">오른쪽 <strong>[회기별 상담]</strong>에 회기마다 상태와 일정이 있습니다. 내담자 신청은 왼쪽 <strong>[대기 중인 예약 신청]</strong>, 취소 요청은 <strong>[취소 요청 대기]</strong>, 일정 변경 요청은 <strong>[일정 변경 요청 대기]</strong>에 모입니다.</p>
-            <ul class="space-y-2 text-sm sm:text-base text-slate-700">
-              <li>신청이 없는 회기는 <strong>[일정 입력 및 확정]</strong>을 누른 뒤, 달력에서 <strong>[예약 확정]</strong>을 누릅니다.</li>
-              <li>확정된 회기는 <strong>[예약 취소]</strong>와 <strong>[일정 변경]</strong>을 사용할 수 있습니다. 진행 상태는 “진행중” 또는 “완료”로 바꿀 수 있습니다.</li>
-              <li>비대면으로 확정되면 <strong>[Zoom 회의 입장]</strong>이 생깁니다. 호스트 키가 있으면 회기 안에 표시되고, 물음표를 누르면 호스트 권한 받는 방법이 열립니다.</li>
-            </ul>
+          <div class="guide-split">
+            <figure class="browser-frame shot-wrap">
+              <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/counselor/case/…/</span></div>
+              <div class="shot-stage">
+                <img class="shot-img" src="/static/manual/screenshots/counselor-guide-case-info.png" alt="내담자 신청 정보" loading="lazy">
+                <span class="shot-pin" style="left:62%;top:10%">1</span>
+              </div>
+              <figcaption class="text-xs text-slate-500 px-4 py-2 bg-slate-100 border-t border-slate-200">예시용 연락처입니다.</figcaption>
+            </figure>
+            <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+              <span class="shot-num">1</span>
+              <div><p class="font-bold text-slate-900">내담자 · 신청 정보</p><p class="text-sm text-slate-700 mt-1">왼쪽 카드에서 상담진행방식, 학번, 연락처, 이메일, 주요 호소 문제, 희망 일시를 확인합니다.</p></div>
+            </div>
           </div>
-
-          <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-            <h4 class="font-bold text-slate-900 mb-3">상담일지</h4>
-            <ol class="space-y-3 text-sm sm:text-base">
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 1</span><span>해당 회기에서 <strong>[상담일지 작성]</strong>을 누릅니다. 내담자가 배정된 뒤에 작성할 수 있습니다.</span></li>
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 2</span><span>내용을 입력하고 <strong>[일지 저장]</strong>을 누릅니다. 저장하면 회기 버튼이 <strong>[상담일지 보기]</strong>로 바뀝니다.</span></li>
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 3</span><span>보기 화면에서 <strong>[수정]</strong>을 누르면 다시 고칠 수 있고, 저장 버튼은 <strong>[저장하기]</strong>입니다. 같은 화면의 <strong>[PDF 다운로드]</strong>는 열 때 쓸 암호를 직접 입력합니다.</span></li>
-            </ol>
-            <p class="guide-note">저장 후에도 사례를 최종 제출하기 전에는 수정할 수 있습니다. <strong>[최종 제출하기]</strong> 이후에는 보기만 되고 수정 버튼이 없습니다. 최종 제출을 되돌리는 버튼은 상담사 화면에 없습니다.</p>
+          <div class="guide-split">
+            <figure class="browser-frame shot-wrap">
+              <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/counselor/case/…/#session-1</span></div>
+              <div class="shot-stage">
+                <img class="shot-img" src="/static/manual/screenshots/counselor-guide-session.png" alt="1회기 버튼" loading="lazy">
+                <span class="shot-pin" style="left:15%;top:68%">1</span>
+                <span class="shot-pin" style="left:41%;top:68%">2</span>
+                <span class="shot-pin" style="left:66%;top:68%">3</span>
+              </div>
+            </figure>
+            <div class="space-y-3">
+              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+                <span class="shot-num">1</span>
+                <div><p class="font-bold text-slate-900">일정 입력 및 확정</p><p class="text-sm text-slate-700 mt-1">신청이 없는 회기입니다. 누른 뒤 달력에서 [예약 확정]을 누릅니다.</p></div>
+              </div>
+              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+                <span class="shot-num">2</span>
+                <div><p class="font-bold text-slate-900">초기상담 기록지</p><p class="text-sm text-slate-700 mt-1">1회기만 있습니다. 저장하면 [초기상담 기록지 보기]로 바뀌고, 최종 제출 전까지만 수정할 수 있습니다.</p></div>
+              </div>
+              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+                <span class="shot-num">3</span>
+                <div><p class="font-bold text-slate-900">상담일지</p><p class="text-sm text-slate-700 mt-1">[일지 저장] 후 버튼은 [상담일지 보기]가 됩니다. [수정]과 [저장하기]는 최종 제출 전까지만 됩니다. PDF는 열 때 쓸 암호를 직접 입력합니다.</p></div>
+              </div>
+            </div>
           </div>
+        </div>
+      </article>
 
-          <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-            <h4 class="font-bold text-slate-900 mb-3">접수면접 및 초기 기록</h4>
-            <ul class="space-y-2 text-sm sm:text-base text-slate-700">
-              <li><strong>초기상담 기록지</strong>는 1회기에만 있습니다. 버튼은 작성 전 <strong>[초기상담 기록지 작성]</strong>, 임시 저장 중 <strong>[초기상담 기록지 이어쓰기]</strong>, 저장 후 <strong>[초기상담 기록지 보기]</strong>입니다. 저장 버튼은 <strong>[저장하기]</strong>입니다.</li>
-              <li>작성본 PDF도 상담일지와 같이 암호를 넣어 내려받을 수 있습니다. 최종 제출 전에는 수정할 수 있고, 최종 제출 후에는 보기만 됩니다.</li>
-              <li>서명한 종이 서류는 왼쪽 <strong>[필수 서류 (오프라인 동의서)]</strong>에서 올립니다. 항목은 개인정보 처리방침 동의서, 접수면접지, 상담 동의서입니다. 파일은 PDF, JPG, PNG이며 <strong>[업로드]</strong> 또는 <strong>[재업로드]</strong>, <strong>[삭제]</strong>를 사용합니다. 대시보드의 빈 HWP 다운로드와는 다른 단계입니다.</li>
-            </ul>
-            <p class="guide-note">대시보드의 접수면접 숫자는 이 화면에서 접수면접지 파일이 제출 완료인 사례를 셉니다. 초기상담 기록지 작성 건수와는 다릅니다.</p>
+      <article class="mb-12">
+        <div class="flex items-center gap-3 mb-6">
+          <span class="step-badge bg-indigo-600 text-white">4</span>
+          <div>
+            <h3 class="text-xl sm:text-2xl font-bold text-slate-900">종결기록과 최종 제출</h3>
           </div>
-
-          <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-            <h4 class="font-bold text-slate-900 mb-3">게시글 작성</h4>
-            <ol class="space-y-3 text-sm sm:text-base">
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 1</span><span>사례 상세 왼쪽 <strong>[게시판]</strong>에서 <strong>[게시글 작성]</strong>을 누릅니다.</span></li>
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 2</span><span>제목과 내용을 입력합니다. 첨부 파일은 선택이며 PDF, HWP, Word, JPG만 가능합니다. 내용이나 파일 중 하나는 있어야 합니다.</span></li>
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 3</span><span><strong>[등록]</strong>을 누릅니다. 글은 이 사례의 게시판과 내담자 상담 상세페이지에 함께 표시됩니다.</span></li>
-            </ol>
-            <p class="guide-note">등록한 글은 같은 게시판에서 <strong>[수정]</strong>과 <strong>[삭제]</strong>를 할 수 있습니다. 이 게시판은 담당 내담자와 상담사만 보는 공간이며, 같은 기수 다른 수련생에게는 보이지 않습니다.</p>
-          </div>
-
-          <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-            <h4 class="font-bold text-slate-900 mb-3">우리 기수 과제</h4>
-            <p class="text-sm sm:text-base text-slate-700 mb-3">같은 기수와 자료를 나누는 화면은 상단 메뉴 <strong>[사례발표 게시판]</strong>입니다. 대시보드의 수퍼비전 카드로도 들어갑니다. 다른 수련생의 상담일지, 초기상담 기록지, 내담자 연락처는 이 화면에서 열 수 없습니다.</p>
-            <ol class="space-y-3 text-sm sm:text-base">
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 1</span><span>기수가 둘 이상이면 게시판 위 <strong>[기수]</strong>에서 볼 기수를 고릅니다. 진행 중인 기수와 완료된 기수의 글을 볼 수 있습니다.</span></li>
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 2</span><span>빈 양식은 <strong>[수퍼비전 양식]</strong>, <strong>[개념화 양식]</strong>으로 내려받습니다.</span></li>
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 3</span><span>진행 중인 기수에서 <strong>[보고서 등록하기]</strong>를 누릅니다. 본인 담당 사례를 고르고 PDF를 첨부한 뒤 <strong>[등록]</strong>을 누릅니다. 제목은 작성자 이름으로 정해지며 직접 바꾸지 못합니다.</span></li>
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 4</span><span>목록의 <strong>[보기]</strong>로 글을 읽고 댓글을 확인합니다. 파일을 받을 때는 그 PDF를 열 암호를 직접 입력합니다. 여러 건은 <strong>[선택 항목 일괄 다운로드 (ZIP)]</strong>를 사용할 수 있습니다.</span></li>
-            </ol>
-            <p class="guide-note">완료된 기수의 글은 볼 수 있지만, 새 보고서 등록은 그 기수가 진행 중일 때만 됩니다. 개인정보를 가린 상담일지 목록은 상담사 화면에 없습니다.</p>
-          </div>
-
-          <div id="counselor-chat" class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm scroll-mt-24">
-            <h4 class="font-bold text-slate-900 mb-3">1:1 채팅</h4>
-            <ol class="space-y-3 text-sm sm:text-base">
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 1</span><span>사례 상세페이지 오른쪽 아래의 말풍선 버튼을 누릅니다. 제목은 <strong>1:1 채팅</strong>이고 상대 이름이 표시됩니다.</span></li>
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 2</span><span>메시지를 입력하고 보내기 버튼을 누릅니다. 새 메시지가 있으면 말풍선에 숫자가 표시됩니다.</span></li>
-            </ol>
-            <p class="guide-note">채팅에는 파일을 첨부하는 기능이 없습니다. 자료 파일은 게시판의 게시글을 사용합니다. 사례를 최종 제출한 뒤에는 이전 메시지는 볼 수 있으나 새 메시지를 보내지 못합니다.</p>
-            <figure class="browser-frame shot-wrap mt-4" data-shot="/static/manual/screenshots/counselor-chat.png" data-caption="사례 상세 — 1:1 채팅">
-              <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/counseling/counselor/case/…/</span></div>
-              <img class="shot-img" src="/static/manual/screenshots/counselor-chat.png" alt="사례 상세페이지에서 연 1:1 채팅창" loading="lazy">
-              <figcaption class="text-xs text-slate-500 px-4 py-2 bg-slate-100 border-t border-slate-200">오른쪽 아래 말풍선으로 연 1:1 채팅. 예시 메시지이며 파일 첨부 칸은 없습니다.</figcaption>
+        </div>
+        <div class="guide-split">
+          <div class="space-y-4">
+            <figure class="browser-frame shot-wrap">
+              <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/counselor/case/…/#session-4</span></div>
+              <div class="shot-stage">
+                <img class="shot-img" src="/static/manual/screenshots/counselor-guide-records.png" alt="마지막 회기의 종결기록지" loading="lazy">
+                <span class="shot-pin" style="left:35%;top:78%">1</span>
+              </div>
+            </figure>
+            <figure class="browser-frame shot-wrap">
+              <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/counselor/case/…/</span></div>
+              <div class="shot-stage flex items-center gap-3 bg-white px-4 py-3">
+                <span class="shot-num">2</span>
+                <img class="shot-img" style="width:auto;max-width:100%" src="/static/manual/screenshots/counselor-guide-submit.png" alt="최종 제출하기 버튼" loading="lazy">
+              </div>
             </figure>
           </div>
+          <div class="space-y-3">
+            <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+              <span class="shot-num">1</span>
+              <div><p class="font-bold text-slate-900">종결기록지</p><p class="text-sm text-slate-700 mt-1">마지막 회기에서 작성합니다. [저장하기] 후 최종 제출 전까지만 [수정]할 수 있습니다.</p></div>
+            </div>
+            <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+              <span class="shot-num">2</span>
+              <div><p class="font-bold text-slate-900">최종 제출하기</p><p class="text-sm text-slate-700 mt-1">확인 창에서 [최종 제출]을 누릅니다. 이후 기록과 진행 상태는 상담사가 수정할 수 없습니다.</p></div>
+            </div>
+            <p class="guide-note">[최종 제출 취소]는 관리자 화면의 기능입니다.</p>
+          </div>
+        </div>
+      </article>
 
-          <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-            <h4 class="font-bold text-slate-900 mb-3">상담 종결기록</h4>
-            <ol class="space-y-3 text-sm sm:text-base">
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 1</span><span>마지막 회기에서 <strong>[종결기록지 작성]</strong>을 누릅니다. 이어 쓰는 중이면 <strong>[종결기록지 이어쓰기]</strong>, 저장 후면 <strong>[종결기록지 보기]</strong>입니다.</span></li>
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 2</span><span><strong>[저장하기]</strong>로 저장합니다. 최종 제출 전에는 [수정]으로 고칠 수 있습니다.</span></li>
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 3</span><span>상담일지와 종결기록지를 확인한 뒤 사례 상세의 <strong>[최종 제출하기]</strong>를 누르고, 확인 창에서 <strong>[최종 제출]</strong>을 누릅니다.</span></li>
-            </ol>
-            <p class="guide-note">최종 제출 후에는 초기상담 기록지, 상담일지, 종결기록지와 예약 진행 상태를 상담사가 수정할 수 없습니다. [최종 제출 취소]는 관리자 화면의 기능입니다.</p>
+      <article class="mb-12">
+        <div class="flex items-center gap-3 mb-6">
+          <span class="step-badge bg-indigo-600 text-white">5</span>
+          <div>
+            <h3 class="text-xl sm:text-2xl font-bold text-slate-900">서류 · 게시글 · 채팅</h3>
+          </div>
+        </div>
+        <div class="space-y-8">
+          <div class="guide-split">
+            <figure class="browser-frame shot-wrap">
+              <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/counselor/case/…/</span></div>
+              <div class="shot-stage">
+                <img class="shot-img" src="/static/manual/screenshots/counselor-guide-docs.png" alt="필수 서류 업로드" loading="lazy">
+                <span class="shot-pin" style="left:76%;top:29%">1</span>
+              </div>
+            </figure>
+            <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+              <span class="shot-num">1</span>
+              <div><p class="font-bold text-slate-900">필수 서류 업로드</p><p class="text-sm text-slate-700 mt-1">서명한 개인정보 처리방침 동의서, 접수면접지, 상담 동의서를 PDF·JPG·PNG로 [업로드]합니다. 대시보드의 빈 HWP와는 다른 단계입니다.</p></div>
+            </div>
+          </div>
+          <div class="guide-split">
+            <figure class="browser-frame shot-wrap">
+              <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/counselor/case/…/</span></div>
+              <div class="shot-stage">
+                <img class="shot-img" src="/static/manual/screenshots/counselor-guide-board.png" alt="게시글 작성 버튼" loading="lazy">
+                <span class="shot-pin" style="left:64%;top:22%">1</span>
+              </div>
+            </figure>
+            <div class="space-y-3">
+              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+                <span class="shot-num">1</span>
+                <div><p class="font-bold text-slate-900">게시글 작성</p><p class="text-sm text-slate-700 mt-1">제목과 내용을 넣고 [등록]합니다. 첨부는 PDF, HWP, Word, JPG만 됩니다. 글은 이 사례와 내담자 화면에만 보이며 [수정]·[삭제]할 수 있습니다.</p></div>
+              </div>
+            </div>
+          </div>
+          <div class="guide-split">
+            <figure class="browser-frame shot-wrap">
+              <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/counselor/case/…/ (채팅)</span></div>
+              <div class="shot-stage">
+                <img class="shot-img" src="/static/manual/screenshots/counselor-guide-chat.png" alt="1:1 채팅창" loading="lazy">
+                <span class="shot-pin" style="left:8%;top:93%">1</span>
+              </div>
+              <figcaption class="text-xs text-slate-500 px-4 py-2 bg-slate-100 border-t border-slate-200">예시 메시지입니다. 파일 첨부 칸은 없습니다.</figcaption>
+            </figure>
+            <div class="space-y-3">
+              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+                <span class="shot-num">1</span>
+                <div><p class="font-bold text-slate-900">1:1 채팅</p><p class="text-sm text-slate-700 mt-1">사례 상세 오른쪽 아래 말풍선을 눌러 메시지를 보냅니다. 새 메시지는 말풍선에 숫자로 표시됩니다.</p></div>
+              </div>
+              <p class="guide-note">채팅에는 파일을 첨부할 수 없습니다. 자료는 게시글을 사용합니다. 최종 제출 후에는 이전 메시지만 볼 수 있습니다.</p>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="mb-12">
+        <div class="flex items-center gap-3 mb-6">
+          <span class="step-badge bg-indigo-600 text-white">6</span>
+          <div>
+            <h3 class="text-xl sm:text-2xl font-bold text-slate-900">사례발표 게시판</h3>
+            <p class="text-slate-500 text-sm mt-0.5">상단 메뉴 [사례발표 게시판]</p>
+          </div>
+        </div>
+        <div class="guide-split">
+          <figure class="browser-frame shot-wrap">
+            <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/presentation-board/</span></div>
+            <div class="shot-stage">
+              <img class="shot-img" src="/static/manual/screenshots/counselor-guide-presentation.png" alt="사례발표 게시판" loading="lazy">
+              <span class="shot-pin" style="left:22%;top:14%">1</span>
+              <span class="shot-pin" style="left:83%;top:31%">2</span>
+              <span class="shot-pin" style="left:94%;top:31%">3</span>
+              <span class="shot-pin" style="left:93%;top:60%">4</span>
+              <span class="shot-pin" style="left:90%;top:88%">5</span>
+            </div>
+            <figcaption class="text-xs text-slate-500 px-4 py-2 bg-slate-100 border-t border-slate-200">예시 작성자 이름입니다.</figcaption>
+          </figure>
+          <div class="space-y-3">
+            <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+              <span class="shot-num">1</span>
+              <div><p class="font-bold text-slate-900">기수</p><p class="text-sm text-slate-700 mt-1">진행 중이거나 완료된 기수의 글을 골라 봅니다.</p></div>
+            </div>
+            <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+              <span class="shot-num">2</span>
+              <div><p class="font-bold text-slate-900">수퍼비전 양식</p><p class="text-sm text-slate-700 mt-1">빈 양식을 내려받습니다.</p></div>
+            </div>
+            <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+              <span class="shot-num">3</span>
+              <div><p class="font-bold text-slate-900">개념화 양식</p><p class="text-sm text-slate-700 mt-1">빈 양식을 내려받습니다.</p></div>
+            </div>
+            <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+              <span class="shot-num">4</span>
+              <div><p class="font-bold text-slate-900">보고서 등록하기</p><p class="text-sm text-slate-700 mt-1">진행 중인 기수에서 담당 사례와 PDF를 등록합니다. 제목은 작성자 이름으로 정해집니다. 여러 파일은 [선택 항목 일괄 다운로드 (ZIP)]을 사용합니다.</p></div>
+            </div>
+            <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+              <span class="shot-num">5</span>
+              <div><p class="font-bold text-slate-900">보기</p><p class="text-sm text-slate-700 mt-1">글과 댓글을 읽습니다. 파일을 받을 때는 그 PDF를 열 암호를 직접 입력합니다.</p></div>
+            </div>
+            <p class="guide-note">다른 수련생의 상담일지와 내담자 연락처는 열리지 않습니다. 완료된 기수는 글을 볼 수만 있습니다.</p>
           </div>
         </div>
       </article>
 
       <article id="counselor-schedule" class="mb-12 scroll-mt-24">
         <div class="flex items-center gap-3 mb-6">
-          <span class="step-badge bg-indigo-600 text-white">3</span>
+          <span class="step-badge bg-indigo-600 text-white">7</span>
           <div>
             <h3 class="text-xl sm:text-2xl font-bold text-slate-900">가용시간 등록</h3>
             <p class="text-slate-500 text-sm mt-0.5">상단 메뉴 [가용 시간]</p>
           </div>
         </div>
-        <div class="grid lg:grid-cols-2 gap-8 items-start">
-          <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm text-sm sm:text-base text-slate-700">
-            <ol class="space-y-3 mb-4">
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 1</span><span>상단 메뉴 <strong>[가용 시간]</strong>을 누릅니다. 화면 제목은 “상담 가능 시간”입니다.</span></li>
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 2</span><span><strong>[가용시간 등록]</strong>을 누릅니다.</span></li>
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 3</span><span>설정 구분에서 <strong>매주 반복</strong>, <strong>매일</strong>, <strong>특정 날짜</strong> 중 하나를 고르고 시간을 입력합니다. 상담을 받을 시간은 <strong>가능</strong>, 빼야 할 시간은 <strong>차단</strong>으로 표시합니다.</span></li>
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 4</span><span><strong>[저장]</strong>을 누릅니다. 등록된 줄은 <strong>[삭제]</strong>만 있습니다. 시간을 바꾸려면 삭제한 뒤 다시 등록합니다.</span></li>
-            </ol>
-            <p class="guide-note mb-0">이미 확정된 예약은 가용시간을 삭제해도 자동으로 취소되지 않습니다. 내담자가 새로 신청할 수 있는 시간만 바뀝니다.</p>
+        <div class="space-y-8">
+          <div class="guide-split">
+            <figure class="browser-frame shot-wrap">
+              <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/scheduling/availability/</span></div>
+              <div class="shot-stage">
+                <img class="shot-img" src="/static/manual/screenshots/counselor-guide-availability.png" alt="상담 가능 시간 목록" loading="lazy">
+                <span class="shot-pin" style="left:84%;top:22%">1</span>
+                <span class="shot-pin" style="left:82%;top:78%">2</span>
+              </div>
+            </figure>
+            <div class="space-y-3">
+              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+                <span class="shot-num">1</span>
+                <div><p class="font-bold text-slate-900">가용시간 등록</p><p class="text-sm text-slate-700 mt-1">[가용 시간] 화면에서 이 버튼을 누릅니다.</p></div>
+              </div>
+              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+                <span class="shot-num">2</span>
+                <div><p class="font-bold text-slate-900">삭제</p><p class="text-sm text-slate-700 mt-1">등록된 시간은 [삭제]만 있습니다. 바꾸려면 지운 뒤 다시 등록합니다.</p></div>
+              </div>
+              <p class="guide-note">가용시간을 삭제해도 이미 확정된 예약은 취소되지 않습니다.</p>
+            </div>
           </div>
-          <figure class="browser-frame shot-wrap" data-shot="/static/manual/screenshots/counselor-availability.png" data-caption="상담 가능 시간">
-            <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/scheduling/availability/</span></div>
-            <img class="shot-img" src="/static/manual/screenshots/counselor-availability.png" alt="상담 가능 시간 등록과 삭제" loading="lazy">
-            <figcaption class="text-xs text-slate-500 px-4 py-2 bg-slate-100 border-t border-slate-200">[가용시간 등록]과 등록된 시간의 [삭제]. 예시 화면이며 실제 내담자 정보는 없습니다.</figcaption>
-          </figure>
+          <div class="guide-split">
+            <figure class="browser-frame shot-wrap">
+              <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">상담 가능 시간 등록</span></div>
+              <div class="shot-stage">
+                <img class="shot-img" src="/static/manual/screenshots/counselor-guide-availability-form.png" alt="상담 가능 시간 등록 창" loading="lazy">
+                <span class="shot-pin" style="left:78%;top:26%">1</span>
+                <span class="shot-pin" style="left:92%;top:58%">2</span>
+                <span class="shot-pin" style="left:58%;top:74%">3</span>
+                <span class="shot-pin" style="left:92%;top:84%">4</span>
+              </div>
+            </figure>
+            <div class="space-y-3">
+              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+                <span class="shot-num">1</span>
+                <div><p class="font-bold text-slate-900">설정 구분</p><p class="text-sm text-slate-700 mt-1">매주 반복, 매일, 특정 날짜 중 하나를 고릅니다.</p></div>
+              </div>
+              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+                <span class="shot-num">2</span>
+                <div><p class="font-bold text-slate-900">시간</p><p class="text-sm text-slate-700 mt-1">시작 시간과 종료 시간을 입력합니다. 매주 반복이면 요일도 고릅니다.</p></div>
+              </div>
+              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+                <span class="shot-num">3</span>
+                <div><p class="font-bold text-slate-900">가능 여부</p><p class="text-sm text-slate-700 mt-1">상담을 받을 시간은 [가능], 빼야 할 시간은 [불가(차단)]입니다.</p></div>
+              </div>
+              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+                <span class="shot-num">4</span>
+                <div><p class="font-bold text-slate-900">저장</p><p class="text-sm text-slate-700 mt-1">[저장]을 누르면 목록에 추가됩니다.</p></div>
+              </div>
+            </div>
+          </div>
         </div>
       </article>
 
       <article id="counselor-confirm" class="mb-12 scroll-mt-24">
         <div class="flex items-center gap-3 mb-6">
-          <span class="step-badge bg-indigo-600 text-white">4</span>
+          <span class="step-badge bg-indigo-600 text-white">8</span>
           <div>
-            <h3 class="text-xl sm:text-2xl font-bold text-slate-900">예약 확정 및 일정 관리</h3>
-            <p class="text-slate-500 text-sm mt-0.5">신청 확인 · 확정 · 변경 · 취소 · 대면·비대면</p>
+            <h3 class="text-xl sm:text-2xl font-bold text-slate-900">예약 확정</h3>
           </div>
         </div>
-        <div class="space-y-4 mb-8">
-          <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-            <h4 class="font-bold text-slate-900 mb-3">내담자가 예약을 신청한 경우</h4>
-            <ol class="space-y-3 text-sm sm:text-base">
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 1</span><span>대시보드 노란 안내의 건수와 <strong>[대기 중인 예약]</strong> 목록을 확인합니다. 사례 상세에서는 왼쪽 <strong>[대기 중인 예약 신청]</strong>에 회기와 희망 일시가 나옵니다.</span></li>
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 2</span><span>대시보드의 <strong>[처리하기]</strong>는 회기가 지정된 신청이면 그 사례의 해당 회기로 이동하고, 회기가 없으면 예약 처리 화면으로 이동합니다. 사례 상세의 <strong>[예약 확인 및 확정]</strong>은 예약 처리 화면으로 이동합니다.</span></li>
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 3</span><span>상담 일시를 확인합니다. 시각만 바꾸려면 <strong>[시간 수정]</strong>을 먼저 누릅니다.</span></li>
-              <li class="flex gap-3"><span class="text-indigo-600 font-bold shrink-0">단계 4</span><span><strong>[예약 확정]</strong>을 누르면 예약이 확정됩니다. 회기 상태는 확정된 일정으로 바뀌고, 대기 목록에서는 빠집니다.</span></li>
-            </ol>
-          </div>
-          <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-            <h4 class="font-bold text-slate-900 mb-3">일정을 변경하는 경우</h4>
-            <ul class="space-y-2 text-sm sm:text-base text-slate-700">
-              <li>내담자가 변경을 요청하면 사례 상세 왼쪽 <strong>[일정 변경 요청 대기]</strong>에 기존 예약과 변경 희망 일시가 표시됩니다.</li>
-              <li>그대로 바꾸려면 <strong>[변경 승인]</strong>, 기존 일정을 유지하려면 <strong>[변경 반려]</strong>를 누릅니다. 승인하면 그 일시로 확정됩니다.</li>
-              <li>상담사가 직접 바꾸려면 확정된 회기의 <strong>[일정 변경]</strong>을 눌러 새 일시를 입력하고 <strong>[일정 변경 확정]</strong>을 누릅니다.</li>
-            </ul>
-          </div>
-          <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-            <h4 class="font-bold text-slate-900 mb-3">예약을 취소하는 경우</h4>
-            <ul class="space-y-2 text-sm sm:text-base text-slate-700">
-              <li>내담자 취소 요청은 <strong>[취소 요청 대기]</strong>에서 확인합니다. <strong>[취소 승인]</strong>을 누르면 예약이 취소되고, <strong>[취소 반려]</strong>를 누르면 기존 예약이 유지됩니다.</li>
-              <li>상담사가 확정 예약을 직접 취소할 때는 회기의 <strong>[예약 취소]</strong>를 누릅니다. 취소 안내가 내담자에게 전달됩니다.</li>
-              <li>취소가 끝나면 해당 회기에 “예약이 취소되었습니다”가 표시됩니다.</li>
-            </ul>
-          </div>
-          <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-            <h4 class="font-bold text-slate-900 mb-3">비대면 상담과 대면 상담</h4>
-            <ul class="space-y-2 text-sm sm:text-base text-slate-700">
-              <li><strong>비대면:</strong> [예약 확정]을 하면 Zoom 회의가 만들어지고 링크가 사례에 저장됩니다. 회기의 <strong>[Zoom 회의 입장]</strong>으로 들어갑니다. 호스트로 진행하려면 안내의 순서대로 참가자에서 호스트 권한을 받고 호스트 키를 입력합니다.</li>
-              <li><strong>대면:</strong> 확정 방법은 같습니다. Zoom 회의는 만들어지지 않습니다. 상담 장소를 입력하는 칸은 없으므로, 장소는 1:1 채팅으로 내담자에게 안내합니다.</li>
-            </ul>
-            <p class="guide-note mb-0">예약 신청과 취소·변경 요청은 내담자가 하고, 확정·승인·반려와 직접 일정 입력은 상담사가 합니다.</p>
+        <div class="space-y-8">
+          <div class="guide-split">
+            <div class="space-y-4">
+              <figure class="browser-frame shot-wrap">
+                <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/counselor/case/…/</span></div>
+                <div class="shot-stage">
+                  <img class="shot-img" src="/static/manual/screenshots/counselor-guide-pending.png" alt="예약 확인 및 확정" loading="lazy">
+                  <span class="shot-pin" style="left:14%;top:58%">1</span>
+                </div>
+              </figure>
+              <figure class="browser-frame shot-wrap">
+                <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/appointments/…/manage/</span></div>
+                <div class="shot-stage">
+                  <img class="shot-img" src="/static/manual/screenshots/counselor-guide-manage.png" alt="예약 일시와 예약 확정" loading="lazy">
+                  <span class="shot-pin" style="left:78%;top:28%">2</span>
+                  <span class="shot-pin" style="left:8%;top:58%">3</span>
+                  <span class="shot-pin" style="left:28%;top:44%">4</span>
+                </div>
+                <figcaption class="text-xs text-slate-500 px-4 py-2 bg-slate-100 border-t border-slate-200">예시 일시입니다.</figcaption>
+              </figure>
+            </div>
+            <div class="space-y-3">
+              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+                <span class="shot-num">1</span>
+                <div><p class="font-bold text-slate-900">예약 확인 및 확정</p><p class="text-sm text-slate-700 mt-1">사례 상세 왼쪽 [대기 중인 예약 신청]에서 이 버튼을 누릅니다.</p></div>
+              </div>
+              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+                <span class="shot-num">2</span>
+                <div><p class="font-bold text-slate-900">상담 일시</p><p class="text-sm text-slate-700 mt-1">신청된 일시를 확인합니다.</p></div>
+              </div>
+              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+                <span class="shot-num">3</span>
+                <div><p class="font-bold text-slate-900">시간 수정</p><p class="text-sm text-slate-700 mt-1">시각만 바꿀 때 먼저 누릅니다.</p></div>
+              </div>
+              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+                <span class="shot-num">4</span>
+                <div><p class="font-bold text-slate-900">예약 확정</p><p class="text-sm text-slate-700 mt-1">누르면 예약이 확정되고 대기 목록에서 빠집니다.</p></div>
+              </div>
+              <p class="guide-note">비대면은 확정 시 Zoom 회의가 만들어지고 회기의 [Zoom 회의 입장]으로 들어갑니다. 대면은 Zoom이 생기지 않으며, 장소는 채팅으로 안내합니다.</p>
+            </div>
           </div>
         </div>
-        <div class="grid lg:grid-cols-2 gap-8">
-          <figure class="browser-frame shot-wrap" data-shot="/static/manual/screenshots/counselor-appointment-confirm.png" data-caption="사례 상세 — 예약 확인 및 확정">
-            <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/counseling/counselor/case/…/</span></div>
-            <img class="shot-img" src="/static/manual/screenshots/counselor-appointment-confirm.png" alt="대기 중인 예약 신청의 예약 확인 및 확정 버튼" loading="lazy">
-            <figcaption class="text-xs text-slate-500 px-4 py-2 bg-slate-100 border-t border-slate-200">왼쪽 [대기 중인 예약 신청]의 [예약 확인 및 확정]. 예시용 이름입니다.</figcaption>
-          </figure>
-          <figure class="browser-frame shot-wrap" data-shot="/static/manual/screenshots/counselor-appointment-manage.png" data-caption="대기 중인 예약 신청 처리">
-            <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/counselor/appointments/…/manage/</span></div>
-            <img class="shot-img" src="/static/manual/screenshots/counselor-appointment-manage.png" alt="예약 처리 화면의 시간 수정과 예약 확정" loading="lazy">
-            <figcaption class="text-xs text-slate-500 px-4 py-2 bg-slate-100 border-t border-slate-200">처리 화면의 [시간 수정]과 [예약 확정]. 예시용 이름입니다.</figcaption>
-          </figure>
+      </article>
+
+      <article class="mb-4">
+        <div class="flex items-center gap-3 mb-6">
+          <span class="step-badge bg-indigo-600 text-white">9</span>
+          <div>
+            <h3 class="text-xl sm:text-2xl font-bold text-slate-900">일정 변경과 취소</h3>
+          </div>
+        </div>
+        <div class="space-y-8">
+          <div class="guide-split">
+            <figure class="browser-frame shot-wrap">
+              <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/counselor/case/…/</span></div>
+              <div class="shot-stage">
+                <img class="shot-img" src="/static/manual/screenshots/counselor-guide-change.png" alt="일정 변경 승인 반려" loading="lazy">
+                <span class="shot-pin" style="left:28%;top:70%">1</span>
+                <span class="shot-pin" style="left:71%;top:70%">2</span>
+              </div>
+            </figure>
+            <div class="space-y-3">
+              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+                <span class="shot-num">1</span>
+                <div><p class="font-bold text-slate-900">변경 승인</p><p class="text-sm text-slate-700 mt-1">내담자의 변경 희망 일시로 확정합니다.</p></div>
+              </div>
+              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+                <span class="shot-num">2</span>
+                <div><p class="font-bold text-slate-900">변경 반려</p><p class="text-sm text-slate-700 mt-1">기존 예약을 유지합니다.</p></div>
+              </div>
+            </div>
+          </div>
+          <div class="guide-split">
+            <figure class="browser-frame shot-wrap">
+              <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/counselor/case/…/</span></div>
+              <div class="shot-stage">
+                <img class="shot-img" src="/static/manual/screenshots/counselor-guide-cancel.png" alt="취소 승인 반려" loading="lazy">
+                <span class="shot-pin" style="left:84%;top:69%">1</span>
+                <span class="shot-pin" style="left:84%;top:83%">2</span>
+              </div>
+            </figure>
+            <div class="space-y-3">
+              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+                <span class="shot-num">1</span>
+                <div><p class="font-bold text-slate-900">취소 승인</p><p class="text-sm text-slate-700 mt-1">내담자의 취소 요청을 받아 예약을 취소합니다.</p></div>
+              </div>
+              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+                <span class="shot-num">2</span>
+                <div><p class="font-bold text-slate-900">취소 반려</p><p class="text-sm text-slate-700 mt-1">기존 예약을 유지합니다.</p></div>
+              </div>
+            </div>
+          </div>
+          <div class="guide-split">
+            <figure class="browser-frame shot-wrap">
+              <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/counselor/case/…/#session-3</span></div>
+              <div class="shot-stage">
+                <img class="shot-img" src="/static/manual/screenshots/counselor-guide-session3.png" alt="확정 회기의 일정 변경과 예약 취소" loading="lazy">
+                <span class="shot-pin" style="left:12%;top:83%">1</span>
+                <span class="shot-pin" style="left:28%;top:83%">2</span>
+              </div>
+            </figure>
+            <div class="space-y-3">
+              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+                <span class="shot-num">1</span>
+                <div><p class="font-bold text-slate-900">예약 취소</p><p class="text-sm text-slate-700 mt-1">상담사가 확정된 회기를 직접 취소합니다. 취소 안내가 내담자에게 전달됩니다.</p></div>
+              </div>
+              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+                <span class="shot-num">2</span>
+                <div><p class="font-bold text-slate-900">일정 변경</p><p class="text-sm text-slate-700 mt-1">새 일시를 입력한 뒤 [일정 변경 확정]을 누릅니다.</p></div>
+              </div>
+              <p class="guide-note">변경·취소 요청은 내담자가 하고, 승인·반려와 직접 일정 입력은 상담사가 합니다.</p>
+            </div>
+          </div>
         </div>
       </article>
 
