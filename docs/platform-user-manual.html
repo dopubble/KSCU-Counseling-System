@@ -107,6 +107,15 @@
       font-size: 0.95rem; line-height: 1; flex-shrink: 0;
     }
     .shot-pin { position: absolute; z-index: 2; transform: translate(-50%, -50%); }
+    .shot-box {
+      position: absolute;
+      z-index: 1;
+      border: 2px solid #dc2626;
+      border-radius: 0.45rem;
+      pointer-events: none;
+    }
+    .shot-box > .shot-pin { left: 0.45rem; top: 0.45rem; transform: none; }
+    .shot-box > .shot-pin.at-end { left: auto; right: 0.45rem; top: 0.45rem; }
     .guide-split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; align-items: start; }
     @media (min-width: 1024px) {
       .guide-split { grid-template-columns: minmax(0, 1.45fr) minmax(16.5rem, 0.8fr); }
@@ -393,149 +402,89 @@
           <span class="step-badge bg-indigo-600 text-white">1</span>
           <div>
             <h3 class="text-xl sm:text-2xl font-bold text-slate-900">상담사 대시보드</h3>
-            <p class="text-slate-500 text-sm mt-0.5">기수 · 통계 · 수련 현황</p>
           </div>
         </div>
-        <div class="guide-split">
-          <figure class="browser-frame shot-wrap">
-            <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/counseling/counselor/</span></div>
-            <div class="shot-stage">
-              <img class="shot-img" src="/static/manual/screenshots/counselor-guide-dashboard-top.png" alt="상담사 대시보드 상단" loading="lazy">
-              <span class="shot-pin" style="left:24%;top:39%">1</span>
-              <span class="shot-pin" style="left:26%;top:15%">2</span>
-              <span class="shot-pin" style="left:58%;top:15%">3</span>
-              <span class="shot-pin" style="left:90%;top:16%">4</span>
-              <span class="shot-pin" style="left:28%;top:66%">5</span>
+        <div class="space-y-8">
+          <div class="guide-split">
+            <figure class="browser-frame shot-wrap">
+              <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/counseling/counselor/</span></div>
+              <div class="shot-stage">
+                <img class="shot-img" src="/static/manual/screenshots/counselor-guide-dashboard-training.png" alt="수련 현황과 수련시간" loading="lazy">
+                <div class="shot-box" style="left:0.8%;top:1.5%;width:30%;height:20%"><span class="shot-pin at-end">1</span></div>
+                <div class="shot-box" style="left:1%;top:25.5%;width:97.6%;height:72%"><span class="shot-pin at-end">2</span></div>
+              </div>
+              <figcaption class="text-xs text-slate-500 px-4 py-2 bg-slate-100 border-t border-slate-200">예시 화면입니다.</figcaption>
+            </figure>
+            <div class="space-y-3">
+              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+                <span class="shot-num">1</span>
+                <p class="font-bold text-slate-900">1기·2기 대시보드 전환</p>
+              </div>
+              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+                <span class="shot-num">2</span>
+                <p class="font-bold text-slate-900">내 수련시간 확인</p>
+              </div>
             </div>
-            <figcaption class="text-xs text-slate-500 px-4 py-2 bg-slate-100 border-t border-slate-200">예시 화면입니다.</figcaption>
-          </figure>
-          <div class="space-y-3">
-            <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
-              <span class="shot-num">1</span>
-              <div><p class="font-bold text-slate-900">기수 선택</p><p class="text-sm text-slate-700 mt-1">[수련 현황] 옆 목록에서 1기·2기를 바꿉니다. 통계와 사례는 선택한 기수만 나옵니다. 기수가 하나면 목록이 없고, 중단된 기수는 나오지 않습니다.</p></div>
-            </div>
-            <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
-              <span class="shot-num">2</span>
-              <div><p class="font-bold text-slate-900">활성 사례</p><p class="text-sm text-slate-700 mt-1">선택한 기수에서 지금 진행 중인 상담 건수입니다.</p></div>
-            </div>
-            <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
-              <span class="shot-num">3</span>
-              <div><p class="font-bold text-slate-900">대기 중인 예약</p><p class="text-sm text-slate-700 mt-1">내담자가 신청하고 아직 확정하지 않은 건수입니다.</p></div>
-            </div>
-            <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
-              <span class="shot-num">4</span>
-              <div><p class="font-bold text-slate-900">사례발표 게시판</p><p class="text-sm text-slate-700 mt-1">카드를 누르면 그 기수의 사례발표 게시판으로 이동합니다.</p></div>
-            </div>
-            <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
-              <span class="shot-num">5</span>
-              <div><p class="font-bold text-slate-900">수련 현황</p><p class="text-sm text-slate-700 mt-1">접수면접, 상담일지, 종결기록지, 수퍼비전 출석, 사례보고서, 수련시간을 이 기수 기준으로 확인합니다.</p></div>
-            </div>
-            <p class="guide-note">[수련확인증 출력]은 승인이 끝난 기수만 출력됩니다. 그 전에는 출력 조건을 안내하는 창이 열립니다.</p>
           </div>
-        </div>
-      </article>
-
-      <article class="mb-12">
-        <div class="flex items-center gap-3 mb-6">
-          <span class="step-badge bg-indigo-600 text-white">2</span>
-          <div>
-            <h3 class="text-xl sm:text-2xl font-bold text-slate-900">서식 · 예약 · 담당 사례</h3>
-          </div>
-        </div>
-        <div class="guide-split">
-          <figure class="browser-frame shot-wrap">
-            <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/counseling/counselor/</span></div>
-            <div class="shot-stage">
-              <img class="shot-img" src="/static/manual/screenshots/counselor-guide-dashboard-bottom.png" alt="상담 필수서식과 담당 사례" loading="lazy">
-              <span class="shot-pin" style="left:86%;top:18%">1</span>
-              <span class="shot-pin" style="left:86%;top:65%">2</span>
-              <span class="shot-pin" style="left:96%;top:93%">3</span>
+          <div class="guide-split">
+            <figure class="browser-frame shot-wrap">
+              <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/counseling/counselor/</span></div>
+              <div class="shot-stage">
+                <img class="shot-img" src="/static/manual/screenshots/counselor-guide-dashboard-bottom.png" alt="서식, 대기 예약, 담당 사례" loading="lazy">
+                <div class="shot-box" style="left:0.35%;top:0.3%;width:99.3%;height:39.9%"><span class="shot-pin at-end">3</span></div>
+                <div class="shot-box" style="left:0.35%;top:47.3%;width:99.3%;height:23.7%"><span class="shot-pin at-end">4</span></div>
+                <div class="shot-box" style="left:0.35%;top:78.1%;width:99.3%;height:21.4%"><span class="shot-pin at-end">5</span></div>
+              </div>
+              <figcaption class="text-xs text-slate-500 px-4 py-2 bg-slate-100 border-t border-slate-200">예시용 이름입니다.</figcaption>
+            </figure>
+            <div class="space-y-3">
+              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+                <span class="shot-num">3</span>
+                <p class="font-bold text-slate-900">양식 다운로드</p>
+              </div>
+              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+                <span class="shot-num">4</span>
+                <p class="font-bold text-slate-900">대기 중인 예약 승인 처리하기</p>
+              </div>
+              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+                <span class="shot-num">5</span>
+                <p class="font-bold text-slate-900">매칭된 상담 사례 확인</p>
+              </div>
             </div>
-            <figcaption class="text-xs text-slate-500 px-4 py-2 bg-slate-100 border-t border-slate-200">예시용 이름입니다.</figcaption>
-          </figure>
-          <div class="space-y-3">
-            <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
-              <span class="shot-num">1</span>
-              <div><p class="font-bold text-slate-900">상담 필수서식</p><p class="text-sm text-slate-700 mt-1">상담동의서, 개인정보 수집·이용 동의서, 접수면접지의 [다운로드]로 빈 HWP를 받습니다. 이 카드에서는 작성·서명·업로드를 하지 않습니다.</p></div>
-            </div>
-            <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
-              <span class="shot-num">2</span>
-              <div><p class="font-bold text-slate-900">처리하기</p><p class="text-sm text-slate-700 mt-1">회기가 지정된 신청은 그 회기로, 없으면 예약 처리 화면으로 이동합니다.</p></div>
-            </div>
-            <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
-              <span class="shot-num">3</span>
-              <div><p class="font-bold text-slate-900">담당 활성 사례</p><p class="text-sm text-slate-700 mt-1">배정된 내담자 줄을 누르면 사례 상세로 이동합니다. 없으면 “현재 배정된 활성 사례가 없습니다”가 나옵니다.</p></div>
-            </div>
-            <p class="guide-note">노란 안내에 “반려”가 있어도 새 신청을 거절하는 버튼은 없습니다. [처리하기]로 확정합니다.</p>
           </div>
         </div>
       </article>
 
       <article id="counselor-case" class="mb-12 scroll-mt-24">
         <div class="flex items-center gap-3 mb-6">
-          <span class="step-badge bg-indigo-600 text-white">3</span>
+          <span class="step-badge bg-indigo-600 text-white">2</span>
           <div>
-            <h3 class="text-xl sm:text-2xl font-bold text-slate-900">사례 정보와 회기</h3>
+            <h3 class="text-xl sm:text-2xl font-bold text-slate-900">상담 사례 상세페이지</h3>
           </div>
         </div>
-        <div class="space-y-8">
-          <div class="guide-split">
-            <figure class="browser-frame shot-wrap">
-              <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/counselor/case/…/</span></div>
-              <div class="shot-stage">
-                <img class="shot-img" src="/static/manual/screenshots/counselor-guide-case-head.png" alt="사례 이름과 진행 상태" loading="lazy">
-                <span class="shot-pin" style="left:4%;top:42%">1</span>
-                <span class="shot-pin" style="left:72%;top:58%">2</span>
-              </div>
-            </figure>
-            <div class="space-y-3">
-              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
-                <span class="shot-num">1</span>
-                <div><p class="font-bold text-slate-900">내담자</p><p class="text-sm text-slate-700 mt-1">사례 이름, 사례번호, 상담 분야를 확인합니다.</p></div>
-              </div>
-              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
-                <span class="shot-num">2</span>
-                <div><p class="font-bold text-slate-900">진행 상태</p><p class="text-sm text-slate-700 mt-1">진행중 여부와 남은 회기 / 전체 회기를 확인합니다.</p></div>
-              </div>
+        <div class="guide-split">
+          <figure class="browser-frame shot-wrap">
+            <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/counselor/case/…/</span></div>
+            <div class="shot-stage">
+              <img class="shot-img" src="/static/manual/screenshots/counselor-guide-case-overview.png" alt="사례 상세의 신청 정보, 게시판, 회기" loading="lazy">
+              <div class="shot-box" style="left:0.7%;top:0.2%;width:40%;height:38.8%"><span class="shot-pin at-end">1</span></div>
+              <div class="shot-box" style="left:0.7%;top:84.5%;width:40%;height:14.4%"><span class="shot-pin" style="left:50%;top:0.25rem;transform:translateX(-50%)">2</span></div>
+              <div class="shot-box" style="left:43.6%;top:0.2%;width:54.2%;height:66.8%"><span class="shot-pin" style="left:auto;right:0.45rem;top:3.4rem;transform:none">3</span></div>
             </div>
-          </div>
-          <div class="guide-split">
-            <figure class="browser-frame shot-wrap">
-              <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/counselor/case/…/</span></div>
-              <div class="shot-stage">
-                <img class="shot-img" src="/static/manual/screenshots/counselor-guide-case-info.png" alt="내담자 신청 정보" loading="lazy">
-                <span class="shot-pin" style="left:62%;top:10%">1</span>
-              </div>
-              <figcaption class="text-xs text-slate-500 px-4 py-2 bg-slate-100 border-t border-slate-200">예시용 연락처입니다.</figcaption>
-            </figure>
+            <figcaption class="text-xs text-slate-500 px-4 py-2 bg-slate-100 border-t border-slate-200">예시용 연락처입니다.</figcaption>
+          </figure>
+          <div class="space-y-3">
             <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
               <span class="shot-num">1</span>
-              <div><p class="font-bold text-slate-900">내담자 · 신청 정보</p><p class="text-sm text-slate-700 mt-1">왼쪽 카드에서 상담진행방식, 학번, 연락처, 이메일, 주요 호소 문제, 희망 일시를 확인합니다.</p></div>
+              <div><p class="font-bold text-slate-900">내담자 신청정보</p><p class="text-sm text-slate-700 mt-1">내담자가 신청한 상담 정보를 확인합니다.</p></div>
             </div>
-          </div>
-          <div class="guide-split">
-            <figure class="browser-frame shot-wrap">
-              <div class="browser-bar"><span class="browser-dot bg-red-400"></span><span class="browser-dot bg-yellow-400"></span><span class="browser-dot bg-green-400"></span><span class="browser-url">…/counselor/case/…/#session-1</span></div>
-              <div class="shot-stage">
-                <img class="shot-img" src="/static/manual/screenshots/counselor-guide-session.png" alt="1회기 버튼" loading="lazy">
-                <span class="shot-pin" style="left:15%;top:68%">1</span>
-                <span class="shot-pin" style="left:41%;top:68%">2</span>
-                <span class="shot-pin" style="left:66%;top:68%">3</span>
-              </div>
-            </figure>
-            <div class="space-y-3">
-              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
-                <span class="shot-num">1</span>
-                <div><p class="font-bold text-slate-900">일정 입력 및 확정</p><p class="text-sm text-slate-700 mt-1">신청이 없는 회기입니다. 누른 뒤 달력에서 [예약 확정]을 누릅니다.</p></div>
-              </div>
-              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
-                <span class="shot-num">2</span>
-                <div><p class="font-bold text-slate-900">초기상담 기록지</p><p class="text-sm text-slate-700 mt-1">1회기만 있습니다. 저장하면 [초기상담 기록지 보기]로 바뀌고, 최종 제출 전까지만 수정할 수 있습니다.</p></div>
-              </div>
-              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
-                <span class="shot-num">3</span>
-                <div><p class="font-bold text-slate-900">상담일지</p><p class="text-sm text-slate-700 mt-1">[일지 저장] 후 버튼은 [상담일지 보기]가 됩니다. [수정]과 [저장하기]는 최종 제출 전까지만 됩니다. PDF는 열 때 쓸 암호를 직접 입력합니다.</p></div>
-              </div>
+            <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+              <span class="shot-num">2</span>
+              <div><p class="font-bold text-slate-900">게시판 기능</p><p class="text-sm text-slate-700 mt-1">상담 관련 게시글을 확인하고 작성합니다.</p></div>
+            </div>
+            <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex gap-3">
+              <span class="shot-num">3</span>
+              <div><p class="font-bold text-slate-900">상담 회기</p><p class="text-sm text-slate-700 mt-1">오른쪽 회기 카드에서 1회기·2회기 상담 현황을 확인합니다.</p></div>
             </div>
           </div>
         </div>
@@ -543,7 +492,7 @@
 
       <article class="mb-12">
         <div class="flex items-center gap-3 mb-6">
-          <span class="step-badge bg-indigo-600 text-white">4</span>
+          <span class="step-badge bg-indigo-600 text-white">3</span>
           <div>
             <h3 class="text-xl sm:text-2xl font-bold text-slate-900">종결기록과 최종 제출</h3>
           </div>
@@ -581,7 +530,7 @@
 
       <article class="mb-12">
         <div class="flex items-center gap-3 mb-6">
-          <span class="step-badge bg-indigo-600 text-white">5</span>
+          <span class="step-badge bg-indigo-600 text-white">4</span>
           <div>
             <h3 class="text-xl sm:text-2xl font-bold text-slate-900">서류 · 게시글 · 채팅</h3>
           </div>
@@ -637,7 +586,7 @@
 
       <article class="mb-12">
         <div class="flex items-center gap-3 mb-6">
-          <span class="step-badge bg-indigo-600 text-white">6</span>
+          <span class="step-badge bg-indigo-600 text-white">5</span>
           <div>
             <h3 class="text-xl sm:text-2xl font-bold text-slate-900">사례발표 게시판</h3>
             <p class="text-slate-500 text-sm mt-0.5">상단 메뉴 [사례발표 게시판]</p>
@@ -684,7 +633,7 @@
 
       <article id="counselor-schedule" class="mb-12 scroll-mt-24">
         <div class="flex items-center gap-3 mb-6">
-          <span class="step-badge bg-indigo-600 text-white">7</span>
+          <span class="step-badge bg-indigo-600 text-white">6</span>
           <div>
             <h3 class="text-xl sm:text-2xl font-bold text-slate-900">가용시간 등록</h3>
             <p class="text-slate-500 text-sm mt-0.5">상단 메뉴 [가용 시간]</p>
@@ -747,7 +696,7 @@
 
       <article id="counselor-confirm" class="mb-12 scroll-mt-24">
         <div class="flex items-center gap-3 mb-6">
-          <span class="step-badge bg-indigo-600 text-white">8</span>
+          <span class="step-badge bg-indigo-600 text-white">7</span>
           <div>
             <h3 class="text-xl sm:text-2xl font-bold text-slate-900">예약 확정</h3>
           </div>
@@ -798,7 +747,7 @@
 
       <article class="mb-4">
         <div class="flex items-center gap-3 mb-6">
-          <span class="step-badge bg-indigo-600 text-white">9</span>
+          <span class="step-badge bg-indigo-600 text-white">8</span>
           <div>
             <h3 class="text-xl sm:text-2xl font-bold text-slate-900">일정 변경과 취소</h3>
           </div>
