@@ -160,17 +160,36 @@
 <script>
 (function () {
     var pdfModal = document.getElementById("supervisorJournalPdfModal");
-    if (!pdfModal) return;
-    pdfModal.addEventListener("show.bs.modal", function (event) {
-        var btn = event.relatedTarget;
+    var form = document.getElementById("supervisorJournalPdfForm");
+    if (!pdfModal || !form) return;
+
+    function applyPdfButton(btn) {
         if (!btn) return;
-        document.getElementById("supervisorJournalPdfForm").action =
-            btn.getAttribute("data-pdf-action");
+        form.action = btn.getAttribute("data-pdf-action") || "";
         document.getElementById("supervisorJournalPdfLabel").textContent =
             btn.getAttribute("data-pdf-label") || "상담일지";
         document.getElementById("supervisorJournalPdfNext").value =
             window.location.pathname + window.location.search;
         document.getElementById("supervisorJournalPdfPassword").value = "";
+    }
+
+    // 모달이 이미 열려 있으면 show 이벤트가 다시 오지 않는다.
+    // 그때 이전에 연 1회기 주소가 남지 않도록, 클릭한 버튼 주소만 캡처 단계에서 넣는다.
+    document.addEventListener("click", function (event) {
+        var btn = event.target.closest(".supervisor-journal-pdf-btn");
+        if (!btn || !btn.getAttribute("data-pdf-action")) return;
+        applyPdfButton(btn);
+    }, true);
+
+    pdfModal.addEventListener("hidden.bs.modal", function () {
+        form.action = "";
+        document.getElementById("supervisorJournalPdfLabel").textContent = "";
+    });
+
+    form.addEventListener("submit", function (event) {
+        if (!form.getAttribute("action")) {
+            event.preventDefault();
+        }
     });
 })();
 </script>

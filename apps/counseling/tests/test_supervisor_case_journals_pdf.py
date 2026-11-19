@@ -150,6 +150,12 @@ class SupervisorCaseJournalsPdfTests(TestCase):
         self.assertContains(response, "상담일지 일괄 다운로드")
         self.assertContains(response, self._url())
         self.assertContains(response, "PDF 보기")
+        self.assertContains(response, 'addEventListener("click"')
+        self.assertNotContains(response, "show.bs.modal")
+        self.assertContains(
+            response,
+            reverse("supervisor:journal_pdf", kwargs={"journal_pk": self.journals[0].pk}),
+        )
         self.assertNotContains(response, "초안비밀내용XYZ")
         self.assertNotContains(response, "이기수비밀XYZ")
         self.assertNotContains(response, "다른내담자비밀XYZ")
