@@ -36,6 +36,18 @@
                  class="accordion-collapse collapse"
                  aria-labelledby="caseHeading{{ group.case_id }}">
                 <div class="accordion-body p-0">
+                    {% if group.cohort and group.journal_count %}
+                    <div class="d-flex flex-column flex-sm-row justify-content-sm-end p-3">
+                        <button type="button"
+                                class="btn btn-sm btn-primary supervisor-journal-pdf-btn"
+                                data-bs-toggle="modal"
+                                data-bs-target="#supervisorJournalPdfModal"
+                                data-pdf-action="{% url 'supervisor:case_journals_pdf' counselor.pk group.case_id %}?cohort={{ group.cohort }}"
+                                data-pdf-label="상담일지 일괄 다운로드">
+                            상담일지 일괄 다운로드
+                        </button>
+                    </div>
+                    {% endif %}
                     <div class="table-responsive">
                         <table class="table table-hover align-middle mb-0">
                             <thead class="table-light">

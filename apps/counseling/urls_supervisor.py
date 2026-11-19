@@ -23,6 +23,11 @@ urlpatterns = [
         name="journal_pdf",
     ),
     path(
+        "journals/counselors/<uuid:counselor_id>/cases/<uuid:case_pk>/pdf/",
+        views_supervisor.supervisor_case_journals_pdf,
+        name="case_journals_pdf",
+    ),
+    path(
         "initial-records/",
         views_supervisor.supervisor_cohort_initial_records,
         name="cohort_initial_records",

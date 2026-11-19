@@ -16,7 +16,14 @@ from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.pdfencrypt import StandardEncryption
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import (
+    PageBreak,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
 from .models import CounselingJournal, InitialCounselingRecord, TerminationCounselingRecord
 
@@ -217,6 +224,194 @@ def build_journal_pdf(
 def journal_pdf_filename(journal: CounselingJournal) -> str:
     case_number = journal.case.case_number.replace("/", "-")
     return f"상담일지_{case_number}_{journal.session_number}회기.pdf"
+
+
+def case_journals_pdf_filename(case, cohort: int) -> str:
+    """사례 일괄 다운로드 파일명. 사례번호와 기수만 넣는다."""
+    case_number = case.case_number.replace("/", "-")
+    return f"상담일지_{cohort}기_{case_number}.pdf"
+
+
+def _journal_method_label(journal: CounselingJournal) -> str:
+    if not journal.counseling_method:
+        return ""
+    return journal.get_counseling_method_display()
+
+
+def build_case_journals_pdf(
+    case,
+    journals: list[CounselingJournal],
+    *,
+    cohort_label: str,
+    counselor_name: str,
+    client_label: str,
+    user_password: str | None = None,
+) -> bytes:
+    """한 상담사례의 완료 상담일지를 회기 순으로 묶은 PDF. 파일은 메모리에서만 만든다."""
+    if not user_password or not str(user_password).strip():
+        raise ImproperlyConfigured("PDF 암호화를 위해 user_password가 필요합니다.")
+    if not journals:
+        raise ValueError("포함할 상담일지가 없습니다.")
+
+    user_password = str(user_password).strip()
+    ordered = sorted(journals, key=lambda journal: (journal.session_number, str(journal.pk)))
+    for journal in ordered:
+        if journal.case_id != case.pk:
+            raise ValueError("다른 상담사례의 상담일지는 포함할 수 없습니다.")
+
+    font = _register_korean_font()
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=20 * mm,
+        rightMargin=20 * mm,
+        topMargin=18 * mm,
+        bottomMargin=18 * mm,
+        title=f"상담일지 {case.case_number}",
+        encrypt=encryptWithPassword(user_password),
+    )
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "CaseJournalsTitle",
+        parent=styles["Heading1"],
+        fontName=font,
+        fontSize=16,
+        leading=22,
+        alignment=TA_CENTER,
+        spaceAfter=6,
+        wordWrap="CJK",
+        textColor=colors.HexColor("#1a365d"),
+    )
+    subtitle_style = ParagraphStyle(
+        "CaseJournalsSubtitle",
+        parent=styles["Normal"],
+        fontName=font,
+        fontSize=9,
+        leading=13,
+        alignment=TA_CENTER,
+        textColor=colors.grey,
+        spaceAfter=10,
+        wordWrap="CJK",
+    )
+    section_style = ParagraphStyle(
+        "CaseJournalsSection",
+        parent=styles["Heading2"],
+        fontName=font,
+        fontSize=13,
+        leading=18,
+        spaceBefore=2,
+        spaceAfter=6,
+        wordWrap="CJK",
+        textColor=colors.HexColor("#1a365d"),
+    )
+    body_style = ParagraphStyle(
+        "CaseJournalsBody",
+        parent=styles["Normal"],
+        fontName=font,
+        fontSize=10,
+        leading=15,
+        spaceAfter=8,
+        wordWrap="CJK",
+    )
+    label_style = ParagraphStyle(
+        "CaseJournalsLabel",
+        parent=styles["Normal"],
+        fontName=font,
+        fontSize=9,
+        leading=12,
+        textColor=colors.HexColor("#4a5568"),
+        wordWrap="CJK",
+    )
+    value_style = ParagraphStyle(
+        "CaseJournalsValue",
+        parent=styles["Normal"],
+        fontName=font,
+        fontSize=9,
+        leading=12,
+        wordWrap="CJK",
+    )
+
+    def info_table(rows: list[tuple[str, str]]):
+        data = [[_para(label, label_style), _para(value, value_style)] for label, value in rows]
+        table = Table(data, colWidths=[36 * mm, 134 * mm])
+        table.setStyle(
+            TableStyle(
+                [
+                    ("FONT", (0, 0), (-1, -1), font, 9),
+                    ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#edf2f7")),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e0")),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ]
+            )
+        )
+        return table
+
+    session_numbers = ", ".join(f"{journal.session_number}회기" for journal in ordered)
+    story = [
+        _para("숭실사이버대학교 평생교육원", subtitle_style),
+        _para("상담기록 기본정보", title_style),
+        _para("본 문서는 상담 기록으로 대외비이며 무단 배포를 금합니다.", subtitle_style),
+        Spacer(1, 4 * mm),
+        info_table(
+            [
+                ("수련 기수", cohort_label or "—"),
+                ("상담사", counselor_name or "—"),
+                ("내담자", client_label or "—"),
+                ("상담사례 번호", case.case_number),
+                ("포함 회기 수", f"{len(ordered)}건"),
+                ("포함 회기", session_numbers),
+            ]
+        ),
+        PageBreak(),
+    ]
+
+    for index, journal in enumerate(ordered):
+        story.append(_para(f"{journal.session_number}회기 상담일지", section_style))
+        meta_rows = [
+            ("회기 번호", f"{journal.session_number}회기"),
+            ("상담 일시", _fmt_datetime(journal.session_datetime)),
+        ]
+        method_label = _journal_method_label(journal)
+        if method_label:
+            meta_rows.append(("상담 방식", method_label))
+        category = journal.session_category_display
+        if category:
+            meta_rows.append(("상담 구분", category))
+        meta_rows.append(("작성일", _fmt_datetime(journal.created_at)))
+        story.extend(
+            [
+                info_table(meta_rows),
+                Spacer(1, 4 * mm),
+            ]
+        )
+        sections = [
+            ("상담 내용", journal.subjective),
+            ("상담자 관찰", journal.objective),
+            ("임상적 평가", journal.assessment),
+            ("향후 계획", journal.plan),
+        ]
+        for heading, content in sections:
+            if heading == "향후 계획" and not (content or "").strip():
+                continue
+            story.append(_para(heading, section_style))
+            story.append(_para(content, body_style))
+        if index < len(ordered) - 1:
+            story.append(PageBreak())
+
+    def _draw_page_number(canvas, _doc):
+        canvas.saveState()
+        canvas.setFont(font, 8)
+        canvas.setFillColor(colors.HexColor("#718096"))
+        canvas.drawRightString(A4[0] - 20 * mm, 10 * mm, str(canvas.getPageNumber()))
+        canvas.restoreState()
+
+    doc.build(story, onFirstPage=_draw_page_number, onLaterPages=_draw_page_number)
+    return buffer.getvalue()
 
 
 def build_initial_record_pdf(

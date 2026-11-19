@@ -11,12 +11,14 @@ from django.views.decorators.http import require_POST
 
 from apps.accounts.decorators import supervisor_required
 from apps.accounts.models import User
-from apps.counseling.models import CaseStatus
+from apps.counseling.models import Case, CaseStatus
 from apps.counseling.services import case_operation_label
 from apps.counseling.cohort_journal_service import (
     get_cohort_initial_records_for_supervision,
     get_counselor_journals_for_supervision,
     get_supervision_counselors_by_cohort,
+    legacy_supervision_cohort,
+    supervision_cohort_for_case,
 )
 from apps.counseling.journal_permissions import (
     build_supervisor_dashboard_context,
@@ -40,8 +42,10 @@ from apps.counseling.views import (
 from apps.scheduling.availability import format_local_datetime
 from apps.sessions_app.models import CounselingJournal, InitialCounselingRecord
 from apps.sessions_app.pdf import (
+    build_case_journals_pdf,
     build_initial_record_pdf,
     build_journal_pdf,
+    case_journals_pdf_filename,
     initial_record_pdf_filename,
     journal_pdf_filename,
 )
@@ -135,18 +139,39 @@ def _supervisor_counselor_journal_row(journal) -> dict:
     }
 
 
-def _supervisor_counselor_case_groups(journals) -> list[dict]:
+def _case_download_cohort(case, *, page_cohort, legacy_cohort):
+    """버튼에 실을 기수. 화면이 이미 한 기수로 좁혀져 있으면 그 기수를 쓴다."""
+    if page_cohort is not None:
+        return page_cohort
+    if case.training_enrollment_id:
+        enrollment = case.training_enrollment
+        return int(enrollment.cohort) if enrollment is not None else None
+    return legacy_cohort
+
+
+def _supervisor_counselor_case_groups(journals, *, page_cohort=None) -> list[dict]:
     """완료 일지를 Case 단위로 묶는다. 조회는 호출 전에 한 번만 한다."""
     grouped: dict = {}
     groups: list[dict] = []
+    legacy_cohort = None
+    legacy_checked = False
     for journal in journals:
         if not journal.case_id:
             continue
         group = grouped.get(journal.case_id)
         if group is None:
+            if page_cohort is None and not legacy_checked:
+                legacy_cohort = legacy_supervision_cohort(journal.case.counselor)
+                legacy_checked = True
             client = journal.case.client
             group = {
                 "case_id": journal.case_id,
+                "case_number": journal.case.case_number,
+                "cohort": _case_download_cohort(
+                    journal.case,
+                    page_cohort=page_cohort,
+                    legacy_cohort=legacy_cohort,
+                ),
                 "client_name": mask_client_name(client.name if client else ""),
                 "journal_count": 0,
                 "latest_session_at": None,
@@ -229,7 +254,8 @@ def supervisor_counselor_journals(request, counselor_id):
         raise PermissionDenied("상담일지 열람 권한이 없습니다.")
 
     case_groups = _supervisor_counselor_case_groups(
-        get_counselor_journals_for_supervision(counselor, cohort=cohort)
+        get_counselor_journals_for_supervision(counselor, cohort=cohort),
+        page_cohort=cohort,
     )
     if cohort:
         page_title = f"[{cohort}기] {counselor.name} 상담일지"
@@ -354,6 +380,67 @@ def supervisor_journal_pdf(request, journal_pk):
     ascii_name = f"journal_{journal.case.case_number}_{journal.session_number}.pdf".replace(
         "/", "-"
     )
+    return _pdf_file_response(pdf_bytes, filename=filename, ascii_name=ascii_name)
+
+
+@supervisor_required
+@require_POST
+def supervisor_case_journals_pdf(request, counselor_id, case_pk):
+    """선택한 기수의 상담사례에 있는 완료 상담일지를 PDF 한 개로 내려준다."""
+    counselor = get_object_or_404(
+        User.objects.select_related("counselor_profile"),
+        pk=counselor_id,
+    )
+    case = get_object_or_404(
+        Case.objects.select_related(
+            "client",
+            "application",
+            "training_enrollment",
+            "counselor",
+        ),
+        pk=case_pk,
+    )
+    fallback = (request.POST.get("next") or "").strip() or reverse(
+        "supervisor:cohort_journals"
+    )
+    cohort = _selected_supervision_cohort(request)
+    if (
+        cohort is None
+        or case.counselor_id != counselor.pk
+        or supervision_cohort_for_case(case) != cohort
+        or not user_can_open_counselor_supervision(request.user, counselor, cohort)
+    ):
+        raise PermissionDenied("상담일지 PDF 다운로드 권한이 없습니다.")
+
+    journals = [
+        journal
+        for journal in get_counselor_journals_for_supervision(counselor, cohort=cohort)
+        if journal.case_id == case.pk
+        and not journal.is_draft
+        and user_can_download_journal_pdf(request.user, journal)
+    ]
+    journals.sort(key=lambda journal: journal.session_number)
+    if not journals:
+        messages.error(request, "다운로드할 작성 완료 상담일지가 없습니다.")
+        return redirect(fallback)
+
+    pdf_password, redirect_response = _get_pdf_password_from_request(
+        request, redirect_url=fallback
+    )
+    if redirect_response:
+        return redirect_response
+
+    client = case.client
+    pdf_bytes = build_case_journals_pdf(
+        case,
+        journals,
+        cohort_label=f"{cohort}기",
+        counselor_name=counselor.name,
+        client_label=mask_client_name(client.name if client else ""),
+        user_password=pdf_password,
+    )
+    filename = case_journals_pdf_filename(case, cohort)
+    ascii_name = f"journals_c{cohort}_{case.case_number}.pdf".replace("/", "-")
     return _pdf_file_response(pdf_bytes, filename=filename, ascii_name=ascii_name)
 
 
