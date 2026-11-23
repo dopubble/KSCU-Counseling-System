@@ -1,6 +1,6 @@
 from django import forms
 from django.contrib import admin
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
 from django.urls import reverse
 from django.utils.html import format_html
 
@@ -11,6 +11,7 @@ from apps.documents.models import (
 )
 
 from .admin_lock import RecordsSubmittedLockMixin
+from .cohort_journal_service import supervision_cohort_for_case
 from .training_enrollment import (
     ActiveTrainingEnrollmentError,
     require_active_training_enrollment,
@@ -64,6 +65,8 @@ class CaseAdminForm(forms.ModelForm):
 class CounselingApplicationAdmin(RecordsSubmittedLockMixin, admin.ModelAdmin):
     list_display = (
         "client",
+        "case_number_display",
+        "cohort_display",
         "display_counseling_types",
         "residence_region",
         "status",
@@ -73,12 +76,35 @@ class CounselingApplicationAdmin(RecordsSubmittedLockMixin, admin.ModelAdmin):
     search_fields = (
         "client__name",
         "client__email",
+        "case__case_number",
         "reason",
         "residence_region",
         "clinical_diagnosis",
         "occupation",
     )
+    list_select_related = (
+        "client",
+        "case",
+        "case__training_enrollment",
+        "case__counselor",
+    )
     readonly_fields = ("created_at", "updated_at")
+
+    def _application_case(self, obj):
+        try:
+            return obj.case
+        except ObjectDoesNotExist:
+            return None
+
+    @admin.display(description="사례번호", ordering="case__case_number")
+    def case_number_display(self, obj):
+        case = self._application_case(obj)
+        return case.case_number if case else "—"
+
+    @admin.display(description="기수", ordering="case__training_enrollment__cohort")
+    def cohort_display(self, obj):
+        cohort = supervision_cohort_for_case(self._application_case(obj))
+        return f"{cohort}기" if cohort else "—"
 
     @admin.display(description="상담 유형")
     def display_counseling_types(self, obj):

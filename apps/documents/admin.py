@@ -3,6 +3,7 @@ import logging
 import mimetypes
 import zipfile
 
+from django import forms
 from django.contrib import admin, messages
 from django.contrib.admin import RelatedOnlyFieldListFilter
 from django.contrib.admin.models import CHANGE, LogEntry
@@ -36,6 +37,21 @@ from apps.documents.views import _consent_file_response
 
 logger = logging.getLogger(__name__)
 
+
+class ConsentDocumentAdminForm(forms.ModelForm):
+    class Meta:
+        model = ConsentDocument
+        fields = "__all__"
+
+    def clean(self):
+        cleaned = super().clean()
+        client = cleaned.get("client")
+        application = cleaned.get("application")
+        if client and application and application.client_id != client.pk:
+            raise forms.ValidationError("내담자와 상담 신청의 내담자가 일치하지 않습니다.")
+        return cleaned
+
+
 class RequiredDocTypeFilter(admin.SimpleListFilter):
     title = "동의서 종류"
     parameter_name = "doc_type"
@@ -56,6 +72,8 @@ class RequiredDocTypeFilter(admin.SimpleListFilter):
 
 @admin.register(ConsentDocument)
 class ConsentDocumentAdmin(RecordsSubmittedLockMixin, admin.ModelAdmin):
+    form = ConsentDocumentAdminForm
+    raw_id_fields = ("client", "application", "uploaded_by")
     list_display = (
         "client",
         "counselor_display",
