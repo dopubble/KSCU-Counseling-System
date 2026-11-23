@@ -18,7 +18,10 @@ from apps.counseling.models import (
 )
 from apps.counseling.services import assign_counselor
 from apps.documents.models import ConsentDocType, ConsentDocument, ConsentDocumentReplacement
-from apps.documents.services.consent_service import upsert_counselor_consent
+from apps.documents.services.consent_service import (
+    delete_counselor_consent,
+    upsert_counselor_consent,
+)
 from apps.sessions_app.models import CounselingJournal
 
 
@@ -423,11 +426,49 @@ class AdminConsentReplaceTests(TestCase):
         self.assertEqual(previous["Content-Type"], "application/pdf")
         self.assertIn(b"before-upload", b"".join(previous.streaming_content))
         self.assertTrue(self._storage_has(previous_name))
+        self.assertTrue(self._storage_has(admin_name))
+        replaced = self.http.get(
+            reverse(
+                "admin:documents_consentdocument_replacement_file",
+                args=[history.pk, "new"],
+            )
+        )
+        self.assertEqual(replaced.status_code, 200)
+        self.assertIn(b"admin-replaced", b"".join(replaced.streaming_content))
         self.journal.refresh_from_db()
         self.assertEqual(self.journal.subjective, "기존상담기록유지")
         self.assertIsNone(self.case.records_submitted_at)
         self.assertEqual(CounselingJournal.objects.filter(case=self.case).count(), 1)
         self.assertTrue(LogEntry.objects.filter(change_message="첨부파일 교체").exists())
+
+    def test_counselor_delete_keeps_history_files(self):
+        original = self._upload(self.case, ConsentDocType.COUNSELING, "keep-old")
+        self._login_admin()
+        self._replace(self.case, ConsentDocType.COUNSELING, "keep-admin")
+        history = ConsentDocumentReplacement.objects.get(consent=original)
+        previous_name = history.previous_file_name
+        admin_name = history.new_file_name
+        self.assertTrue(delete_counselor_consent(case=self.case, doc_type=ConsentDocType.COUNSELING))
+        original.refresh_from_db()
+        self.assertFalse(original.file)
+        self.assertTrue(self._storage_has(previous_name))
+        self.assertTrue(self._storage_has(admin_name))
+        previous = self.http.get(
+            reverse(
+                "admin:documents_consentdocument_replacement_file",
+                args=[history.pk, "previous"],
+            )
+        )
+        replaced = self.http.get(
+            reverse(
+                "admin:documents_consentdocument_replacement_file",
+                args=[history.pk, "new"],
+            )
+        )
+        self.assertEqual(previous.status_code, 200)
+        self.assertIn(b"keep-old", b"".join(previous.streaming_content))
+        self.assertEqual(replaced.status_code, 200)
+        self.assertIn(b"keep-admin", b"".join(replaced.streaming_content))
 
     def test_intake_snapshot_is_not_changed_by_admin_replace(self):
         self.case.intake_counseling_method = CounselingMethod.REMOTE

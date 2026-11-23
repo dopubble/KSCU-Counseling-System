@@ -1,7 +1,7 @@
 import os
 import uuid
 
-from django.db import transaction
+from django.db import models, transaction
 from django.utils import timezone
 
 from apps.documents.models import (
@@ -21,6 +21,27 @@ def _consent_storage_path(*, consent, application_id, file_obj) -> str:
     timestamp = int(timezone.now().timestamp())
     unique = uuid.uuid4().hex[:8]
     return f"consents/{application_id}/{name_root}_{timestamp}_{unique}{ext_part}"
+
+
+def consent_history_retains_file(name: str) -> bool:
+    """관리자 교체 이력에 남은 경로는 상담사 재업로드·삭제 때도 저장소에서 지우지 않는다."""
+    if not name:
+        return False
+    return ConsentDocumentReplacement.objects.filter(
+        models.Q(previous_file_name=name) | models.Q(new_file_name=name)
+    ).exists()
+
+
+def _clear_consent_file(consent, *, save: bool) -> None:
+    name = consent.file.name if consent.file else ""
+    if not name:
+        return
+    if consent_history_retains_file(name):
+        consent.file.name = ""
+        if save:
+            consent.save(update_fields=["file", "updated_at"])
+        return
+    consent.file.delete(save=save)
 
 
 def get_consents_for_application(application) -> dict[str, ConsentDocument | None]:
@@ -62,7 +83,7 @@ def upsert_counselor_consent(*, case, doc_type: str, file_obj, uploaded_by):
         },
     )
     if consent.file.name:
-        consent.file.delete(save=False)
+        _clear_consent_file(consent, save=False)
         consent.file.name = ""
 
     if hasattr(file_obj, "seek"):
@@ -104,7 +125,7 @@ def delete_counselor_consent(*, case, doc_type: str) -> bool:
     if not consent or not consent.file:
         return False
 
-    consent.file.delete(save=True)
+    _clear_consent_file(consent, save=True)
     return True
 
 

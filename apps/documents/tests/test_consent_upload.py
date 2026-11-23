@@ -139,6 +139,9 @@ class ConsentUploadTests(TestCase):
         self.assertEqual(second.signed_at, signed_at)
         self.assertNotEqual(second.file.name, old_name)
         self.assertGreaterEqual(second.updated_at, first.updated_at)
+        from django.core.files.storage import storages
+
+        self.assertFalse(storages["consent"].exists(old_name))
 
     def test_reupload_after_delete_uses_new_storage_path_and_updates_timestamp(self):
         first = upsert_counselor_consent(
