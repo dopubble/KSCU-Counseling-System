@@ -9,6 +9,7 @@ from apps.documents.models import (
     DOC_TYPE_FILENAME_LABEL,
     ConsentDocType,
     ConsentDocument,
+    ConsentDocumentReplacement,
 )
 
 
@@ -105,3 +106,68 @@ def delete_counselor_consent(*, case, doc_type: str) -> bool:
 
     consent.file.delete(save=True)
     return True
+
+
+def replace_consent_file_for_admin(*, case, doc_type: str, file_obj, replaced_by, reason: str):
+    """관리자가 필수 서류 파일을 새 경로에 저장하고 이전 파일은 남긴다."""
+    doc_type = (doc_type or "").upper()
+    if doc_type not in COUNSELOR_REQUIRED_DOC_TYPES:
+        raise ValueError(f"unsupported doc_type: {doc_type}")
+    if case is None or getattr(case, "application_id", None) is None:
+        raise ValueError("case required")
+
+    reason_text = (reason or "").strip()
+    if len(reason_text) < 2:
+        raise ValueError("reason required")
+
+    application = case.application
+    saved_name = ""
+    storage = None
+    try:
+        consent, _created = ConsentDocument.objects.get_or_create(
+            application=application,
+            doc_type=doc_type,
+            defaults={
+                "client": case.client,
+                "uploaded_by": replaced_by,
+            },
+        )
+        previous_name = consent.file.name if consent.file else ""
+        if hasattr(file_obj, "seek"):
+            file_obj.seek(0)
+        storage_path = _consent_storage_path(
+            consent=consent,
+            application_id=application.id,
+            file_obj=file_obj,
+        )
+        storage = consent.file.storage
+        saved_name = storage.save(storage_path, file_obj)
+        if not saved_name or not storage.exists(saved_name):
+            raise RuntimeError("consent replace save missing")
+        if previous_name and saved_name == previous_name:
+            raise RuntimeError("consent replace reused path")
+
+        with transaction.atomic():
+            locked = ConsentDocument.objects.select_for_update().get(pk=consent.pk)
+            locked.client = case.client
+            locked.file.name = saved_name
+            locked.save(update_fields=["client", "file", "updated_at"])
+            history = ConsentDocumentReplacement.objects.create(
+                consent=locked,
+                case=case,
+                case_number=case.case_number,
+                doc_type=doc_type,
+                previous_file_name=previous_name,
+                new_file_name=saved_name,
+                reason=reason_text,
+                replaced_by=replaced_by,
+            )
+        return locked, history
+    except Exception:
+        if saved_name and storage is not None:
+            try:
+                if storage.exists(saved_name):
+                    storage.delete(saved_name)
+            except Exception:
+                pass
+        raise

@@ -182,6 +182,50 @@ class ConsentDocument(models.Model):
         return bool(self.file)
 
 
+class ConsentDocumentReplacement(models.Model):
+    """관리자 첨부파일 교체 이력. 이전 파일 경로는 보존하고 일반 사용자에게는 노출하지 않는다."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    consent = models.ForeignKey(
+        ConsentDocument,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="replacements",
+        verbose_name="동의서",
+    )
+    case = models.ForeignKey(
+        "counseling.Case",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="consent_replacements",
+        verbose_name="상담사례",
+    )
+    case_number = models.CharField("상담사례 번호", max_length=20)
+    doc_type = models.CharField("서류 종류", max_length=20, choices=ConsentDocType.choices)
+    previous_file_name = models.CharField("기존 파일", max_length=500, blank=True)
+    new_file_name = models.CharField("교체 파일", max_length=500)
+    reason = models.TextField("교체 사유")
+    replaced_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="consent_replacements",
+        verbose_name="변경 관리자",
+    )
+    replaced_at = models.DateTimeField("교체 일시", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "동의서 교체 이력"
+        verbose_name_plural = "동의서 교체 이력"
+        ordering = ["-replaced_at"]
+
+    def __str__(self):
+        return f"{self.case_number} {self.get_doc_type_display()} {self.replaced_at}"
+
+
 class ClosureReport(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     case = models.OneToOneField(

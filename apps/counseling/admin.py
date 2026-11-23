@@ -1,6 +1,14 @@
 from django import forms
 from django.contrib import admin
 from django.core.exceptions import PermissionDenied
+from django.urls import reverse
+from django.utils.html import format_html
+
+from apps.documents.models import (
+    COUNSELOR_REQUIRED_DOC_TYPES,
+    DOC_TYPE_FILENAME_LABEL,
+    ConsentDocument,
+)
 
 from .admin_lock import RecordsSubmittedLockMixin
 from .training_enrollment import (
@@ -96,7 +104,7 @@ class CaseAdmin(RecordsSubmittedLockMixin, admin.ModelAdmin):
     )
     list_filter = ("status", "termination_type", "risk_level", "counseling_method")
     search_fields = ("case_number", "client__name", "counselor__name")
-    readonly_fields = ("case_number", "opened_at")
+    readonly_fields = ("case_number", "opened_at", "consent_file_actions")
 
     def has_change_permission(self, request, obj=None):
         if obj is not None and case_records_are_locked(obj):
@@ -126,6 +134,51 @@ class CaseAdmin(RecordsSubmittedLockMixin, admin.ModelAdmin):
             if getattr(obj, field.attname) != getattr(original, field.attname):
                 raise PermissionDenied(RECORDS_LOCKED_MESSAGE)
         obj.save(update_fields=["status", "termination_type"])
+
+    @admin.display(description="필수 서류")
+    def consent_file_actions(self, obj):
+        if obj is None or not obj.pk:
+            return "—"
+        existing = {
+            doc.doc_type: doc
+            for doc in ConsentDocument.objects.filter(
+                application_id=obj.application_id,
+                doc_type__in=COUNSELOR_REQUIRED_DOC_TYPES,
+            )
+        }
+        parts = []
+        for doc_type in COUNSELOR_REQUIRED_DOC_TYPES:
+            label = DOC_TYPE_FILENAME_LABEL.get(doc_type, doc_type)
+            replace_url = reverse(
+                "admin:documents_consentdocument_replace",
+                args=[obj.pk, doc_type],
+            )
+            consent = existing.get(doc_type)
+            if consent and consent.file and consent.file.name:
+                view_url = reverse(
+                    "admin:documents_consentdocument_file",
+                    args=[consent.pk],
+                )
+                parts.append(
+                    format_html(
+                        '{} — <a class="button" href="{}?disposition=inline" target="_blank" rel="noopener noreferrer">현재 파일 보기</a> <a class="button" href="{}">파일 교체</a>',
+                        label,
+                        view_url,
+                        replace_url,
+                    )
+                )
+            else:
+                parts.append(
+                    format_html(
+                        '{} — 첨부파일 없음 <a class="button" href="{}">파일 교체</a>',
+                        label,
+                        replace_url,
+                    )
+                )
+        result = parts[0]
+        for part in parts[1:]:
+            result = format_html("{}<br>{}", result, part)
+        return result
 
 
 @admin.register(ChatMessage)

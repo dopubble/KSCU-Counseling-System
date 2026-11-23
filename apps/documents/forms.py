@@ -33,3 +33,12 @@ class ConsentUploadForm(forms.Form):
             raise forms.ValidationError(self.MAX_SIZE_MESSAGE)
 
         return file_obj
+
+
+class AdminConsentReplaceForm(ConsentUploadForm):
+    reason = forms.CharField(
+        label="교체 사유",
+        min_length=2,
+        max_length=500,
+        widget=forms.Textarea(attrs={"rows": 3, "class": "vLargeTextField"}),
+    )

@@ -1,0 +1,73 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+  .consent-replace-table { border-collapse: collapse; margin: 1em 0; }
+  .consent-replace-table th, .consent-replace-table td {
+    border: 1px solid var(--border-color, #ddd);
+    padding: 8px 12px;
+    text-align: left;
+  }
+  .consent-replace-table th { width: 10em; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  <table class="consent-replace-table">
+    <tr>
+      <th>기수</th>
+      <td>{{ cohort_label }}</td>
+    </tr>
+    <tr>
+      <th>상담사</th>
+      <td>{{ case.counselor.name|default:"—" }}</td>
+    </tr>
+    <tr>
+      <th>내담자</th>
+      <td>{{ case.client.name }}</td>
+    </tr>
+    <tr>
+      <th>상담사례 번호</th>
+      <td>{{ case.case_number }}</td>
+    </tr>
+    <tr>
+      <th>문서 종류</th>
+      <td>{{ doc_label }}</td>
+    </tr>
+    <tr>
+      <th>기존 첨부파일</th>
+      <td>
+        {% if has_current_file %}
+        <a href="{{ current_file_url }}" target="_blank" rel="noopener noreferrer">{{ current_filename }}</a>
+        {% else %}
+        없음
+        {% endif %}
+      </td>
+    </tr>
+  </table>
+
+  <form method="post" enctype="multipart/form-data" novalidate>
+    {% csrf_token %}
+    <fieldset class="module aligned">
+      <div class="form-row">
+        {{ form.file.errors }}
+        <label for="{{ form.file.id_for_label }}">새 첨부파일</label>
+        {{ form.file }}
+        <p class="help">PDF, JPG, PNG · 최대 10MB</p>
+      </div>
+      <div class="form-row">
+        {{ form.reason.errors }}
+        <label for="{{ form.reason.id_for_label }}">교체 사유</label>
+        {{ form.reason }}
+      </div>
+    </fieldset>
+    <div class="submit-row">
+      <input type="submit" value="교체하기" class="default">
+      <a href="#" class="closelink" onclick="history.back(); return false;">취소</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
