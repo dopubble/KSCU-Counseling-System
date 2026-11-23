@@ -147,6 +147,20 @@ class ConsentDocumentAdmin(RecordsSubmittedLockMixin, admin.ModelAdmin):
         inline = request.GET.get("disposition", "attachment") == "inline"
         return _consent_file_response(consent, inline=inline)
 
+    def save_model(self, request, obj, form, change):
+        # Submitted cases stay locked for change/delete. Admins may still create
+        # the three required consents (intake, counseling, privacy) that the
+        # replace view already allows on those cases.
+        creating_required_consent = (
+            not change
+            and obj.doc_type in COUNSELOR_REQUIRED_DOC_TYPES
+            and user_can_replace_consent(request.user)
+        )
+        if creating_required_consent:
+            admin.ModelAdmin.save_model(self, request, obj, form, change)
+            return
+        super().save_model(request, obj, form, change)
+
     def get_exclude(self, request, obj=None):
         # ConsentMediaStorage has no url(); Admin FileField widget calls file.url on change.
         # Keep excluding the field and use the replace view so existing files are not overwritten.
