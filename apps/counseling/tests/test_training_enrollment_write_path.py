@@ -137,6 +137,133 @@ class TrainingEnrollmentWritePathTests(TestCase):
         application.refresh_from_db()
         self.assertEqual(application.status, ApplicationStatus.WAITING_MATCH)
 
+    def test_approved_new_cohort_two_matches_the_active_enrollment(self):
+        counselor = _counselor("신규2기", 2)
+        enrollment = _enrollment(counselor, 2)
+        client = _client("신규2기내담")
+        application = _application(client)
+        http = Client()
+        http.force_login(_admin())
+
+        response = http.post(
+            reverse("counseling:application_detail", args=[application.pk]),
+            {"counselor": str(counselor.pk), "total_sessions": 10},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        case = Case.objects.get(application=application)
+        self.assertEqual(case.counselor_id, counselor.pk)
+        self.assertEqual(case.training_enrollment_id, enrollment.pk)
+        self.assertEqual(case.training_enrollment.cohort, 2)
+        counselor.counselor_profile.refresh_from_db()
+        self.assertEqual(counselor.counselor_profile.cohort, 2)
+
+    def test_approved_cohort_two_without_enrollment_is_rejected(self):
+        counselor = _counselor("미등록2기", 2)
+        client = _client("미등록내담")
+        application = _application(client)
+        http = Client()
+        http.force_login(_admin())
+
+        response = http.post(
+            reverse("counseling:application_detail", args=[application.pk]),
+            {"counselor": str(counselor.pk), "total_sessions": 10},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(
+            ACTIVE_ENROLLMENT_MISSING,
+            [message.message for message in get_messages(response.wsgi_request)],
+        )
+        self.assertFalse(Case.objects.filter(application=application).exists())
+        self.assertFalse(TrainingEnrollment.objects.filter(counselor=counselor).exists())
+        application.refresh_from_db()
+        self.assertEqual(application.status, ApplicationStatus.WAITING_MATCH)
+
+    def test_unapproved_counselor_cannot_be_matched(self):
+        approved = _counselor("승인상담", 1)
+        _enrollment(approved, 1)
+        unapproved = _counselor("미승인상담", 2)
+        _enrollment(unapproved, 2)
+        unapproved.counselor_profile.is_approved = False
+        unapproved.counselor_profile.save(update_fields=["is_approved", "updated_at"])
+        application = _application(_client("미승인내담"))
+        http = Client()
+        http.force_login(_admin())
+
+        response = http.post(
+            reverse("counseling:application_detail", args=[application.pk]),
+            {"counselor": str(unapproved.pk), "total_sessions": 10},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "상담사 배정에 실패했습니다")
+        self.assertFalse(Case.objects.filter(application=application).exists())
+        application.refresh_from_db()
+        self.assertEqual(application.status, ApplicationStatus.WAITING_MATCH)
+
+    def test_single_cohort_one_match_stays_on_that_enrollment(self):
+        counselor = _counselor("기존1기", 1)
+        enrollment = _enrollment(counselor, 1)
+        application = _application(_client("기존1기내담"))
+        http = Client()
+        http.force_login(_admin())
+
+        response = http.post(
+            reverse("counseling:application_detail", args=[application.pk]),
+            {"counselor": str(counselor.pk), "total_sessions": 8},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        case = Case.objects.get(application=application)
+        self.assertEqual(case.training_enrollment_id, enrollment.pk)
+        self.assertEqual(case.training_enrollment.cohort, 1)
+
+    def test_dual_active_match_keeps_each_case_on_the_selected_enrollment(self):
+        counselor = _counselor("동시기수", 1)
+        first = _enrollment(counselor, 1)
+        second = _enrollment(counselor, 2)
+        http = Client()
+        http.force_login(_admin())
+        first_application = _application(_client("1기배정내담"))
+
+        missing_choice = http.post(
+            reverse("counseling:application_detail", args=[first_application.pk]),
+            {"counselor": str(counselor.pk), "total_sessions": 10},
+        )
+        self.assertEqual(missing_choice.status_code, 200)
+        self.assertContains(missing_choice, "두 기수에 참여 중")
+        self.assertFalse(Case.objects.filter(application=first_application).exists())
+
+        chosen = http.post(
+            reverse("counseling:application_detail", args=[first_application.pk]),
+            {
+                "counselor": str(counselor.pk),
+                "total_sessions": 10,
+                "training_enrollment": str(second.pk),
+            },
+        )
+        self.assertEqual(chosen.status_code, 302)
+        second_case = Case.objects.get(application=first_application)
+        self.assertEqual(second_case.training_enrollment_id, second.pk)
+
+        other_application = _application(_client("1기유지내담"))
+        other = http.post(
+            reverse("counseling:application_detail", args=[other_application.pk]),
+            {
+                "counselor": str(counselor.pk),
+                "total_sessions": 10,
+                "training_enrollment": str(first.pk),
+            },
+        )
+        self.assertEqual(other.status_code, 302)
+        first_case = Case.objects.get(application=other_application)
+        second_case.refresh_from_db()
+        self.assertEqual(first_case.training_enrollment_id, first.pk)
+        self.assertEqual(second_case.training_enrollment_id, second.pk)
+        self.assertEqual(first_case.training_enrollment.cohort, 1)
+        self.assertEqual(second_case.training_enrollment.cohort, 2)
+
     def test_existing_case_keeps_enrollment_when_profile_cohort_changes(self):
         counselor = _counselor("기수변경", 1)
         first = _enrollment(counselor, 1)

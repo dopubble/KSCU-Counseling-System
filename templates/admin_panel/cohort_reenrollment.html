@@ -7,8 +7,12 @@
 {% page_header show_heading=False c1_label="대시보드" c1_url_name="admin_panel:dashboard" c1_icon="bi-speedometer2" c2_label="상담사 명단" c2_url_name="admin_panel:counselor_list" c3_label="새 기수 등록" %}
 
 <div class="site-page-heading mt-4 mb-4">
-    <h2 class="site-page-title mb-1">새 기수 등록</h2>
+    <h2 class="site-page-title mb-1">{% if preview.first_registration %}최초 기수 등록{% else %}새 기수 등록{% endif %}</h2>
+    {% if preview.first_registration %}
+    <p class="text-muted small mb-0">승인된 상담사에게 첫 수련 기수를 등록합니다. 프로필에 입력된 기수로 진행 중 등록을 만들며, 프로필과 상담기록은 바꾸지 않습니다.</p>
+    {% else %}
     <p class="text-muted small mb-0">기존 상담사 계정에 새로운 수련 기수를 추가합니다. 새 계정은 만들지 않고, 기존 기수와 상담기록은 바꾸지 않습니다.</p>
+    {% endif %}
 </div>
 
 <div class="card border-0 shadow-sm">
@@ -54,9 +58,6 @@
             </ul>
         </div>
 
-        {% if not preview.enrollments %}
-        <div class="alert alert-warning">수련 등록 이력이 없는 상담사는 이 화면에서 등록할 수 없습니다.</div>
-        {% endif %}
         {% for error in errors %}
         <div class="alert alert-danger">{{ error }}</div>
         {% endfor %}
@@ -66,9 +67,9 @@
 
         <form method="post" class="mt-3">
             {% csrf_token %}
-            {% if preview.enrollments %}
+            {% if preview.eligible %}
             <div class="mb-3" style="max-width: 16rem;">
-                <label for="newCohort" class="form-label fw-semibold">신규 등록 기수</label>
+                <label for="newCohort" class="form-label fw-semibold">{% if preview.first_registration %}최초 등록 기수{% else %}신규 등록 기수{% endif %}</label>
                 <input type="number"
                        class="form-control"
                        id="newCohort"
@@ -77,13 +78,16 @@
                        step="1"
                        required
                        value="{{ preview.suggested_cohort }}"
-                       {% if not preview.eligible %}disabled{% endif %}>
+                       {% if preview.first_registration %}readonly{% endif %}>
+                {% if preview.first_registration %}
+                <p class="form-text">상담사 프로필의 승인 기수와 같은 값만 등록됩니다.</p>
+                {% endif %}
             </div>
             {% endif %}
             <div class="d-flex gap-2">
                 <a href="{% url 'admin_panel:counselor_list' %}" class="btn btn-outline-secondary">취소</a>
                 {% if preview.eligible %}
-                <button type="submit" class="btn btn-primary">새 기수 등록</button>
+                <button type="submit" class="btn btn-primary">{% if preview.first_registration %}최초 기수 등록{% else %}새 기수 등록{% endif %}</button>
                 {% endif %}
             </div>
         </form>

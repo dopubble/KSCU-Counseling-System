@@ -99,6 +99,9 @@
                             {% if profile.enrollment_count %}
                             <a href="{% url 'admin_panel:counselor_cohort_reenrollment' profile.user.pk %}"
                                class="btn btn-sm btn-outline-primary">새 기수 등록</a>
+                            {% elif profile.is_approved and profile.cohort %}
+                            <a href="{% url 'admin_panel:counselor_cohort_reenrollment' profile.user.pk %}"
+                               class="btn btn-sm btn-outline-primary">최초 기수 등록</a>
                             {% else %}
                             <span class="text-muted">—</span>
                             {% endif %}

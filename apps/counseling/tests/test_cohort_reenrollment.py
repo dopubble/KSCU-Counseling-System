@@ -604,21 +604,52 @@ class CohortReenrollmentTests(TestCase):
         withdrawn.refresh_from_db()
         self.assertEqual(withdrawn.status, TrainingEnrollmentStatus.WITHDRAWN)
 
-    def test_counselor_without_enrollment_is_not_registered_here(self):
-        fresh = _counselor("reenroll-fresh@example.com", "신규상담", 1)
+    def test_approved_counselor_without_enrollment_registers_the_profile_cohort(self):
+        fresh = _counselor("reenroll-fresh@example.com", "신규상담", 2)
         self.http.login(email=self.admin.email, password="pass12345")
         listing = self.http.get(reverse("admin_panel:counselor_list"), {"search": "신규상담"})
-        self.assertContains(listing, "신규상담")
+        self.assertContains(listing, "최초 기수 등록")
         self.assertNotContains(listing, "새 기수 등록")
         url = reverse(
             "admin_panel:counselor_cohort_reenrollment",
             kwargs={"counselor_id": fresh.pk},
         )
-        response = self.http.post(url, {"cohort": "2"}, follow=True)
-        self.assertContains(response, "수련 등록 이력이 없는 상담사")
+        preview = self.http.get(url)
+        self.assertContains(preview, "최초 기수 등록")
+        self.assertEqual(TrainingEnrollment.objects.filter(counselor=fresh).count(), 0)
+
+        mismatch = self.http.post(url, {"cohort": "1"}, follow=True)
+        self.assertContains(mismatch, "최초 기수는 상담사 프로필에 승인된 기수와 같아야 합니다.")
         self.assertFalse(TrainingEnrollment.objects.filter(counselor=fresh).exists())
+
+        response = self.http.post(url, {"cohort": "2"}, follow=True)
+        self.assertContains(response, "2기 수련 등록이 완료되었습니다.")
+        created = TrainingEnrollment.objects.get(counselor=fresh)
+        self.assertEqual(created.cohort, 2)
+        self.assertEqual(created.status, TrainingEnrollmentStatus.ACTIVE)
         fresh.counselor_profile.refresh_from_db()
-        self.assertEqual(fresh.counselor_profile.cohort, 1)
+        self.assertEqual(fresh.counselor_profile.cohort, 2)
+        self.assertTrue(fresh.counselor_profile.is_approved)
+        self.assertFalse(Case.objects.filter(counselor=fresh).exists())
+
+        duplicate = self.http.post(url, {"cohort": "2"}, follow=True)
+        self.assertContains(duplicate, "이미 등록된 기수입니다.")
+        self.assertEqual(TrainingEnrollment.objects.filter(counselor=fresh).count(), 1)
+
+    def test_unapproved_counselor_cannot_register_the_first_cohort(self):
+        fresh = _counselor("reenroll-waiting@example.com", "대기상담", 2)
+        fresh.counselor_profile.is_approved = False
+        fresh.counselor_profile.save(update_fields=["is_approved", "updated_at"])
+        self.http.login(email=self.admin.email, password="pass12345")
+        listing = self.http.get(reverse("admin_panel:counselor_list"), {"search": "대기상담"})
+        self.assertNotContains(listing, "최초 기수 등록")
+        url = reverse(
+            "admin_panel:counselor_cohort_reenrollment",
+            kwargs={"counselor_id": fresh.pk},
+        )
+        response = self.http.post(url, {"cohort": "2"}, follow=True)
+        self.assertContains(response, "승인되지 않은 상담사는 최초 기수를 등록할 수 없습니다.")
+        self.assertFalse(TrainingEnrollment.objects.filter(counselor=fresh).exists())
 
     def test_failure_inside_transaction_rolls_back(self):
         with patch(

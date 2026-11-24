@@ -47,8 +47,9 @@ MSG_ACTIVE_LIMIT = (
     "한 기수를 종료한 뒤 등록해 주세요."
 )
 MSG_NOT_ACTIVE = "진행 중인 기수만 종료할 수 있습니다."
-MSG_NO_HISTORY = "수련 등록 이력이 없는 상담사는 이 화면에서 등록할 수 없습니다."
 MSG_NO_PROFILE = "상담사 프로필이 없어 새 기수에 등록할 수 없습니다."
+MSG_NOT_APPROVED = "승인되지 않은 상담사는 최초 기수를 등록할 수 없습니다."
+MSG_FIRST_COHORT_MATCH = "최초 기수는 상담사 프로필에 승인된 기수와 같아야 합니다."
 MSG_COHORT_NUMBER = "신규 기수는 1 이상의 정수여야 합니다."
 MSG_COHORT_HIGHER = "신규 기수는 기존에 등록된 가장 높은 기수보다 높아야 합니다."
 MSG_COHORT_DUPLICATE = "이미 등록된 기수입니다."
@@ -106,25 +107,54 @@ def _active_enrollments(enrollments):
     return [item for item in enrollments if item.status == TrainingEnrollmentStatus.ACTIVE]
 
 
+def _profile_for(counselor):
+    return CounselorProfile.objects.filter(user_id=counselor.pk).first()
+
+
+def _first_registration_blockers(profile):
+    if profile is None:
+        return [MSG_NO_PROFILE]
+    if not profile.is_approved:
+        return [MSG_NOT_APPROVED]
+    if not profile.cohort:
+        return [MSG_FIRST_COHORT_MATCH]
+    return []
+
+
 def describe_cohort_reenrollment(counselor):
     """확인 화면에 보여줄 현재 등록. 데이터를 바꾸지 않는다."""
     enrollments = list(
         TrainingEnrollment.objects.filter(counselor=counselor).order_by("cohort", "pk")
     )
+    profile = _profile_for(counselor)
     active = _active_enrollments(enrollments)
-    highest = max(enrollments, key=lambda item: (item.cohort, item.pk)) if enrollments else None
+    if not enrollments:
+        blockers = _first_registration_blockers(profile)
+        return {
+            "enrollments": enrollments,
+            "active_enrollments": active,
+            "highest": None,
+            "max_cohort": None,
+            "suggested_cohort": int(profile.cohort) if profile and profile.cohort else None,
+            "readiness_rows": [],
+            "blockers": blockers,
+            "eligible": not blockers,
+            "first_registration": True,
+        }
+    highest = max(enrollments, key=lambda item: (item.cohort, item.pk))
     blockers = [MSG_ACTIVE_LIMIT] if len(active) >= MAX_ACTIVE_ENROLLMENTS else []
     return {
         "enrollments": enrollments,
         "active_enrollments": active,
         "highest": highest,
-        "max_cohort": highest.cohort if highest else None,
-        "suggested_cohort": (highest.cohort + 1) if highest else None,
+        "max_cohort": highest.cohort,
+        "suggested_cohort": highest.cohort + 1,
         "readiness_rows": [
             {"enrollment": item, "readiness": _case_readiness(item)} for item in active
         ],
         "blockers": blockers,
-        "eligible": bool(enrollments) and not blockers,
+        "eligible": not blockers,
+        "first_registration": False,
     }
 
 
@@ -150,8 +180,22 @@ def _validate_new_cohort(enrollments, cohort):
         raise CohortReenrollmentError([MSG_COHORT_HIGHER])
 
 
+def _create_active_enrollment(counselor, cohort):
+    return TrainingEnrollment.objects.create(
+        counselor=counselor,
+        cohort=cohort,
+        status=TrainingEnrollmentStatus.ACTIVE,
+        started_at=timezone.now(),
+        completed_at=None,
+    )
+
+
 def register_next_cohort(counselor, raw_cohort):
-    """더 높은 기수의 ACTIVE 등록을 추가한다. 기존 기수와 기록은 바꾸지 않는다."""
+    """수련 등록을 추가한다. 기존 기수, 프로필, 상담기록은 바꾸지 않는다.
+
+    등록이 없으면 승인된 프로필 기수로 첫 ACTIVE 등록을 만든다.
+    등록이 있으면 그보다 높은 기수의 ACTIVE 등록만 추가한다.
+    """
     cohort = parse_new_cohort(raw_cohort)
     try:
         with transaction.atomic():
@@ -160,19 +204,21 @@ def register_next_cohort(counselor, raw_cohort):
                 TrainingEnrollment.objects.filter(counselor=locked).order_by("cohort", "pk")
             )
             if not enrollments:
-                raise CohortReenrollmentError([MSG_NO_HISTORY])
+                if cohort is None:
+                    raise CohortReenrollmentError([MSG_COHORT_NUMBER])
+                if profile is None:
+                    raise CohortReenrollmentError([MSG_NO_PROFILE])
+                if not profile.is_approved:
+                    raise CohortReenrollmentError([MSG_NOT_APPROVED])
+                if not profile.cohort or cohort != int(profile.cohort):
+                    raise CohortReenrollmentError([MSG_FIRST_COHORT_MATCH])
+                return _create_active_enrollment(locked, cohort)
             if profile is None:
                 raise CohortReenrollmentError([MSG_NO_PROFILE])
             _validate_new_cohort(enrollments, cohort)
             if len(_active_enrollments(enrollments)) >= MAX_ACTIVE_ENROLLMENTS:
                 raise CohortReenrollmentError([MSG_ACTIVE_LIMIT])
-            return TrainingEnrollment.objects.create(
-                counselor=locked,
-                cohort=cohort,
-                status=TrainingEnrollmentStatus.ACTIVE,
-                started_at=timezone.now(),
-                completed_at=None,
-            )
+            return _create_active_enrollment(locked, cohort)
     except IntegrityError as exc:
         raise CohortReenrollmentError([MSG_CONCURRENT]) from exc
 

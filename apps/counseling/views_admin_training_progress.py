@@ -262,7 +262,7 @@ def admin_cancel_training_enrollment(request, enrollment_id):
 
 @role_required(UserRole.ADMIN)
 def admin_counselor_cohort_reenrollment(request, counselor_id):
-    """기존 수련 이력이 있는 상담사에게 더 높은 기수를 등록한다. GET은 확인만 한다."""
+    """수련 기수를 등록한다. 이력이 없으면 승인된 프로필 기수로 최초 등록한다. GET은 확인만 한다."""
     counselor = get_object_or_404(
         User.objects.select_related("counselor_profile"),
         pk=counselor_id,
