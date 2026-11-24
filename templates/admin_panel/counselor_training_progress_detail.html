@@ -124,5 +124,46 @@
         </div>
     </div>
 </div>
+
+<div class="card border-0 shadow-sm mt-4" id="record-submission-status">
+    <div class="card-header bg-white border-bottom py-3">
+        <h2 class="h6 fw-semibold mb-0">
+            <i class="bi bi-journal-check me-2 text-primary" aria-hidden="true"></i>상담기록 최종 제출
+        </h2>
+    </div>
+    <div class="card-body">
+        <p class="text-muted small mb-3">{{ counselor.name }} 상담사의 {{ cohort }}기 사례만 표시합니다. 최종 제출은 사례의 기록 제출 시각으로 판단합니다.</p>
+        <p class="mb-1">연결된 상담사례 {{ record_submission.summary.linked_count }}건 · 최종 제출 완료 {{ record_submission.summary.submitted_count }}건 · 미제출 {{ record_submission.summary.unsubmitted_count }}건</p>
+        <p class="text-muted small mb-3">미제출 중 상담 진행 중 {{ record_submission.summary.in_progress_count }}건, 종결 후 미제출 {{ record_submission.summary.closed_unsubmitted_count }}건{% if record_submission.summary.other_unsubmitted_count %}, 그 외 미제출 {{ record_submission.summary.other_unsubmitted_count }}건{% endif %}</p>
+        {% if record_submission.cases %}
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">사례번호</th>
+                        <th scope="col">내담자</th>
+                        <th scope="col">사례 상태</th>
+                        <th scope="col">제출 상태</th>
+                        <th scope="col">제출 일시</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in record_submission.cases %}
+                    <tr>
+                        <td class="font-monospace">{{ item.case.case_number }}</td>
+                        <td>{{ item.case.client.name }}</td>
+                        <td>{{ item.case.get_status_display }}</td>
+                        <td class="{% if item.kind == 'submitted' %}text-success{% elif item.kind == 'closed_unsubmitted' %}text-warning{% endif %}">{{ item.label }}</td>
+                        <td class="text-nowrap">{% if item.case.records_submitted_at %}{{ item.case.records_submitted_at|date:"Y-m-d H:i" }}{% else %}—{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">이 기수에 연결된 상담사례가 없습니다.</p>
+        {% endif %}
+    </div>
+</div>
 {% include "counseling/training_certificate_approval_card.html" with approve_url_name="admin_panel:enrollment_training_certificate_approve" certificate_url_name="admin_panel:enrollment_training_certificate" revoke_url_name="admin_panel:enrollment_training_certificate_revoke" %}
 {% endblock %}

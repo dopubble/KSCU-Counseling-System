@@ -1,6 +1,7 @@
 """관리자 수련현황 통합 조회. 목록과 상세의 기준키는 TrainingEnrollment다."""
 
 from django.contrib import messages
+from django.db.models import Count, Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -16,7 +17,12 @@ from apps.counseling.cohort_reenrollment import (
     enrollment_cancel_policy_blockers,
     register_next_cohort,
 )
-from apps.counseling.models import TrainingEnrollment, TrainingEnrollmentStatus
+from apps.counseling.models import (
+    Case,
+    CaseStatus,
+    TrainingEnrollment,
+    TrainingEnrollmentStatus,
+)
 from apps.counseling.training_certificate import get_training_certificate_approval_status
 from apps.counseling.training_enrollment import (
     counselor_training_enrollments,
@@ -91,6 +97,116 @@ def _list_display(progress: dict) -> dict:
     }
 
 
+def _empty_record_submission_summary() -> dict:
+    return {
+        "linked_count": 0,
+        "submitted_count": 0,
+        "unsubmitted_count": 0,
+        "in_progress_count": 0,
+        "closed_unsubmitted_count": 0,
+        "other_unsubmitted_count": 0,
+    }
+
+
+def case_record_submission_kind(case) -> str:
+    """사례 최종 제출 구분. 완료 여부는 records_submitted_at만 본다."""
+    if case.records_submitted_at is not None:
+        return "submitted"
+    if case.status == CaseStatus.ACTIVE:
+        return "in_progress"
+    if case.status == CaseStatus.CLOSED:
+        return "closed_unsubmitted"
+    return "other_unsubmitted"
+
+
+def case_record_submission_label(case) -> str:
+    kind = case_record_submission_kind(case)
+    if kind == "submitted":
+        return "최종 제출 완료"
+    if kind == "in_progress":
+        return "상담 진행 중"
+    if kind == "closed_unsubmitted":
+        return "종결 · 미제출"
+    return f"{case.get_status_display()} · 미제출"
+
+
+def record_submission_summaries(enrollment_ids) -> dict:
+    """선택한 Enrollment에 연결된 사례만 집계한다."""
+    summaries = {
+        enrollment_id: _empty_record_submission_summary()
+        for enrollment_id in enrollment_ids
+    }
+    if not enrollment_ids:
+        return summaries
+    rows = (
+        Case.objects.filter(training_enrollment_id__in=enrollment_ids)
+        .values("training_enrollment_id")
+        .annotate(
+            linked_count=Count("pk"),
+            submitted_count=Count(
+                "pk",
+                filter=Q(records_submitted_at__isnull=False),
+            ),
+            in_progress_count=Count(
+                "pk",
+                filter=Q(
+                    records_submitted_at__isnull=True,
+                    status=CaseStatus.ACTIVE,
+                ),
+            ),
+            closed_unsubmitted_count=Count(
+                "pk",
+                filter=Q(
+                    records_submitted_at__isnull=True,
+                    status=CaseStatus.CLOSED,
+                ),
+            ),
+        )
+    )
+    for row in rows:
+        linked = int(row["linked_count"] or 0)
+        submitted = int(row["submitted_count"] or 0)
+        in_progress = int(row["in_progress_count"] or 0)
+        closed_unsubmitted = int(row["closed_unsubmitted_count"] or 0)
+        summaries[row["training_enrollment_id"]] = {
+            "linked_count": linked,
+            "submitted_count": submitted,
+            "unsubmitted_count": linked - submitted,
+            "in_progress_count": in_progress,
+            "closed_unsubmitted_count": closed_unsubmitted,
+            "other_unsubmitted_count": linked - submitted - in_progress - closed_unsubmitted,
+        }
+    return summaries
+
+
+def enrollment_record_submission(enrollment) -> dict:
+    """상세 화면용. 이 Enrollment의 사례와 제출 일시만 담는다."""
+    cases = Case.objects.filter(training_enrollment_id=enrollment.pk).select_related(
+        "client"
+    )
+    items = [
+        {
+            "case": case,
+            "kind": case_record_submission_kind(case),
+            "label": case_record_submission_label(case),
+        }
+        for case in cases
+    ]
+    summary = _empty_record_submission_summary()
+    summary["linked_count"] = len(items)
+    for item in items:
+        if item["kind"] == "submitted":
+            summary["submitted_count"] += 1
+        elif item["kind"] == "in_progress":
+            summary["in_progress_count"] += 1
+        elif item["kind"] == "closed_unsubmitted":
+            summary["closed_unsubmitted_count"] += 1
+        else:
+            summary["other_unsubmitted_count"] += 1
+    summary["unsubmitted_count"] = summary["linked_count"] - summary["submitted_count"]
+    return {"summary": summary, "cases": items}
+
+
 def legacy_training_enrollment_or_404(counselor):
     enrollment = resolve_legacy_counselor_training_enrollment(counselor)
     if enrollment is None:
@@ -139,6 +255,11 @@ def render_enrollment_training_progress(request, enrollment, template):
             "counselor_enrollments": counselor_training_enrollments(counselor),
             "cancel_blockers": cancel_blockers,
             "show_cancel_button": show_cancel_button,
+            "record_submission": (
+                enrollment_record_submission(enrollment)
+                if template == "admin_panel/counselor_training_progress_detail.html"
+                else None
+            ),
         },
     )
 
@@ -149,7 +270,11 @@ def admin_training_progress(request):
     selected_cohort = _parse_required_cohort(request.GET.get("cohort"), cohorts)
     rows = []
     if selected_cohort is not None:
-        for entry in get_cohort_counselors_training_progress(selected_cohort):
+        entries = get_cohort_counselors_training_progress(selected_cohort)
+        summaries = record_submission_summaries(
+            [entry["enrollment"].pk for entry in entries]
+        )
+        for entry in entries:
             rows.append(
                 {
                     "counselor": entry["counselor"],
@@ -157,6 +282,7 @@ def admin_training_progress(request):
                     "enrollment": entry["enrollment"],
                     "progress": entry["progress"],
                     "display": _list_display(entry["progress"]),
+                    "record_submission": summaries[entry["enrollment"].pk],
                 }
             )
 

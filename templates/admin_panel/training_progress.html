@@ -44,6 +44,7 @@
                     <tr>
                         <th scope="col" class="text-nowrap">번호</th>
                         <th scope="col" class="text-nowrap">상담사</th>
+                        <th scope="col" class="text-nowrap">상담사례 제출</th>
                         <th scope="col" class="text-nowrap">접수면접</th>
                         <th scope="col" class="text-nowrap">상담자 경험</th>
                         <th scope="col" class="text-nowrap">종결기록지</th>
@@ -60,6 +61,13 @@
                             <a href="{% url 'admin_panel:enrollment_training_progress_detail' row.enrollment.pk %}{% if selected_cohort %}?cohort={{ selected_cohort }}{% endif %}">
                                 {{ row.counselor.name }}
                             </a>
+                        </td>
+                        <td class="text-nowrap small"
+                            title="상담사례 수입니다. 연결 {{ row.record_submission.linked_count }}건, 상담 진행 중 {{ row.record_submission.in_progress_count }}건, 종결 후 미제출 {{ row.record_submission.closed_unsubmitted_count }}건">
+                            제출 완료 {{ row.record_submission.submitted_count }}건 / 미제출 {{ row.record_submission.unsubmitted_count }}건
+                            {% if row.record_submission.closed_unsubmitted_count %}
+                            <span class="d-block text-warning">종결 후 미제출 {{ row.record_submission.closed_unsubmitted_count }}건</span>
+                            {% endif %}
                         </td>
                         <td class="text-nowrap {% if row.display.intake_done %}text-success{% endif %}">
                             {{ row.display.intake_label }}

@@ -600,3 +600,144 @@ class AdminTrainingProgressDetailTests(TestCase):
             )
         )
         self.assertEqual(response.status_code, 404)
+
+
+class AdminTrainingRecordSubmissionTests(TestCase):
+    def setUp(self):
+        self.admin = _user("admin-submit@example.com", "제출관리", UserRole.ADMIN)
+        self.counselor = _counselor("제출상담", 8)
+        self.enrollment = TrainingEnrollment.objects.get(counselor=self.counselor, cohort=8)
+        self.active = _case(self.counselor, _client_user("진행내담"), "CASE-SUB-OPEN")
+        self.closed_unsubmitted = _case(
+            self.counselor, _client_user("종결내담"), "CASE-SUB-CLOSED"
+        )
+        self.closed_unsubmitted.status = CaseStatus.CLOSED
+        self.closed_unsubmitted.save(update_fields=["status"])
+        self.submitted_at = timezone.now().replace(microsecond=0)
+        self.submitted = _case(self.counselor, _client_user("제출내담"), "CASE-SUB-DONE")
+        self.submitted.status = CaseStatus.CLOSED
+        self.submitted.records_submitted_at = self.submitted_at
+        self.submitted.save(update_fields=["status", "records_submitted_at"])
+        self.held = _case(self.counselor, _client_user("휴지내담"), "CASE-SUB-HOLD")
+        self.held.status = CaseStatus.ON_HOLD
+        self.held.save(update_fields=["status"])
+        self.other = TrainingEnrollment.objects.create(
+            counselor=self.counselor,
+            cohort=9,
+            status=TrainingEnrollmentStatus.ACTIVE,
+        )
+        self.other_case = _linked_case(
+            self.counselor,
+            _client_user("다른기수내담"),
+            "CASE-SUB-OTHER",
+            self.other,
+        )
+        self.unlinked = _linked_case(
+            self.counselor,
+            _client_user("무기수내담"),
+            "CASE-SUB-NONE",
+            None,
+        )
+        self.http = HttpClient()
+        self.http.force_login(self.admin)
+        self.detail_url = reverse(
+            "admin_panel:enrollment_training_progress_detail",
+            kwargs={"enrollment_id": self.enrollment.pk},
+        )
+
+    def test_detail_separates_progress_closed_and_submitted_cases(self):
+        response = self.http.get(self.detail_url)
+        self.assertEqual(response.status_code, 200)
+        summary = response.context["record_submission"]["summary"]
+        self.assertEqual(summary["linked_count"], 4)
+        self.assertEqual(summary["submitted_count"], 1)
+        self.assertEqual(summary["unsubmitted_count"], 3)
+        self.assertEqual(summary["in_progress_count"], 1)
+        self.assertEqual(summary["closed_unsubmitted_count"], 1)
+        self.assertEqual(summary["other_unsubmitted_count"], 1)
+        shown = {
+            item["case"].case_number: item
+            for item in response.context["record_submission"]["cases"]
+        }
+        self.assertEqual(set(shown), {
+            "CASE-SUB-OPEN",
+            "CASE-SUB-CLOSED",
+            "CASE-SUB-DONE",
+            "CASE-SUB-HOLD",
+        })
+        self.assertEqual(shown["CASE-SUB-OPEN"]["label"], "상담 진행 중")
+        self.assertEqual(shown["CASE-SUB-CLOSED"]["label"], "종결 · 미제출")
+        self.assertEqual(shown["CASE-SUB-DONE"]["label"], "최종 제출 완료")
+        self.assertEqual(shown["CASE-SUB-HOLD"]["label"], "휴지 · 미제출")
+        submitted_label = timezone.localtime(self.submitted_at).strftime("%Y-%m-%d %H:%M")
+        self.assertContains(response, "제출상담")
+        self.assertContains(response, "8기")
+        self.assertContains(response, "연결된 상담사례 4건")
+        self.assertContains(response, "최종 제출 완료 1건")
+        self.assertContains(response, "미제출 3건")
+        self.assertContains(response, "상담 진행 중 1건")
+        self.assertContains(response, "종결 후 미제출 1건")
+        self.assertContains(response, submitted_label)
+        self.assertNotContains(response, "CASE-SUB-OTHER")
+        self.assertNotContains(response, "CASE-SUB-NONE")
+        self.assertContains(
+            response,
+            "상태: <span class=\"fw-semibold\">미승인</span> (총 4개 사례 중 최종 종결 처리 1건)",
+        )
+        self.assertContains(response, "수련확인증 승인")
+
+    def test_list_summary_uses_only_the_selected_cohort(self):
+        listing = self.http.get(
+            reverse("admin_panel:training_progress"), {"cohort": "8"}
+        )
+        self.assertEqual(listing.status_code, 200)
+        row = listing.context["rows"][0]
+        self.assertEqual(row["record_submission"]["linked_count"], 4)
+        self.assertEqual(row["record_submission"]["submitted_count"], 1)
+        self.assertEqual(row["record_submission"]["unsubmitted_count"], 3)
+        self.assertEqual(row["record_submission"]["closed_unsubmitted_count"], 1)
+        self.assertContains(listing, "상담사례 제출")
+        self.assertContains(listing, "상담사례 수입니다")
+        self.assertContains(listing, "제출 완료 1건 / 미제출 3건")
+        self.assertContains(listing, "종결 후 미제출 1건")
+        self.assertNotContains(listing, "완료 1 · 미제출 3")
+
+        other = self.http.get(
+            reverse("admin_panel:training_progress"), {"cohort": "9"}
+        )
+        other_row = other.context["rows"][0]
+        self.assertEqual(other_row["record_submission"]["linked_count"], 1)
+        self.assertEqual(other_row["record_submission"]["submitted_count"], 0)
+        self.assertEqual(other_row["record_submission"]["in_progress_count"], 1)
+        self.assertContains(other, "제출 완료 0건 / 미제출 1건")
+        self.assertNotContains(other, "종결 후 미제출 1건")
+
+        other_detail = self.http.get(
+            reverse(
+                "admin_panel:enrollment_training_progress_detail",
+                kwargs={"enrollment_id": self.other.pk},
+            )
+        )
+        self.assertContains(other_detail, "CASE-SUB-OTHER")
+        self.assertContains(other_detail, "상담 진행 중")
+        self.assertNotContains(other_detail, "CASE-SUB-DONE")
+        self.assertNotContains(other_detail, "CASE-SUB-CLOSED")
+
+
+def _linked_case(counselor, client, case_number, enrollment):
+    application = CounselingApplication.objects.create(
+        client=client,
+        counseling_types=["진로상담"],
+        reason="test",
+        counseling_method=CounselingMethod.IN_PERSON,
+        status=ApplicationStatus.IN_PROGRESS,
+    )
+    return Case.objects.create(
+        application=application,
+        client=client,
+        counselor=counselor,
+        case_number=case_number,
+        status=CaseStatus.ACTIVE,
+        counseling_method=CounselingMethod.IN_PERSON,
+        training_enrollment=enrollment,
+    )
