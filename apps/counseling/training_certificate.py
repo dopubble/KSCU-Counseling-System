@@ -309,10 +309,21 @@ def _recognized_supervision_rows(rows: list[list[str]], credit: dict) -> list[li
     return body
 
 
-def supervisor_label_for_counselor(counselor, cohort=None) -> str:
+# 수련확인증 수퍼바이저 표기에서만 빼는 테스트 계정.
+# 운영 사용자 허미경. 같은 이름의 다른 계정은 빼지 않는다.
+CERTIFICATE_SUPERVISOR_EXCLUDED_USER_IDS = frozenset(
+    {"b1838e97-9267-4a7f-8973-f362a71b1101"}
+)
+
+
+def supervisor_label_for_counselor(
+    counselor, cohort=None, *, include_excluded: bool = False
+) -> str:
     """담당 기수 수퍼바이저 이름. 없으면 —.
 
     cohort를 넘기면 CounselorProfile.cohort 대신 그 기수를 쓴다.
+    테스트 수퍼바이저는 기본 표기에서 뺀다. include_excluded는
+    그 계정이 포함됐던 기존 승인 hash를 맞출 때만 쓴다.
     """
     if cohort is None:
         profile = getattr(counselor, "counselor_profile", None)
@@ -337,6 +348,11 @@ def supervisor_label_for_counselor(counselor, cohort=None) -> str:
             except (TypeError, ValueError):
                 continue
         if target not in assigned:
+            continue
+        if (
+            not include_excluded
+            and str(supervisor.user_id) in CERTIFICATE_SUPERVISOR_EXCLUDED_USER_IDS
+        ):
             continue
         name = (supervisor.user.name or "").strip()
         if not name or name in seen:
@@ -789,15 +805,39 @@ def legacy_display_approval_hash(counselor, context: dict, remark: str) -> str:
     return _hash_payload(legacy_display_approval_payload(counselor, context, remark))
 
 
+def _context_including_excluded_supervisors(counselor, context: dict) -> dict | None:
+    """테스트 수퍼바이저가 들어 있던 기존 승인 hash용 context."""
+    enrollment = context.get("training_enrollment")
+    if enrollment is not None:
+        cohort = enrollment.cohort
+    else:
+        profile = _counselor_profile(counselor)
+        cohort = profile.cohort if profile is not None else None
+    full_label = supervisor_label_for_counselor(
+        counselor, cohort, include_excluded=True
+    )
+    if full_label == _supervisor_label(context):
+        return None
+    cloned = dict(context)
+    cloned["supervisor_label"] = full_label
+    return cloned
+
+
 def current_certificate_hashes(counselor, context: dict) -> list[str]:
     """지금 실적으로 인정하는 hash.
 
     Enrollment context의 현재 값은 certificate-metrics-v3다.
     같은 실적의 certificate-metrics-v2는 이미 저장된 단일 기수 승인만 이어 받기 위해 포함한다.
     v1과 화면 문장 hash는 포함하지 않는다.
+    테스트 수퍼바이저를 표기에서 빼기 전의 hash도 같은 실적이면 인정한다.
     """
     current = calculate_training_certificate_hash(counselor, context)
     hashes = [current]
+    previous = _context_including_excluded_supervisors(counselor, context)
+    if previous is not None:
+        previous_hash = calculate_training_certificate_hash(counselor, previous)
+        if previous_hash not in hashes:
+            hashes.append(previous_hash)
     if context.get("supervision_credit_mode") == "recognized":
         return hashes
     if context.get("training_enrollment") is None:
@@ -890,6 +930,20 @@ def _latest_matching_approval(counselor, content_hash, training_enrollment=None)
         .order_by("-approved_at", "-pk")
         .first()
     )
+
+
+def _latest_matching_any(counselor, hashes, training_enrollment=None):
+    """주어진 hash 중 가장 최근 승인. 다른 기수 승인은 넣지 않는다."""
+    match = None
+    for content_hash in hashes:
+        row = _latest_matching_approval(
+            counselor, content_hash, training_enrollment
+        )
+        if row is None:
+            continue
+        if match is None or (row.approved_at, row.pk) > (match.approved_at, match.pk):
+            match = row
+    return match
 
 
 def _latest_enrollment_approval(training_enrollment, hashes):
@@ -1015,11 +1069,11 @@ def get_training_certificate_approval_status(
         )
     else:
         latest = latest_training_certificate_approval(counselor)
-        recognized_match = _latest_matching_approval(
-            counselor, calculate_training_certificate_hash(counselor, recognized)
+        recognized_match = _latest_matching_any(
+            counselor, current_certificate_hashes(counselor, recognized)
         )
-        duration_match = _latest_matching_approval(
-            counselor, calculate_training_certificate_hash(counselor, duration)
+        duration_match = _latest_matching_any(
+            counselor, current_certificate_hashes(counselor, duration)
         )
     if recognized_match is not None:
         match = recognized_match

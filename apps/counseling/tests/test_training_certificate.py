@@ -28,10 +28,18 @@ from apps.counseling.models import (
     SupervisionSession,
     SupervisionSessionStatus,
 )
+from apps.counseling.journal_permissions import supervisor_can_access_cohort
+from apps.counseling.models import TrainingCertificateApproval, TrainingEnrollment, TrainingEnrollmentStatus
 from apps.counseling.training_certificate import (
+    CERTIFICATE_SUPERVISOR_EXCLUDED_USER_IDS,
+    approve_training_certificate,
+    build_counselor_training_certificate_context,
+    calculate_training_certificate_hash,
     certificate_date_for_counselor,
+    current_certificate_hashes,
     counseling_cases_5plus_count,
     counseling_cases_5plus_label,
+    get_training_certificate_approval_status,
     own_case_supervision_post_count,
     own_case_supervision_time_label,
     intake_delivery_mode_label,
@@ -602,6 +610,235 @@ class TrainingCertificateDetailTests(TestCase):
 
         alone = _counselor("담당없음", cohort=3)
         self.assertEqual(supervisor_label_for_counselor(alone), "—")
+
+    def test_excluded_test_supervisor_is_omitted_without_hiding_the_same_name(self):
+        counselor = _counselor("명단상담", cohort=4)
+        excluded_id = next(iter(CERTIFICATE_SUPERVISOR_EXCLUDED_USER_IDS))
+        excluded = User(
+            id=uuid.UUID(excluded_id),
+            email="excluded-supervisor@example.com",
+            name="허미경",
+            role=UserRole.SUPERVISOR,
+            status=UserStatus.ACTIVE,
+        )
+        excluded.set_password("pass12345")
+        excluded.save()
+        same_name = _user("real-heomikyung@example.com", "허미경", UserRole.SUPERVISOR)
+        other = _user("real-supervisor@example.com", "김수퍼", UserRole.SUPERVISOR)
+        for user in (excluded, same_name, other):
+            SupervisorProfile.objects.filter(user=user).update(assigned_cohorts=[4])
+
+        label = supervisor_label_for_counselor(counselor)
+        self.assertEqual(label, "김수퍼 교수, 허미경 교수")
+        self.assertEqual(label.count("허미경"), 1)
+
+        only_excluded = _counselor("제외만", cohort=5)
+        SupervisorProfile.objects.filter(user=excluded).update(assigned_cohorts=[4, 5])
+        self.assertEqual(supervisor_label_for_counselor(only_excluded), "—")
+
+        issued = _counselor("발급상담", cohort=6)
+        issued_enrollment = TrainingEnrollment.objects.create(
+            counselor=issued,
+            cohort=6,
+            status=TrainingEnrollmentStatus.ACTIVE,
+        )
+        SupervisorProfile.objects.filter(user=excluded).update(assigned_cohorts=[4, 5, 6])
+        SupervisorProfile.objects.filter(user=other).update(assigned_cohorts=[4, 6])
+        shown = supervisor_label_for_counselor(issued)
+        previous = supervisor_label_for_counselor(issued, include_excluded=True)
+        self.assertEqual(shown, "김수퍼 교수")
+        self.assertEqual(previous, "김수퍼 교수, 허미경 교수")
+        context = build_counselor_training_certificate_context(
+            issued, issued_enrollment
+        )
+        self.assertEqual(context["supervisor_label"], shown)
+        stored = dict(context)
+        stored["supervisor_label"] = previous
+        admin = _user("approver-exclude@example.com", "승인자", UserRole.ADMIN)
+        TrainingCertificateApproval.objects.create(
+            counselor=issued,
+            training_enrollment=issued_enrollment,
+            approved_by=admin,
+            approved_role=UserRole.ADMIN,
+            content_hash=calculate_training_certificate_hash(issued, stored),
+        )
+        status = get_training_certificate_approval_status(
+            issued, training_enrollment=issued_enrollment
+        )
+        self.assertEqual(status["status"], "approved")
+        self.assertEqual(status["context"]["supervisor_label"], shown)
+        self.assertNotIn("허미경", status["context"]["supervisor_label"])
+        self.assertTrue(status["can_issue"])
+
+    def test_exclusion_is_one_user_on_every_certificate_path_and_future_cohorts(self):
+        self.assertEqual(
+            CERTIFICATE_SUPERVISOR_EXCLUDED_USER_IDS,
+            frozenset({"b1838e97-9267-4a7f-8973-f362a71b1101"}),
+        )
+        excluded = User(
+            id=uuid.UUID("b1838e97-9267-4a7f-8973-f362a71b1101"),
+            email="excluded-future@example.com",
+            name="허미경",
+            role=UserRole.SUPERVISOR,
+            status=UserStatus.ACTIVE,
+        )
+        excluded.set_password("pass12345")
+        excluded.save()
+        real = _user("future-supervisor@example.com", "김수퍼", UserRole.SUPERVISOR)
+        for user in (excluded, real):
+            SupervisorProfile.objects.filter(user=user).update(assigned_cohorts=[1, 2, 30])
+        excluded.supervisor_profile.refresh_from_db()
+        self.assertEqual(excluded.supervisor_profile.assigned_cohorts, [1, 2, 30])
+        self.assertTrue(supervisor_can_access_cohort(excluded, 1))
+        self.assertTrue(supervisor_can_access_cohort(excluded, 2))
+        self.assertTrue(supervisor_can_access_cohort(excluded, 30))
+
+        counselor = _counselor("미래기수", cohort=30)
+        enrollment = TrainingEnrollment.objects.create(
+            counselor=counselor,
+            cohort=30,
+            status=TrainingEnrollmentStatus.ACTIVE,
+        )
+        case = _case(
+            counselor,
+            _user("미래내담@example.com", "미래내담", UserRole.CLIENT),
+            "CASE-FUTURE-1",
+            CounselingMethod.IN_PERSON,
+        )
+        case.training_enrollment = enrollment
+        case.save(update_fields=["training_enrollment"])
+        _submit(case)
+
+        self.assertEqual(supervisor_label_for_counselor(counselor, 30), "김수퍼 교수")
+        self.assertEqual(
+            supervisor_label_for_counselor(counselor, 30, include_excluded=True),
+            "김수퍼 교수, 허미경 교수",
+        )
+        approval = approve_training_certificate(
+            counselor,
+            _user("future-admin@example.com", "미래관리", UserRole.ADMIN),
+            training_enrollment=enrollment,
+        )
+        context = build_counselor_training_certificate_context(counselor, enrollment)
+        self.assertEqual(context["supervisor_label"], "김수퍼 교수")
+        self.assertNotIn("허미경", "\n".join(context["supervisor_lines"]))
+        self.assertEqual(
+            approval.content_hash,
+            calculate_training_certificate_hash(counselor, context),
+        )
+        self.assertEqual(
+            get_training_certificate_approval_status(
+                counselor, training_enrollment=enrollment
+            )["status"],
+            "approved",
+        )
+
+        admin = _user("future-page-admin@example.com", "화면관리", UserRole.ADMIN)
+        admin_http = HttpClient()
+        admin_http.force_login(admin)
+        detail = admin_http.get(
+            reverse(
+                "admin_panel:enrollment_training_progress_detail",
+                kwargs={"enrollment_id": enrollment.pk},
+            )
+        )
+        self.assertEqual(detail.status_code, 200)
+        self.assertNotContains(detail, "허미경")
+        self.assertEqual(
+            detail.context["certificate_approval"]["context"]["supervisor_label"],
+            "김수퍼 교수",
+        )
+        supervisor_http = HttpClient()
+        supervisor_http.force_login(real)
+        supervisor_detail = supervisor_http.get(
+            reverse(
+                "supervisor:enrollment_training_progress_detail",
+                kwargs={"enrollment_id": enrollment.pk},
+            )
+        )
+        self.assertEqual(supervisor_detail.status_code, 200)
+        self.assertNotContains(supervisor_detail, "허미경")
+        self.assertEqual(
+            supervisor_detail.context["certificate_approval"]["context"][
+                "supervisor_label"
+            ],
+            "김수퍼 교수",
+        )
+        counselor_http = HttpClient()
+        counselor_http.force_login(counselor)
+        dashboard = counselor_http.get(reverse("counselor:dashboard"))
+        self.assertEqual(dashboard.status_code, 200)
+        self.assertNotContains(dashboard, "허미경")
+        self.assertEqual(
+            dashboard.context["certificate_approval"]["context"]["supervisor_label"],
+            "김수퍼 교수",
+        )
+
+        pdf_urls = [
+            reverse(
+                "admin_panel:enrollment_training_certificate",
+                kwargs={"enrollment_id": enrollment.pk},
+            ),
+            reverse(
+                "supervisor:enrollment_training_certificate",
+                kwargs={"enrollment_id": enrollment.pk},
+            ),
+            reverse("counselor:training_certificate"),
+        ]
+        clients = [admin_http, supervisor_http, counselor_http]
+        for client, url in zip(clients, pdf_urls):
+            seen = []
+
+            def spy(text, style, seen=seen):
+                seen.append(text)
+                return RealParagraph(text, style)
+
+            with patch(
+                "apps.counseling.training_certificate_pdf.Paragraph",
+                side_effect=spy,
+            ):
+                response = client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response["Content-Type"], "application/pdf")
+            rendered = "\n".join(seen)
+            self.assertIn("김수퍼", rendered)
+            self.assertNotIn("허미경", rendered)
+
+        stored = dict(context)
+        stored["supervisor_label"] = "박수퍼 교수, 허미경 교수"
+        foreign_hash = calculate_training_certificate_hash(counselor, stored)
+        self.assertNotIn(foreign_hash, current_certificate_hashes(counselor, context))
+        original_hash = approval.content_hash
+        approval.content_hash = foreign_hash
+        approval.save(update_fields=["content_hash"])
+        changed = get_training_certificate_approval_status(
+            counselor, training_enrollment=enrollment
+        )
+        self.assertEqual(changed["status"], "reapproval_required")
+        self.assertFalse(changed["can_issue"])
+        approval.content_hash = original_hash
+        approval.save(update_fields=["content_hash"])
+
+        real.name = "박수퍼"
+        real.save(update_fields=["name"])
+        renewed = approve_training_certificate(
+            counselor, admin, training_enrollment=enrollment
+        )
+        self.assertNotEqual(renewed.pk, approval.pk)
+        renewed_context = build_counselor_training_certificate_context(
+            counselor, enrollment
+        )
+        self.assertEqual(renewed_context["supervisor_label"], "박수퍼 교수")
+        self.assertEqual(
+            renewed.content_hash,
+            calculate_training_certificate_hash(counselor, renewed_context),
+        )
+        self.assertEqual(
+            get_training_certificate_approval_status(
+                counselor, training_enrollment=enrollment
+            )["status"],
+            "approved",
+        )
 
     def test_intake_mode_uses_intake_snapshot_not_current_case_method(self):
         counselor = _counselor("면접상담", cohort=1)
