@@ -335,7 +335,9 @@ class MonthBookingContext:
 
         recurring_allows = [rule for rule in recurring if rule.is_available]
         if not recurring_allows:
-            return False
+            if self.has_recurring_allow_rules:
+                return False
+            return True
 
         for rule in recurring_allows:
             window_start = _combine(local_date, rule.start_time)

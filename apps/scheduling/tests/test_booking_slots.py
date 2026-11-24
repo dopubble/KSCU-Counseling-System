@@ -18,10 +18,12 @@ from apps.scheduling.availability import is_counselor_slot_available, local_time
 from apps.scheduling.booking_slots import (
     build_available_dates_for_month,
     build_booking_slots_for_date,
+    date_has_bookable_slot,
     interval_slot_starts,
     month_date_bounds,
     resolve_slot_state,
 )
+from apps.scheduling.services import AppointmentServiceError, create_appointment_request
 from apps.scheduling.constants import (
     BOOKING_SLOT_INTERVAL_MINUTES,
     DEFAULT_APPOINTMENT_DURATION_MINUTES,
@@ -287,6 +289,171 @@ class BookingSlotsTests(TestCase):
         self.assertIn("zoom_remaining", slot_15)
         self.assertEqual(slot_15["room_remaining"], 2)
         self.assertEqual(slot_15["zoom_remaining"], 1)
+
+    def _aware(self, on_date: date, hour: int, minute: int = 0) -> datetime:
+        return timezone.make_aware(
+            datetime.combine(on_date, time(hour, minute)),
+            local_timezone(),
+        )
+
+    def _block_weekday(self, weekday: int, start: time, end: time) -> None:
+        CounselorAvailability.objects.create(
+            counselor=self.counselor,
+            is_recurring=True,
+            day_of_week=weekday,
+            start_time=start,
+            end_time=end,
+            is_available=False,
+            is_active=True,
+        )
+
+    def test_partial_block_keeps_earlier_slots_and_the_date(self):
+        friday = self._next_weekday(4)
+        self._block_weekday(4, time(17, 0), time(22, 0))
+        case = self._create_case(CounselingMethod.REMOTE)
+
+        morning, _message = is_counselor_slot_available(
+            self.counselor.pk,
+            self._aware(friday, 10, 0),
+            duration_minutes=DEFAULT_APPOINTMENT_DURATION_MINUTES,
+            require_full_duration=True,
+        )
+        self.assertTrue(morning)
+
+        evening, evening_message = is_counselor_slot_available(
+            self.counselor.pk,
+            self._aware(friday, 17, 0),
+            duration_minutes=DEFAULT_APPOINTMENT_DURATION_MINUTES,
+            require_full_duration=True,
+        )
+        self.assertFalse(evening)
+        self.assertIn("차단", evening_message)
+
+        overlapping, _overlap_message = is_counselor_slot_available(
+            self.counselor.pk,
+            self._aware(friday, 16, 30),
+            duration_minutes=DEFAULT_APPOINTMENT_DURATION_MINUTES,
+            require_full_duration=False,
+        )
+        self.assertFalse(overlapping)
+
+        self.assertTrue(
+            date_has_bookable_slot(
+                case=case,
+                on_date=friday,
+                require_full_duration=True,
+            )
+        )
+        slots = build_booking_slots_for_date(
+            case=case,
+            on_date=friday,
+            require_full_duration=True,
+        )
+        self.assertTrue(any(slot.state == "available" and slot.start.hour < 17 for slot in slots))
+        self.assertTrue(
+            all(slot.state == "blocked" for slot in slots if slot.start.hour > 16 or (slot.start.hour == 16 and slot.start.minute >= 30))
+        )
+
+    def test_full_day_block_disables_date_only_when_no_slot_remains(self):
+        wednesday = self._next_weekday(2)
+        self._block_weekday(2, time(8, 0), time(22, 0))
+        case = self._create_case(CounselingMethod.REMOTE)
+
+        available, message = is_counselor_slot_available(
+            self.counselor.pk,
+            self._aware(wednesday, 10, 0),
+        )
+        self.assertFalse(available)
+        self.assertIn("차단", message)
+        self.assertFalse(date_has_bookable_slot(case=case, on_date=wednesday))
+
+        thursday = self._next_weekday(3)
+        open_day, _message = is_counselor_slot_available(
+            self.counselor.pk,
+            self._aware(thursday, 10, 0),
+        )
+        self.assertTrue(open_day)
+        self.assertTrue(date_has_bookable_slot(case=case, on_date=thursday))
+
+    def test_block_does_not_close_a_weekday_that_still_has_an_allow_window(self):
+        self._add_weekday_availability(time(9, 0), time(22, 0))
+        friday = self._next_weekday(4)
+        saturday = self._next_weekday(5)
+        self._block_weekday(4, time(17, 0), time(22, 0))
+        case = self._create_case(CounselingMethod.REMOTE)
+
+        morning, _message = is_counselor_slot_available(
+            self.counselor.pk,
+            self._aware(friday, 10, 0),
+            require_full_duration=True,
+        )
+        self.assertTrue(morning)
+        self.assertTrue(date_has_bookable_slot(case=case, on_date=friday, require_full_duration=True))
+
+        weekend, weekend_message = is_counselor_slot_available(
+            self.counselor.pk,
+            self._aware(saturday, 10, 0),
+            require_full_duration=True,
+        )
+        self.assertFalse(weekend)
+        self.assertIn("요일", weekend_message)
+        self.assertFalse(date_has_bookable_slot(case=case, on_date=saturday))
+
+    def test_existing_appointment_still_blocks_only_that_time(self):
+        friday = self._next_weekday(4)
+        self._block_weekday(4, time(17, 0), time(22, 0))
+        case = self._create_case(CounselingMethod.IN_PERSON)
+        taken_start = self._aware(friday, 10, 0)
+        Appointment.objects.create(
+            case=case,
+            counselor=self.counselor,
+            client=self.client_user,
+            scheduled_at=taken_start,
+            duration_minutes=DEFAULT_APPOINTMENT_DURATION_MINUTES,
+            status=AppointmentStatus.CONFIRMED,
+            confirmed_at=timezone.now(),
+        )
+
+        self.assertEqual(
+            resolve_slot_state(
+                counselor_id=self.counselor.pk,
+                counseling_method=CounselingMethod.IN_PERSON,
+                scheduled_at=taken_start,
+                duration_minutes=DEFAULT_APPOINTMENT_DURATION_MINUTES,
+            ),
+            "taken",
+        )
+        self.assertEqual(
+            resolve_slot_state(
+                counselor_id=self.counselor.pk,
+                counseling_method=CounselingMethod.IN_PERSON,
+                scheduled_at=self._aware(friday, 11, 0),
+                duration_minutes=DEFAULT_APPOINTMENT_DURATION_MINUTES,
+            ),
+            "available",
+        )
+
+    def test_server_rejects_request_overlapping_block_and_accepts_open_time(self):
+        friday = self._next_weekday(4)
+        self._block_weekday(4, time(17, 0), time(22, 0))
+        case = self._create_case(CounselingMethod.IN_PERSON)
+
+        with self.assertRaises(AppointmentServiceError):
+            create_appointment_request(
+                case=case,
+                client=self.client_user,
+                scheduled_at=self._aware(friday, 16, 30),
+                notify=False,
+            )
+
+        created = create_appointment_request(
+            case=case,
+            client=self.client_user,
+            scheduled_at=self._aware(friday, 10, 0),
+            notify=False,
+        )
+        self.assertEqual(created.status, AppointmentStatus.PENDING)
+        self.assertEqual(created.scheduled_at, self._aware(friday, 10, 0))
 
 
 class IntervalSlotStartsTests(TestCase):

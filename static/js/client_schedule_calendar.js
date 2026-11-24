@@ -5,6 +5,9 @@
     "use strict";
 
     const BOOKING_SLOT_INTERVAL_MINUTES = 30;
+    const BOOKING_SLOT_START_HOUR = 9;
+    const BOOKING_SLOT_END_HOUR = 22;
+    const DEFAULT_APPOINTMENT_DURATION_MINUTES = 50;
 
     function isOnBookingSlotGrid(date) {
         if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
@@ -74,7 +77,8 @@
 
     /**
      * 날짜별 표시 상태.
-     * specific(일회성) > blocked_dates > recurring 순. 특정일 차단이 정기 가능 요일을 덮어씀.
+     * 휴무일(blocked_dates)은 하루 전체 차단.
+     * 그 외에는 예약 격자 중 선택 가능한 시간이 하나라도 있으면 선택 가능.
      */
     function resolveDateAvailability(date, rules, blockedDates) {
         if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
@@ -87,37 +91,18 @@
             return "blocked";
         }
 
-        const specific = (rules || []).filter(function (rule) {
-            return rule.specific_date === dateStr;
-        });
-        if (specific.length) {
-            if (specific.some(function (rule) { return !rule.is_available; })) {
-                return "blocked";
-            }
-            if (specific.some(function (rule) { return rule.is_available; })) {
+        const parsed = getRulesForLocalDate(date, rules);
+        if (!parsed.specific.length && !parsed.recurring.length && hasRecurringAllowRules(rules)) {
+            return "blocked";
+        }
+
+        const starts = bookingSlotStarts(date);
+        for (let i = 0; i < starts.length; i++) {
+            if (isCounselorSlotStartAvailable("", rules, blockedDates, starts[i])) {
                 return "available";
             }
         }
-
-        const dow = toPythonWeekday(date);
-        const recurring = (rules || []).filter(function (rule) {
-            return rule.is_recurring && rule.day_of_week === dow;
-        });
-        if (recurring.length) {
-            const hasAvailable = recurring.some(function (rule) { return rule.is_available; });
-            const hasBlocked = recurring.some(function (rule) { return !rule.is_available; });
-            if (hasBlocked && !hasAvailable) {
-                return "blocked";
-            }
-            if (hasAvailable) {
-                return "available";
-            }
-            if (hasBlocked) {
-                return "blocked";
-            }
-        }
-
-        return null;
+        return "blocked";
     }
 
     function isBlockedDateValue(value, rules, blockedDates, selectedDate) {
@@ -194,6 +179,69 @@
         );
     }
 
+    function appointmentDurationMinutes() {
+        const input = document.querySelector('[name="duration_minutes"]');
+        if (input && input.value) {
+            const parsed = parseInt(input.value, 10);
+            if (!Number.isNaN(parsed) && parsed > 0) {
+                return parsed;
+            }
+        }
+        const configEl = document.getElementById("schedule-picker-config");
+        if (configEl) {
+            try {
+                const config = JSON.parse(configEl.textContent);
+                if (config && config.durationMinutes > 0) {
+                    return config.durationMinutes;
+                }
+            } catch (_err) {
+                /* 기본 상담 시간 사용 */
+            }
+        }
+        return DEFAULT_APPOINTMENT_DURATION_MINUTES;
+    }
+
+    function hasRecurringAllowRules(rules) {
+        return (rules || []).some(function (rule) {
+            return rule.is_recurring && rule.is_available;
+        });
+    }
+
+    function blockOverlapsSlot(slotStart, startStr, endStr) {
+        const windowStart = combineLocalDateTime(slotStart, startStr);
+        const windowEnd = combineLocalDateTime(slotStart, endStr);
+        const slotEnd = slotStart.getTime() + appointmentDurationMinutes() * 60 * 1000;
+        return slotStart.getTime() < windowEnd.getTime() && slotEnd > windowStart.getTime();
+    }
+
+    function bookingSlotStarts(date) {
+        const duration = appointmentDurationMinutes();
+        const endBoundary = new Date(
+            date.getFullYear(),
+            date.getMonth(),
+            date.getDate(),
+            BOOKING_SLOT_END_HOUR,
+            0,
+            0,
+            0
+        );
+        const starts = [];
+        let cursor = new Date(
+            date.getFullYear(),
+            date.getMonth(),
+            date.getDate(),
+            BOOKING_SLOT_START_HOUR,
+            0,
+            0,
+            0
+        );
+        while (cursor.getTime() + duration * 60 * 1000 <= endBoundary.getTime()) {
+            starts.push(new Date(cursor.getTime()));
+            cursor = new Date(cursor.getTime() + BOOKING_SLOT_INTERVAL_MINUTES * 60 * 1000);
+        }
+        return starts;
+    }
+
     function getAvailabilityWindowLabels(date, rules, blockedDates) {
         if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
             return [];
@@ -246,10 +294,8 @@
 
         for (let i = 0; i < parsed.specific.length; i++) {
             const rule = parsed.specific[i];
-            if (!rule.is_available) {
-                if (withinWindow(rule.start_time, rule.end_time)) {
-                    return false;
-                }
+            if (!rule.is_available && blockOverlapsSlot(slotStart, rule.start_time, rule.end_time)) {
+                return false;
             }
         }
 
@@ -271,7 +317,7 @@
 
         for (let i = 0; i < parsed.recurring.length; i++) {
             const rule = parsed.recurring[i];
-            if (!rule.is_available && withinWindow(rule.start_time, rule.end_time)) {
+            if (!rule.is_available && blockOverlapsSlot(slotStart, rule.start_time, rule.end_time)) {
                 return false;
             }
         }
@@ -280,7 +326,7 @@
             return rule.is_available;
         });
         if (!recurringAllows.length) {
-            return false;
+            return !hasRecurringAllowRules(rules);
         }
 
         for (let i = 0; i < recurringAllows.length; i++) {
