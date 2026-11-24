@@ -1,11 +1,52 @@
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.db import transaction
 from django.db.models import Exists, OuterRef
 from django.forms import ValidationError
 from django.http import HttpResponseRedirect
 from django.utils.html import format_html
 
 from .models import AuditLog, ClientProfile, CounselorProfile, SupervisorProfile, User, UserRole
+
+
+def _was_approved(profile) -> bool:
+    if not profile.pk:
+        return False
+    return bool(
+        CounselorProfile.objects.filter(pk=profile.pk)
+        .values_list("is_approved", flat=True)
+        .first()
+    )
+
+
+def _stored_approval_flags(formset) -> dict:
+    flags = {}
+    for inline_form in formset.forms:
+        instance = getattr(inline_form, "instance", None)
+        if instance is not None and instance.pk:
+            flags[instance.pk] = _was_approved(instance)
+    return flags
+
+
+def _register_initial_enrollment(request, profile):
+    from apps.counseling.cohort_reenrollment import ensure_initial_training_enrollment
+
+    created = ensure_initial_training_enrollment(profile)
+    if created is not None:
+        messages.success(
+            request,
+            f"{profile.user.name} 상담사의 {created.cohort}기 수련 등록을 만들었습니다.",
+        )
+
+
+def _register_newly_approved_profiles(request, formset, was_approved):
+    saved = [
+        *formset.new_objects,
+        *(obj for obj, _changed in formset.changed_objects),
+    ]
+    for profile in saved:
+        if profile.is_approved and not was_approved.get(profile.pk, False):
+            _register_initial_enrollment(request, profile)
 
 
 class CounselorUserFilter(admin.SimpleListFilter):
@@ -231,6 +272,15 @@ class UserAdmin(BaseUserAdmin):
         super().save_model(request, obj, form, change)
         sync_user_role_profiles(obj)
 
+    def save_formset(self, request, form, formset, change):
+        if formset.model is not CounselorProfile:
+            super().save_formset(request, form, formset, change)
+            return
+        was_approved = _stored_approval_flags(formset)
+        with transaction.atomic():
+            super().save_formset(request, form, formset, change)
+            _register_newly_approved_profiles(request, formset, was_approved)
+
 
 @admin.register(CounselorProfile)
 class CounselorProfileAdmin(admin.ModelAdmin):
@@ -262,8 +312,6 @@ class CounselorProfileAdmin(admin.ModelAdmin):
         return super().get_queryset(request).filter(user__role=UserRole.COUNSELOR)
 
     def save_model(self, request, obj, form, change):
-        from django.contrib import messages
-
         if obj.user.role != UserRole.COUNSELOR:
             messages.error(
                 request,
@@ -273,7 +321,11 @@ class CounselorProfileAdmin(admin.ModelAdmin):
         if obj.is_approved and obj.cohort is None:
             messages.error(request, "상담사 승인 시 기수를 입력해야 합니다.")
             return
-        super().save_model(request, obj, form, change)
+        was_approved = _was_approved(obj)
+        with transaction.atomic():
+            super().save_model(request, obj, form, change)
+            if obj.is_approved and not was_approved:
+                _register_initial_enrollment(request, obj)
 
     fieldsets = (
         (None, {"fields": ("user",)}),

@@ -14,7 +14,7 @@ from django.db.models.deletion import ProtectedError
 from django.db.utils import IntegrityError, OperationalError
 from django.utils import timezone
 
-from apps.accounts.models import CounselorProfile, User
+from apps.accounts.models import CounselorProfile, User, UserRole
 from apps.counseling.models import (
     Case,
     CasePresentationComment,
@@ -188,6 +188,42 @@ def _create_active_enrollment(counselor, cohort):
         started_at=timezone.now(),
         completed_at=None,
     )
+
+
+def ensure_initial_training_enrollment(profile):
+    """승인으로 기수가 처음 확정된 상담사에게만 진행 중 등록 1건을 만든다.
+
+    이미 수련 등록이 있으면 추가 기수를 만들지 않는다.
+    프로필, 기존 등록, 상담기록은 바꾸지 않는다.
+    승인되지 않았거나 기수가 없으면 None이다.
+    """
+    if profile is None or not profile.pk or not profile.is_approved or not profile.cohort:
+        return None
+    with transaction.atomic():
+        locked = (
+            CounselorProfile.objects.select_for_update()
+            .select_related("user")
+            .get(pk=profile.pk)
+        )
+        if (
+            not locked.is_approved
+            or not locked.cohort
+            or locked.user.role != UserRole.COUNSELOR
+        ):
+            return None
+        if TrainingEnrollment.objects.filter(counselor_id=locked.user_id).exists():
+            return None
+        cohort = int(locked.cohort)
+        try:
+            with transaction.atomic():
+                return _create_active_enrollment(locked.user, cohort)
+        except IntegrityError:
+            if TrainingEnrollment.objects.filter(
+                counselor_id=locked.user_id,
+                cohort=cohort,
+            ).exists():
+                return None
+            raise
 
 
 def register_next_cohort(counselor, raw_cohort):

@@ -181,7 +181,7 @@ class CounselorProfile(models.Model):
                 {"user": "상담사(COUNSELOR) 역할 계정만 상담사 프로필을 가질 수 있습니다."}
             )
         if self.is_approved and self.cohort is None:
-            raise ValidationError({"cohort": "상담사 승인 시 기수를 입력해야 합니다."})
+            raise ValidationError("상담사 승인 시 기수를 입력해야 합니다.")
 
 
 class SupervisorProfile(models.Model):
