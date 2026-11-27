@@ -1352,6 +1352,54 @@ class CaseSessionCard:
         }
         return labels.get(self.status_code, self.status_label)
 
+    def confirmed_schedule_has_ended(self, now: datetime | None = None) -> bool:
+        """확정 예약의 예정 종료 시각(시작 + 저장된 상담 시간)이 지났으면 True."""
+        appointment = self.appointment
+        if (
+            appointment is None
+            or appointment.status != AppointmentStatus.CONFIRMED
+            or getattr(appointment, "scheduled_at", None) is None
+        ):
+            return False
+        from apps.scheduling.zoom_capacity import appointment_duration_minutes
+
+        seoul = ZoneInfo("Asia/Seoul")
+        start = appointment.scheduled_at
+        current = now or timezone.now()
+        if timezone.is_naive(start):
+            start = timezone.make_aware(start, seoul)
+        if timezone.is_naive(current):
+            current = timezone.make_aware(current, seoul)
+        end = start + timedelta(minutes=appointment_duration_minutes(appointment))
+        return end < current
+
+    @property
+    def status_badge_label(self) -> str:
+        """회기 카드 상태 배지. 빈 문자열이면 배지를 그리지 않는다."""
+        if self.status_code == "NO_SHOW":
+            return ""
+        if self.status_code == "COMPLETED":
+            return "상담 완료"
+        if self.status_code == "CANCELLED" or self.has_cancel_completed_notice:
+            return "예약 취소"
+        if self.status_code == "PLANNED":
+            return ""
+        if self.status_code == "CONFIRMED" and self.confirmed_schedule_has_ended():
+            return "예약 종료"
+        if self.has_session_cancel_pending:
+            return "취소 대기 중"
+        return self.client_status_label
+
+    @property
+    def status_badge_tone(self) -> str:
+        return {
+            "예약 확정": "confirmed",
+            "예약 종료": "ended",
+            "상담 완료": "completed",
+            "예약 취소": "cancelled",
+            "취소 대기 중": "cancel-pending",
+        }.get(self.status_badge_label, "")
+
     @property
     def show_schedule_change(self) -> bool:
         """일정 변경·예약 요청 — 예정·확정·대기·취소 완료·반려 후 재예약."""

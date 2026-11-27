@@ -13,9 +13,7 @@
             </time>
             {% endif %}
             {% endif %}
-            <span class="badge client-dashboard-badge client-session-status-badge{% if session.has_session_cancel_pending %} client-session-status-badge--cancel-pending{% endif %}">
-                {% if session.has_session_cancel_pending %}취소 대기 중{% else %}{{ session.client_status_label }}{% endif %}
-            </span>
+            {% include "includes/session_status_badge.html" %}
         </div>
     </header>
     {% if session.show_counselor_cancel_review_actions %}

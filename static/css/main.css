@@ -478,6 +478,21 @@ a.table-text-link:focus {
     color: #084298;
 }
 
+.client-session-card .client-session-status-badge--ended {
+    background-color: #e9ecef !important;
+    color: #495057;
+}
+
+.client-session-card .client-session-status-badge--completed {
+    background-color: #d1e7dd !important;
+    color: #0f5132;
+}
+
+.client-session-card .client-session-status-badge--cancelled {
+    background-color: #f8d7da !important;
+    color: #842029;
+}
+
 .client-dashboard-badge--PENDING,
 .client-dashboard-badge--REQUESTED {
     background-color: #fd7e14 !important;

@@ -9,15 +9,7 @@
                     {{ session.scheduled_datetime|date:"Y-m-d H:i" }}
                 </time>
                 {% endif %}
-                {% if session.has_session_cancel_pending %}
-                <span class="badge client-dashboard-badge client-session-status-badge client-session-status-badge--cancel-pending">
-                    취소 대기 중
-                </span>
-                {% else %}
-                <span class="badge client-dashboard-badge client-session-status-badge client-session-status-badge--{{ session.status_code|lower }}">
-                    {{ session.client_status_label }}
-                </span>
-                {% endif %}
+                {% include "includes/session_status_badge.html" %}
             </div>
             {% if session.has_session_cancel_pending %}
             <div class="client-session-card-header-actions d-flex flex-wrap align-items-center gap-2">
