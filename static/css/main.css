@@ -876,6 +876,26 @@ a.table-text-link:focus {
     box-shadow: none;
 }
 
+.zoom-schedule-ended-btn {
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.4;
+    padding: 0.25rem 0.625rem;
+    white-space: nowrap;
+    background-color: #e9ecef;
+    color: #6c757d;
+    border: 1px solid #ced4da;
+    border-radius: 0.375rem;
+}
+
+.zoom-schedule-ended-btn:hover,
+.zoom-schedule-ended-btn:focus {
+    background-color: #dee2e6;
+    color: #6c757d;
+    border-color: #ced4da;
+    box-shadow: none;
+}
+
 .client-case-detail-actions .btn-primary {
     background-color: #0d6bde;
     border-color: #0d6bde;

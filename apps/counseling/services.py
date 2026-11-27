@@ -1067,6 +1067,8 @@ def get_client_home_dashboard(user: User) -> dict[str, Any] | None:
         .order_by("-scheduled_at")[:3]
     )
 
+    from apps.scheduling.zoom_links import appointment_zoom_schedule_has_ended
+
     recent_appointments = []
     for apt in recent_list:
         case = apt.case
@@ -1076,13 +1078,15 @@ def get_client_home_dashboard(user: User) -> dict[str, Any] | None:
             and case.counseling_method == CounselingMethod.REMOTE
             and bool(zoom_url)
         )
+        zoom_schedule_ended = show_zoom and appointment_zoom_schedule_has_ended(apt)
         recent_appointments.append(
             {
                 "scheduled_at": apt.scheduled_at,
                 "status": apt.status,
                 "status_display": apt.get_status_display(),
                 "show_zoom": show_zoom,
-                "zoom_url": zoom_url,
+                "zoom_schedule_ended": zoom_schedule_ended,
+                "zoom_url": "" if zoom_schedule_ended else zoom_url,
                 "case_pk": case.pk,
             }
         )
@@ -1526,6 +1530,22 @@ class CaseSessionCard:
             and self.counseling_method == CounselingMethod.REMOTE
             and bool(self.zoom_url)
         )
+
+    @property
+    def zoom_schedule_ended(self) -> bool:
+        """확정 회기 중 예약 날짜가 오늘보다 이전인 경우. 버튼은 남기고 접속만 막는다."""
+        if not self.show_zoom:
+            return False
+        from apps.scheduling.zoom_links import appointment_zoom_schedule_has_ended
+
+        return appointment_zoom_schedule_has_ended(self.appointment)
+
+    @property
+    def zoom_launch_url(self) -> str:
+        """화면·응답에 넣을 참가 URL. 종료된 회기는 빈 문자열."""
+        if self.zoom_schedule_ended:
+            return ""
+        return self.zoom_url
 
     @property
     def show_zoom_host_key_help(self) -> bool:

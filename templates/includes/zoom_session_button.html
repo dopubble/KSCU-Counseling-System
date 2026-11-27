@@ -1,0 +1,15 @@
+{% if zoom_schedule_ended %}
+<button type="button"
+        class="btn btn-sm zoom-schedule-ended-btn"
+        data-bs-toggle="modal"
+        data-bs-target="#zoomScheduleEndedModal">
+    <i class="bi bi-camera-video me-1" aria-hidden="true"></i>{{ zoom_label }}
+</button>
+{% elif zoom_launch_url %}
+<a href="{{ zoom_launch_url }}"
+   target="_blank"
+   rel="noopener noreferrer"
+   class="btn btn-sm client-dashboard-action-btn">
+    <i class="bi bi-camera-video me-1" aria-hidden="true"></i>{{ zoom_label }}
+</a>
+{% endif %}

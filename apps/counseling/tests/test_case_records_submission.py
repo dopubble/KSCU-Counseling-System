@@ -354,9 +354,15 @@ class RecordsSubmitButtonTests(TestCase):
             encoding="utf-8"
         )
         self.assertIn("Zoom 회의 입장", template)
-        self.assertIn('class="btn btn-sm client-dashboard-action-btn"', template)
-        self.assertIn('target="_blank"', template)
-        self.assertIn("{{ session.zoom_url }}", template)
+        self.assertIn("zoom_launch_url=session.zoom_launch_url", template)
+        button = Path("templates/includes/zoom_session_button.html").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('class="btn btn-sm client-dashboard-action-btn"', button)
+        self.assertIn('target="_blank"', button)
+        self.assertIn("{{ zoom_launch_url }}", button)
+        self.assertIn("zoomScheduleEndedModal", button)
+        self.assertNotIn("zoom.us", button)
 
     def test_hold_and_transferred_details_hide_submit_buttons(self):
         for status in (CaseStatus.ON_HOLD, CaseStatus.TRANSFERRED):

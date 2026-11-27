@@ -140,12 +140,7 @@
                                         </td>
                                         <td class="client-appointment-note-cell" data-label="비고">
                                             {% if item.show_zoom %}
-                                            <a href="{{ item.zoom_url }}"
-                                               target="_blank"
-                                               rel="noopener noreferrer"
-                                               class="btn btn-sm client-dashboard-action-btn">
-                                                <i class="bi bi-camera-video me-1"></i>Zoom 상담실 바로가기
-                                            </a>
+                                            {% include "includes/zoom_session_button.html" with zoom_schedule_ended=item.zoom_schedule_ended zoom_launch_url=item.zoom_url zoom_label="Zoom 상담실 바로가기" %}
                                             {% else %}
                                             <span class="text-muted">—</span>
                                             {% endif %}
@@ -274,5 +269,6 @@
         </div>
     </div>
 </section>
+{% include "includes/zoom_schedule_ended_modal.html" %}
 {% endblock %}
 {% endblock %}

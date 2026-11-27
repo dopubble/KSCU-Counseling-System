@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
@@ -101,6 +103,32 @@ def appointment_counselor_host_key(appointment: Optional["Appointment"]) -> str:
     if zoom is None:
         return ""
     return (getattr(zoom, "counselor_host_key", None) or "").strip()
+
+
+def appointment_zoom_schedule_has_ended(
+    appointment: Optional["Appointment"],
+    *,
+    now: datetime | None = None,
+) -> bool:
+    """
+    예약 날짜가 오늘(Asia/Seoul)보다 이전이면 True.
+
+    오늘과 미래 날짜는 시각과 관계없이 False. 비교는 현재 scheduled_at 의 날짜만 사용한다.
+    """
+    if appointment is None:
+        return False
+    start = getattr(appointment, "scheduled_at", None)
+    if start is None:
+        return False
+    from django.utils import timezone
+
+    seoul = ZoneInfo("Asia/Seoul")
+    current = now or timezone.now()
+    if timezone.is_naive(start):
+        start = timezone.make_aware(start, seoul)
+    if timezone.is_naive(current):
+        current = timezone.make_aware(current, seoul)
+    return start.astimezone(seoul).date() < current.astimezone(seoul).date()
 
 
 def resolve_appointment_zoom_join_url(

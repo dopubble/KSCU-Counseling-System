@@ -120,12 +120,7 @@
     {% endif %}
     {% if session.show_zoom %}
     <footer class="client-session-card-footer d-flex flex-wrap align-items-center gap-2">
-        <a href="{{ session.zoom_url }}"
-           target="_blank"
-           rel="noopener noreferrer"
-           class="btn btn-sm client-dashboard-action-btn">
-            <i class="bi bi-camera-video me-1" aria-hidden="true"></i>Zoom 회의 바로가기
-        </a>
+        {% include "includes/zoom_session_button.html" with zoom_schedule_ended=session.zoom_schedule_ended zoom_launch_url=session.zoom_launch_url zoom_label="Zoom 회의 바로가기" %}
     </footer>
     {% endif %}
 </article>
