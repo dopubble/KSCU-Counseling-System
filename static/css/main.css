@@ -1406,6 +1406,32 @@ a.client-portal-stat-link:focus {
     overflow: hidden;
 }
 
+.client-session-card--current {
+    background-color: #f0f6ff;
+    border-color: #bfdbfe;
+    box-shadow: 0 2px 12px rgba(37, 99, 235, 0.20);
+}
+
+.client-session-card--current .client-session-card-header,
+.client-session-card--current .client-session-card-footer,
+.client-session-card--current .counselor-session-review-footer {
+    background: #f0f6ff;
+    border-color: #dbe7fb;
+}
+
+.client-session-current-badge {
+    display: inline-block;
+    max-width: 100%;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.4;
+    color: #ffffff;
+    background-color: var(--client-dashboard-blue, #0d6bde);
+    border-radius: 999px;
+    padding: 0.2rem 0.65rem;
+    white-space: nowrap;
+}
+
 .counselor-session-review-footer {
     display: flex !important;
     visibility: visible !important;

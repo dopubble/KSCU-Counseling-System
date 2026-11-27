@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 from typing import Any, Optional
 
 from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
@@ -1137,6 +1138,7 @@ class CaseSessionCard:
     counseling_method: str = CounselingMethod.IN_PERSON
     case_closed: bool = False
     records_submitted: bool = False
+    is_current_session: bool = False
 
     @property
     def has_materials(self) -> bool:
@@ -1881,7 +1883,50 @@ def build_case_session_cards(case: Case) -> list[CaseSessionCard]:
                 pending_appointment=pending_appointment,
             )
         )
-    return cards
+    return mark_current_session_cards(cards)
+
+
+def _appointment_date_in_seoul(appointment: Appointment) -> date | None:
+    start = getattr(appointment, "scheduled_at", None)
+    if start is None:
+        return None
+    seoul = ZoneInfo("Asia/Seoul")
+    if timezone.is_naive(start):
+        start = timezone.make_aware(start, seoul)
+    return start.astimezone(seoul).date()
+
+
+def mark_current_session_cards(
+    cards: list[CaseSessionCard],
+    *,
+    now: datetime | None = None,
+) -> list[CaseSessionCard]:
+    """
+    예약이 확정되고 예약일이 오늘(Asia/Seoul)인 회기 카드를 강조한다.
+
+    시각은 보지 않는다. 취소·다른 날짜·종결 사례는 강조하지 않는다.
+    당일 확정 예약이 여러 건이면 각각 표시한다.
+    """
+    if not cards or any(card.case_closed for card in cards):
+        return [replace(card, is_current_session=False) if card.is_current_session else card for card in cards]
+    seoul = ZoneInfo("Asia/Seoul")
+    current = now or timezone.now()
+    if timezone.is_naive(current):
+        current = timezone.make_aware(current, seoul)
+    today = current.astimezone(seoul).date()
+    marked: list[CaseSessionCard] = []
+    for card in cards:
+        appointment = card.appointment
+        is_today = bool(
+            appointment is not None
+            and appointment.status == AppointmentStatus.CONFIRMED
+            and _appointment_date_in_seoul(appointment) == today
+        )
+        if card.is_current_session == is_today:
+            marked.append(card)
+        else:
+            marked.append(replace(card, is_current_session=is_today))
+    return marked
 
 
 class CounselorSessionCardView:

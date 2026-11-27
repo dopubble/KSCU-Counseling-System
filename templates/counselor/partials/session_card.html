@@ -1,11 +1,12 @@
 {# 상담사 회기 카드 — 자료·동기 상담일지 버튼은 회기 블록 내부 한 줄에 배치 #}
-<article class="client-session-card mb-3"
+<article class="client-session-card mb-3{% if session.is_current_session %} client-session-card--current{% endif %}"
          id="session-{{ session.session_number }}"
          data-session-number="{{ session.session_number }}"
          data-session-status="{% if session.has_session_cancel_pending %}cancel_pending{% else %}{{ session.status_code|lower }}{% endif %}">
     <header class="client-session-card-header">
         <div class="client-session-card-meta">
             <span class="client-session-pill">{{ session.session_number }}회기</span>
+            {% include "includes/current_session_badge.html" %}
             {% if session.scheduled_datetime %}
             {% if session.is_confirmed or session.has_session_cancel_pending %}
             <time class="client-session-card-date fw-bold" datetime="{{ session.scheduled_datetime|date:'c' }}">
