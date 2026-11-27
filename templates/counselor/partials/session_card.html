@@ -6,7 +6,6 @@
     <header class="client-session-card-header">
         <div class="client-session-card-meta">
             <span class="client-session-pill">{{ session.session_number }}회기</span>
-            {% include "includes/current_session_badge.html" %}
             {% if session.scheduled_datetime %}
             {% if session.is_confirmed or session.has_session_cancel_pending %}
             <time class="client-session-card-date fw-bold" datetime="{{ session.scheduled_datetime|date:'c' }}">

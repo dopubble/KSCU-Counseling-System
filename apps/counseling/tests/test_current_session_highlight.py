@@ -231,12 +231,12 @@ class TodaySessionCardRenderTests(TestCase):
         self.assertFalse(cards[0].is_current_session)
         self.assertTrue(cards[1].is_current_session)
         for html in pages.values():
-            self.assertEqual(html.count("오늘 상담"), 1)
+            self.assertNotIn("오늘 상담", html)
+            self.assertNotIn("client-session-current-badge", html)
             self.assertEqual(html.count("client-session-card--current"), 1)
-            self.assertNotIn("현재 회기", html)
             today_at = html.index('id="session-2"')
             article = html.rfind("<article", 0, today_at)
-            self.assertIn("오늘 상담", html[article:article + 500])
+            self.assertIn("client-session-card--current", html[article:article + 220])
 
         in_person_cards, _ = self._rendered(in_person)
         self.assertTrue(in_person_cards[1].is_current_session)
@@ -264,7 +264,7 @@ class TodaySessionCardRenderTests(TestCase):
         appointment.save(update_fields=["scheduled_at"])
         cards, pages = self._rendered(case)
         self.assertFalse(any(card.is_current_session for card in cards))
-        self.assertNotIn("오늘 상담", pages["client/partials/session_card.html"])
+        self.assertNotIn("client-session-card--current", pages["client/partials/session_card.html"])
 
         appointment.scheduled_at = self.today
         appointment.status = AppointmentStatus.CANCELLED
@@ -278,4 +278,4 @@ class TodaySessionCardRenderTests(TestCase):
         case.save(update_fields=["status"])
         cards, pages = self._rendered(case)
         self.assertFalse(any(card.is_current_session for card in cards))
-        self.assertNotIn("오늘 상담", pages["counselor/partials/session_card.html"])
+        self.assertNotIn("client-session-card--current", pages["counselor/partials/session_card.html"])

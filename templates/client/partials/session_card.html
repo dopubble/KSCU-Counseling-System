@@ -4,7 +4,6 @@
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 w-100">
             <div class="client-session-card-meta">
                 <span class="client-session-pill">{{ session.session_number }}회기</span>
-                {% include "includes/current_session_badge.html" %}
                 {% if session.scheduled_datetime %}
                 <time class="client-session-card-date fw-bold" datetime="{{ session.scheduled_datetime|date:'c' }}">
                     {{ session.scheduled_datetime|date:"Y-m-d H:i" }}
